@@ -1,16 +1,25 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import { AppNav } from "@/components/nav/AppNav";
+import { ProfilePage } from "@/components/profile/ProfilePage";
 import "@/app/landing.css";
 import "@/app/feed.css";
+import "@/app/profile.css";
+import "@/app/inbox.css";
 
 export default function InboxPage() {
+  const router = useRouter();
+
   return (
-    <div className="feed-page">
-      <AppNav variant="feed" />
-      <main className="feed-page-main">
-        <section className="inbox-empty">
-          <h1>Inbox</h1>
-          <p>No messages yet. Check back after you join a room.</p>
-        </section>
+    <div className="profile-shell">
+      <AppNav
+        variant="profile"
+        defaultInboxOpen
+        onInboxClose={() => router.replace("/profile")}
+      />
+      <main className="profile-main">
+        <ProfilePage />
       </main>
     </div>
   );
