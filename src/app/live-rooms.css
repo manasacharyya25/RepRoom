@@ -111,6 +111,7 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   box-sizing: border-box;
   justify-self: stretch;
   text-align: left;
+  text-decoration: none;
   padding: 0;
   margin: 0;
   border: 1px solid var(--border);
@@ -118,6 +119,7 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   overflow: visible;
   background: var(--surface);
   color: inherit;
+  cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -509,19 +511,87 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   border-bottom: 1px solid var(--border);
 }
 
-.live-rooms-immersive-back {
+.live-rooms-immersive-action {
   justify-self: start;
+  padding: 10px 18px;
   border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  font-weight: 600;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
   cursor: pointer;
-  padding: 4px 0;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.live-rooms-immersive-back:hover {
+.live-rooms-immersive-action:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.live-rooms-immersive-header-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-rooms-immersive-fullscreen {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.live-rooms-immersive-fullscreen:hover {
+  opacity: 1;
   color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.live-rooms-immersive-fullscreen svg {
+  width: 15px;
+  height: 15px;
+}
+
+.live-rooms-immersive-header .live-rooms-immersive-action:last-child {
+  justify-self: auto;
+}
+
+.live-rooms-immersive-title-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.live-rooms-immersive-nav {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.live-rooms-immersive-nav:hover {
+  border-color: rgba(255, 92, 43, 0.45);
+  background: rgba(255, 92, 43, 0.08);
 }
 
 .live-rooms-immersive-title {
@@ -530,35 +600,29 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   font-weight: 700;
   letter-spacing: -0.01em;
   text-align: center;
-}
-
-.live-rooms-immersive-count {
-  justify-self: end;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--accent);
+  white-space: nowrap;
 }
 
 .live-rooms-immersive-body {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 200px);
   gap: 12px;
   padding: 12px 16px 16px;
 }
 
-.live-rooms-immersive-stage {
-  flex: 1;
+.live-rooms-immersive-main-column {
+  min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 200px);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
 .live-rooms-immersive-pinned {
+  flex: 1;
   min-height: 0;
-  height: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -571,13 +635,6 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   border-radius: 18px;
   overflow: hidden;
   background: #111;
-}
-
-.live-rooms-immersive-pinned-tile .hero-mock-live-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 1;
 }
 
 .live-rooms-featured-image {
@@ -600,29 +657,19 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 .live-rooms-immersive-rail {
   min-height: 0;
   height: 100%;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  scrollbar-width: thin;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .live-rooms-immersive-rail-tile {
   position: relative;
-  flex: 0 0 calc((100% - 24px) / 3);
   min-height: 0;
+  height: 100%;
   border-radius: 16px;
   overflow: hidden;
   background: #111;
-}
-
-.live-rooms-immersive-rail-tile .hero-mock-live-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 1;
-  font-size: 0.6rem;
-  padding: 2px 6px;
 }
 
 .live-rooms-tile-image {
@@ -648,29 +695,26 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 }
 
 .live-rooms-immersive-bottom {
-  flex: 0 0 34%;
-  min-height: 140px;
-  max-height: 38%;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  flex: 0 0 32%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .live-rooms-immersive-bottom-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 12px;
+  height: 100%;
 }
 
 .live-rooms-immersive-bottom-tile {
   position: relative;
-  aspect-ratio: 4 / 3;
+  min-height: 0;
+  height: 100%;
   border-radius: 14px;
   overflow: hidden;
   background: #111;
-}
-
-.live-rooms-immersive-bottom-tile .hero-mock-live-badge {
-  display: none;
 }
 
 @media (max-width: 960px) {
@@ -699,17 +743,22 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .live-rooms-immersive-stage {
+  .live-rooms-immersive-body {
     grid-template-columns: minmax(0, 1fr) minmax(100px, 130px);
   }
 
   .live-rooms-immersive-bottom-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
   .live-rooms-immersive-bottom {
-    flex-basis: 42%;
-    max-height: 45%;
+    flex-basis: 38%;
+  }
+
+  .live-rooms-immersive-title {
+    white-space: normal;
+    font-size: 0.95rem;
   }
 }
 

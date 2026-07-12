@@ -6,11 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
-  DEFAULT_ROOM_ID,
+  getRoomLiveSets,
   WORKOUT_ROOMS,
-  type RoomId,
   type WorkoutRoom
 } from "@/lib/rooms";
 
@@ -66,7 +66,6 @@ function LiveTile({
         sizes={sizes}
         src={image}
       />
-      <span className="hero-mock-live-badge">LIVE</span>
       <span
         className={`live-rooms-tile-label${labelPosition === "center" ? " live-rooms-tile-label--center" : ""}`}
       >
@@ -76,46 +75,122 @@ function LiveTile({
   );
 }
 
-function ImmersiveRoom({
+export function ImmersiveRoom({
   room,
-  onBack
+  onLeave
 }: {
   room: WorkoutRoom;
-  onBack: () => void;
+  onLeave: () => void | Promise<void>;
 }) {
+  const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
+  const [liveSetIndex, setLiveSetIndex] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
+
+  const showPreviousSet = () => {
+    setLiveSetIndex((index) => (index - 1 + liveSets.length) % liveSets.length);
+  };
+
+  const showNextSet = () => {
+    setLiveSetIndex((index) => (index + 1) % liveSets.length);
+  };
+
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onBack();
+    const syncFullscreen = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
     };
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onLeave();
+    };
+
+    syncFullscreen();
     document.body.style.overflow = "hidden";
+    document.addEventListener("fullscreenchange", syncFullscreen);
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
+      void exitFullscreen();
       document.body.style.overflow = "";
+      document.removeEventListener("fullscreenchange", syncFullscreen);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onBack]);
+  }, [onLeave]);
 
   return (
     <div className="live-rooms-immersive">
       <header className="live-rooms-immersive-header">
-        <button className="live-rooms-immersive-back" onClick={onBack} type="button">
-          ← Back
+        <button className="live-rooms-immersive-action" type="button">
+          Go Live
         </button>
-        <h1 className="live-rooms-immersive-title">
-          {room.title} · Room {room.roomNumber}
-        </h1>
-        <span className="live-rooms-immersive-count">{room.liveCount} live</span>
+        <div className="live-rooms-immersive-title-wrap">
+          <button
+            type="button"
+            className="live-rooms-immersive-nav"
+            aria-label="Previous lives"
+            onClick={showPreviousSet}
+          >
+            &lt;
+          </button>
+          <h1 className="live-rooms-immersive-title">
+            {room.title} · Room {room.roomNumber}
+          </h1>
+          <button
+            type="button"
+            className="live-rooms-immersive-nav"
+            aria-label="Next lives"
+            onClick={showNextSet}
+          >
+            &gt;
+          </button>
+        </div>
+        <div className="live-rooms-immersive-header-actions">
+          <button
+            type="button"
+            className="live-rooms-immersive-fullscreen"
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            title={isFullscreen ? "Exit fullscreen" : "Go fullscreen"}
+            onClick={() => {
+              void toggleFullscreen();
+            }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden>
+              {isFullscreen ? (
+                <path
+                  d="M9 4.75H5.75A1.75 1.75 0 0 0 4 6.5v3.25M15 4.75h3.25A1.75 1.75 0 0 1 20 6.5v3.25M9 19.25H5.75A1.75 1.75 0 0 1 4 17.5v-3.25M15 19.25h3.25A1.75 1.75 0 0 0 20 17.5v-3.25"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <path
+                  d="M8.25 4.75H6.5A1.75 1.75 0 0 0 4.75 6.5v1.75M15.75 4.75H17.5A1.75 1.75 0 0 1 19.25 6.5v1.75M8.25 19.25H6.5A1.75 1.75 0 0 1 4.75 17.5v-1.75M15.75 19.25H17.5A1.75 1.75 0 0 0 19.25 17.5v-1.75"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+            </svg>
+          </button>
+          <button
+            className="live-rooms-immersive-action"
+            onClick={onLeave}
+            type="button"
+          >
+            Leave Room
+          </button>
+        </div>
       </header>
 
       <div className="live-rooms-immersive-body">
-        <div className="live-rooms-immersive-stage">
+        <div className="live-rooms-immersive-main-column">
           <div className="live-rooms-immersive-pinned">
-            {room.pinnedFeeds.map((feed, index) => (
+            {activeSet.main.map((feed, index) => (
               <div
                 className="live-rooms-immersive-pinned-tile"
-                key={`pinned-${room.id}-${feed.name}`}
+                key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
               >
                 <Image
                   alt=""
@@ -125,38 +200,37 @@ function ImmersiveRoom({
                   sizes="(max-width: 960px) 50vw, 38vw"
                   src={feed.image}
                 />
-                <span className="hero-mock-live-badge">LIVE</span>
-                <span className="live-rooms-featured-label">Pinned · {feed.name}</span>
+                <span className="live-rooms-featured-label">{feed.name}</span>
               </div>
             ))}
           </div>
 
-          <div className="live-rooms-immersive-rail">
-            {room.sidebarParticipants.map((participant) => (
-              <LiveTile
-                className="live-rooms-immersive-rail-tile"
-                image={participant.image}
-                key={`rail-${room.id}-${participant.name}`}
-                label={participant.name}
-                sizes="200px"
-              />
-            ))}
+          <div className="live-rooms-immersive-bottom">
+            <div className="live-rooms-immersive-bottom-grid">
+              {activeSet.bottom.map((participant, index) => (
+                <LiveTile
+                  className="live-rooms-immersive-bottom-tile"
+                  image={participant.image}
+                  key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+                  label={participant.name}
+                  labelPosition="center"
+                  sizes="(max-width: 960px) 25vw, 180px"
+                />
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="live-rooms-immersive-bottom">
-          <div className="live-rooms-immersive-bottom-grid">
-            {room.gridParticipants.map((participant, index) => (
-              <LiveTile
-                className="live-rooms-immersive-bottom-tile"
-                image={participant.image}
-                key={`grid-${room.id}-${participant.name}-${index}`}
-                label={participant.name}
-                labelPosition="center"
-                sizes="(max-width: 960px) 25vw, 180px"
-              />
-            ))}
-          </div>
+        <div className="live-rooms-immersive-rail">
+          {activeSet.rail.map((participant, index) => (
+            <LiveTile
+              className="live-rooms-immersive-rail-tile"
+              image={participant.image}
+              key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+              label={participant.name}
+              sizes="200px"
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -165,7 +239,6 @@ function ImmersiveRoom({
 
 export function LiveRoomsExperience() {
   const [query, setQuery] = useState("");
-  const [activeRoomId, setActiveRoomId] = useState<RoomId | null>(null);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState(CHAT_MESSAGES);
 
@@ -179,16 +252,6 @@ export function LiveRoomsExperience() {
       )
     );
   }, [query]);
-
-  const activeRoom = useMemo(
-    () =>
-      activeRoomId
-        ? (WORKOUT_ROOMS.find((room) => room.id === activeRoomId) ??
-          WORKOUT_ROOMS.find((room) => room.id === DEFAULT_ROOM_ID) ??
-          WORKOUT_ROOMS[0])
-        : null,
-    [activeRoomId]
-  );
 
   const sendMessage = () => {
     const text = draft.trim();
@@ -207,10 +270,6 @@ export function LiveRoomsExperience() {
     ]);
     setDraft("");
   };
-
-  if (activeRoom) {
-    return <ImmersiveRoom onBack={() => setActiveRoomId(null)} room={activeRoom} />;
-  }
 
   return (
     <div className="room-select-page">
@@ -246,11 +305,10 @@ export function LiveRoomsExperience() {
 
           <div className="room-select-grid">
             {filteredRooms.map((room) => (
-              <button
+              <Link
                 className="room-select-card"
+                href={`/rooms/${room.id}`}
                 key={room.id}
-                onClick={() => setActiveRoomId(room.id)}
-                type="button"
               >
                 <div className="room-select-card-media">
                   <Image
@@ -282,7 +340,7 @@ export function LiveRoomsExperience() {
                     <span className="room-select-avatar room-select-avatar-more">…</span>
                   </div>
                 </div>
-              </button>
+              </Link>
             ))}
 
             {!query.trim() ? (

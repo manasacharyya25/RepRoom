@@ -146,6 +146,63 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
 
 export const DEFAULT_ROOM_ID: RoomId = "yoga";
 
+const ROOM_IDS = new Set<RoomId>([
+  "yoga",
+  "cardio",
+  "zumba",
+  "workout",
+  "meditation"
+]);
+
+export function isRoomId(value: string): value is RoomId {
+  return ROOM_IDS.has(value as RoomId);
+}
+
 export function getRoomById(roomId: RoomId): WorkoutRoom {
   return WORKOUT_ROOMS.find((room) => room.id === roomId) ?? WORKOUT_ROOMS[0];
+}
+
+export type LivePreview = {
+  name: string;
+  image: string;
+};
+
+export type RoomLiveSet = {
+  main: [LivePreview, LivePreview];
+  rail: [
+    LivePreview,
+    LivePreview,
+    LivePreview,
+    LivePreview,
+    LivePreview
+  ];
+  bottom: [LivePreview, LivePreview, LivePreview, LivePreview];
+};
+
+function pickFromPool(pool: LivePreview[], start: number, count: number): LivePreview[] {
+  if (pool.length === 0) {
+    return Array.from({ length: count }, () => ({ name: "Guest", image: LIVE_IMAGES.main }));
+  }
+  return Array.from({ length: count }, (_, index) => pool[(start + index) % pool.length]);
+}
+
+export function getRoomLiveSets(room: WorkoutRoom, pageCount = 4): RoomLiveSet[] {
+  const pool: LivePreview[] = [
+    { name: "Coach", image: LIVE_IMAGES.main },
+    ...room.pinnedFeeds.map((participant) => ({
+      name: participant.name,
+      image: participant.image
+    })),
+    ...room.sidebarParticipants,
+    ...room.gridParticipants
+  ];
+
+  return Array.from({ length: pageCount }, (_, page) => {
+    const picks = pickFromPool(pool, page * 11, 11);
+    return {
+      main: [picks[0], picks[1]],
+      rail: [picks[2], picks[3], picks[4], picks[5], picks[6]],
+      bottom: [picks[7], picks[8], picks[9], picks[10]]
+    };
+  });
 }
