@@ -61,17 +61,347 @@ const INITIAL_POSTS: SelfPost[] = [
   {
     id: "p3",
     caption: "Morning flow with the yoga room. Feeling reset.",
+    image: LIVE_IMAGES.participant1,
     createdAt: "3 days ago",
     likes: 18,
     comments: 2
+  },
+  {
+    id: "p4",
+    caption: "Cardio finishers hit different when the room is hyped.",
+    image: LIVE_IMAGES.participant6,
+    createdAt: "4 days ago",
+    likes: 33,
+    comments: 4
+  },
+  {
+    id: "p5",
+    caption: "New PR on deadlift. Slow progress still counts.",
+    image: LIVE_IMAGES.participant3,
+    createdAt: "5 days ago",
+    likes: 56,
+    comments: 11
+  },
+  {
+    id: "p6",
+    caption: "Recovery walk + stretch. Rest is part of the plan.",
+    createdAt: "1 week ago",
+    likes: 14,
+    comments: 1
+  },
+  {
+    id: "p7",
+    caption: "Zumba night was chaotic in the best way.",
+    image: LIVE_IMAGES.sidebar1,
+    createdAt: "1 week ago",
+    likes: 29,
+    comments: 6
+  },
+  {
+    id: "p8",
+    caption: "Tracking protein for the next 14 days. Accountability unlocked.",
+    image: LIVE_IMAGES.participant7,
+    createdAt: "8 days ago",
+    likes: 22,
+    comments: 3
+  },
+  {
+    id: "p9",
+    caption: "First private room session with my buddies. We showed up.",
+    image: LIVE_IMAGES.sidebar2,
+    createdAt: "2 weeks ago",
+    likes: 47,
+    comments: 9
+  },
+  {
+    id: "p10",
+    caption: "Early gym, empty racks, perfect playlist.",
+    image: LIVE_IMAGES.participant2,
+    createdAt: "2 weeks ago",
+    likes: 31,
+    comments: 4
+  },
+  {
+    id: "p11",
+    caption: "Meditation room helped me reset after a long week.",
+    image: LIVE_IMAGES.participant5,
+    createdAt: "3 weeks ago",
+    likes: 19,
+    comments: 2
+  },
+  {
+    id: "p12",
+    caption: "Shared a form check. Got great feedback from the room.",
+    image: LIVE_IMAGES.sidebar3,
+    createdAt: "3 weeks ago",
+    likes: 38,
+    comments: 7
+  },
+  {
+    id: "p13",
+    caption: "Hit my weekly goal streak. Small wins add up.",
+    createdAt: "1 month ago",
+    likes: 26,
+    comments: 3
+  },
+  {
+    id: "p14",
+    caption: "Leg day leftovers. Walking downstairs is a sport.",
+    image: LIVE_IMAGES.participant8,
+    createdAt: "1 month ago",
+    likes: 44,
+    comments: 5
+  },
+  {
+    id: "p15",
+    caption: "Joined a live cardio room at midnight. Worth it.",
+    image: LIVE_IMAGES.participant6,
+    createdAt: "1 month ago",
+    likes: 35,
+    comments: 6
   }
 ];
+
+type ProfileComment = {
+  id: string;
+  author: string;
+  handle: string;
+  avatar: string;
+  text: string;
+};
+
+function seedProfileComments(post: SelfPost): ProfileComment[] {
+  const count = Math.min(post.comments, 2);
+  if (count === 0) return [];
+
+  return [
+    {
+      id: `${post.id}-c1`,
+      author: "Maya",
+      handle: "@maya_moves",
+      avatar: LIVE_IMAGES.sidebar2,
+      text: "This is motivating — keep going!"
+    },
+    {
+      id: `${post.id}-c2`,
+      author: "Alex",
+      handle: "@alex_runs",
+      avatar: LIVE_IMAGES.participant1,
+      text: "Love the consistency here."
+    }
+  ].slice(0, count);
+}
+
+function ProfilePostModal({
+  post,
+  onClose,
+  onCommentCountChange
+}: {
+  post: SelfPost;
+  onClose: () => void;
+  onCommentCountChange: (postId: string, count: number) => void;
+}) {
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(post.likes);
+  const [draft, setDraft] = useState("");
+  const [comments, setComments] = useState<ProfileComment[]>(() =>
+    seedProfileComments(post)
+  );
+
+  const commentCount = Math.max(post.comments, comments.length);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  const sendComment = () => {
+    const text = draft.trim();
+    if (!text) return;
+    const next = [
+      ...comments,
+      {
+        id: `local-${Date.now()}`,
+        author: "You",
+        handle: "@you",
+        avatar: LIVE_IMAGES.participant4,
+        text
+      }
+    ];
+    setComments(next);
+    setDraft("");
+    onCommentCountChange(post.id, Math.max(post.comments, next.length));
+  };
+
+  return (
+    <div
+      className="feed-post-modal-backdrop"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="feed-post-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Your post"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="feed-post-modal-close"
+          aria-label="Close post"
+          onClick={onClose}
+        >
+          ×
+        </button>
+
+        <div className="feed-post-modal-media">
+          {post.image ? (
+            <div className="feed-post-media feed-post-media--portrait">
+              <Image
+                alt=""
+                className="feed-post-image"
+                fill
+                priority
+                sizes="(max-width: 900px) 100vw, 640px"
+                src={post.image}
+                unoptimized={post.image.startsWith("blob:")}
+              />
+            </div>
+          ) : (
+            <div className="feed-post-quote">
+              <span className="feed-post-quote-mark" aria-hidden>
+                “
+              </span>
+              <p>{post.caption}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="feed-post-modal-side">
+          <div className="feed-post-modal-side-top">
+            <div className="feed-post-top">
+              <div className="feed-post-avatar">
+                <Image
+                  alt=""
+                  className="feed-post-avatar-image"
+                  fill
+                  sizes="40px"
+                  src={LIVE_IMAGES.participant4}
+                />
+              </div>
+              <div>
+                <p className="feed-post-author">You</p>
+                <p className="feed-post-handle">@you · {post.createdAt}</p>
+              </div>
+            </div>
+
+            <p className="feed-post-caption">{post.caption}</p>
+
+            <div className="feed-post-actions">
+              <button
+                type="button"
+                className={`feed-post-action feed-post-like${liked ? " is-liked" : ""}`}
+                aria-label={liked ? "Unlike" : "Like"}
+                aria-pressed={liked}
+                onClick={() => {
+                  setLiked((value) => !value);
+                  setLikeCount((count) => count + (liked ? -1 : 1));
+                }}
+              >
+                <span aria-hidden>{liked ? "♥" : "♡"}</span> {likeCount}
+              </button>
+              <span className="feed-post-action feed-post-comment is-open">
+                <span aria-hidden>💬</span> {commentCount}
+              </span>
+            </div>
+          </div>
+
+          <div className="feed-post-comments feed-post-comments--modal">
+            <div className="feed-post-comments-scroll">
+              {comments.length > 0 ? (
+                <ul className="feed-post-comment-list">
+                  {comments.map((comment) => (
+                    <li className="feed-post-comment" key={comment.id}>
+                      <span className="feed-post-comment-avatar">
+                        <Image
+                          alt=""
+                          className="feed-post-avatar-image"
+                          fill
+                          sizes="32px"
+                          src={comment.avatar}
+                        />
+                      </span>
+                      <div className="feed-post-comment-body">
+                        <p className="feed-post-comment-meta">
+                          <strong>{comment.author}</strong>
+                          <span>{comment.handle}</span>
+                        </p>
+                        <p className="feed-post-comment-text">{comment.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="feed-post-comments-empty">Be the first to comment.</p>
+              )}
+            </div>
+            <form
+              className="feed-post-comment-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                sendComment();
+              }}
+            >
+              <label className="sr-only" htmlFor={`profile-comment-${post.id}`}>
+                Write a comment
+              </label>
+              <input
+                id={`profile-comment-${post.id}`}
+                className="feed-post-comment-input"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Write a comment…"
+              />
+              <button
+                type="submit"
+                className="feed-post-comment-send"
+                disabled={!draft.trim()}
+              >
+                Send
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const POSTS_PAGE_SIZE = 9;
+const HOURS_WORKED = 127;
+
+function hoursMilestone(hours: number) {
+  if (hours <= 0) return 50;
+  const rounded = Math.round(hours / 50) * 50;
+  const nearest = Math.max(rounded, 50);
+  return nearest < hours ? nearest + 50 : nearest;
+}
 
 export function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gifInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const identityRef = useRef<HTMLElement>(null);
+  const identityBodyRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -79,23 +409,33 @@ export function ProfilePage() {
   const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
   const [showEmojis, setShowEmojis] = useState(false);
   const [showGoals, setShowGoals] = useState(false);
+  const [visiblePostCount, setVisiblePostCount] = useState(POSTS_PAGE_SIZE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [activePostId, setActivePostId] = useState<string | null>(null);
 
   useEffect(() => {
     const identity = identityRef.current;
+    const identityBody = identityBodyRef.current;
     const composer = composerRef.current;
-    if (!identity || !composer) return;
+    if (!identity || !identityBody || !composer) return;
 
     const syncHeight = () => {
       if (window.matchMedia("(max-width: 960px)").matches) {
+        identity.style.height = "";
         composer.style.height = "";
         return;
       }
-      composer.style.height = `${identity.getBoundingClientRect().height}px`;
+
+      identity.style.height = "auto";
+      const bodyHeight = identityBody.getBoundingClientRect().height;
+      const totalHeight = bodyHeight / 0.9;
+      identity.style.height = `${totalHeight}px`;
+      composer.style.height = `${totalHeight}px`;
     };
 
     syncHeight();
     const observer = new ResizeObserver(syncHeight);
-    observer.observe(identity);
+    observer.observe(identityBody);
     window.addEventListener("resize", syncHeight);
 
     return () => {
@@ -108,6 +448,26 @@ export function ProfilePage() {
     () => draft.trim().length > 0 || Boolean(previewUrl),
     [draft, previewUrl]
   );
+
+  const visiblePosts = useMemo(
+    () => posts.slice(0, visiblePostCount),
+    [posts, visiblePostCount]
+  );
+  const hasMorePosts = visiblePostCount < posts.length;
+  const activePost = posts.find((post) => post.id === activePostId) ?? null;
+  const hoursGoal = hoursMilestone(HOURS_WORKED);
+  const hoursProgress = Math.min(100, Math.round((HOURS_WORKED / hoursGoal) * 100));
+
+  const loadMorePosts = () => {
+    if (!hasMorePosts || isLoadingMore) return;
+    setIsLoadingMore(true);
+    window.setTimeout(() => {
+      setVisiblePostCount((count) =>
+        Math.min(count + POSTS_PAGE_SIZE, posts.length)
+      );
+      setIsLoadingMore(false);
+    }, 350);
+  };
 
   const clearComposer = () => {
     setDraft("");
@@ -155,6 +515,7 @@ export function ProfilePage() {
       },
       ...prev
     ]);
+    setVisiblePostCount((count) => Math.max(count, POSTS_PAGE_SIZE));
     clearComposer();
   };
 
@@ -162,15 +523,102 @@ export function ProfilePage() {
     <div className="profile-page">
       <section className="profile-hero">
         <aside className="profile-identity" ref={identityRef}>
-          <div className="profile-avatar">
-            <Image
-              alt=""
-              className="profile-avatar-image"
-              fill
-              sizes="160px"
-              src={LIVE_IMAGES.participant4}
-              priority
-            />
+          <div className="profile-identity-body" ref={identityBodyRef}>
+          <div className="profile-identity-top">
+            <div className="profile-avatar">
+              <Image
+                alt=""
+                className="profile-avatar-image"
+                fill
+                sizes="160px"
+                src={LIVE_IMAGES.participant4}
+                priority
+              />
+            </div>
+            <div className="profile-identity-metrics">
+              <div className="profile-buddies">
+                <span className="profile-buddies-decor" aria-hidden>
+                  <svg viewBox="0 0 32 32" fill="none">
+                    <path
+                      d="M16 7v6M13 10h6"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M9 18c3.2-3.8 7.2-4.6 11.5-2.2"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M22.5 21.2c.9-.15 1.55.55 1.35 1.4-.25 1.05-1.45 1.7-2.4 1.25-.7-.35-.85-1.25-.35-1.8.3-.35.8-.55 1.4-.55Z"
+                      fill="currentColor"
+                    />
+                    <circle cx="22.2" cy="21.6" r="0.9" fill="currentColor" opacity="0.35" />
+                  </svg>
+                </span>
+                <div className="profile-buddies-top">
+                  <span className="profile-buddies-icon" aria-hidden>
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M9 11a3.25 3.25 0 1 0 0-6.5A3.25 3.25 0 0 0 9 11Zm6.5 0a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                      />
+                      <path
+                        d="M3.75 18.25c0-2.7 2.15-4.9 4.8-4.9h1.1c1.35 0 2.55.6 3.35 1.5.75-.85 1.85-1.4 3.1-1.4h.7c2.5 0 4.55 2.05 4.55 4.55v.25H3.75v-.25Z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  <strong className="profile-buddies-count">48</strong>
+                </div>
+                <span className="profile-buddies-label">Workout Buddies</span>
+                <span className="profile-buddies-badge">+3 new this week</span>
+              </div>
+
+              <div className="profile-hours">
+                <div className="profile-hours-top">
+                  <strong className="profile-hours-value">{HOURS_WORKED} hrs</strong>
+                  <span className="profile-hours-goal">/ {hoursGoal}</span>
+                </div>
+                <div
+                  className="profile-hours-track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={hoursGoal}
+                  aria-valuenow={HOURS_WORKED}
+                  aria-label="Hours worked progress"
+                >
+                  <span
+                    className="profile-hours-fill"
+                    style={{ width: `${hoursProgress}%` }}
+                  />
+                </div>
+                <div className="profile-hours-label">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="8.25"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M12 8v4.25l2.75 1.75"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Hours Worked
+                </div>
+              </div>
+            </div>
           </div>
           <div className="profile-identity-copy">
             <h1>You</h1>
@@ -178,18 +626,75 @@ export function ProfilePage() {
             <p className="profile-bio">
               Building strength one session at a time. Yoga · Cardio · Accountability.
             </p>
+          </div>
+          </div>
             <div className="profile-stats">
-              <span>
-                <strong>{posts.length}</strong> posts
+              <span className="profile-stat">
+                <span className="profile-stat-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M7.5 4.75h9A2.75 2.75 0 0 1 19.25 7.5v9A2.75 2.75 0 0 1 16.5 19.25h-9A2.75 2.75 0 0 1 4.75 16.5v-9A2.75 2.75 0 0 1 7.5 4.75Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M9.5 14.5 14.5 9.5M11 9.5h3.5V13"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <strong>{posts.length}</strong>
+                <span className="profile-stat-label">posts</span>
               </span>
-              <span>
-                <strong>12</strong> rooms joined
+              <span className="profile-stat">
+                <span className="profile-stat-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M9 11a3.25 3.25 0 1 0 0-6.5A3.25 3.25 0 0 0 9 11Zm6.5 0a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M3.75 18.25c0-2.7 2.15-4.9 4.8-4.9h1.1c1.35 0 2.55.6 3.35 1.5.75-.85 1.85-1.4 3.1-1.4h.7c2.5 0 4.55 2.05 4.55 4.55v.25H3.75v-.25Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <strong>12</strong>
+                <span className="profile-stat-label">rooms joined</span>
               </span>
-              <span>
-                <strong>21</strong> day streak
+              <span className="profile-stat">
+                <span className="profile-stat-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M7.5 4.75h9A2.75 2.75 0 0 1 19.25 7.5v9A2.75 2.75 0 0 1 16.5 19.25h-9A2.75 2.75 0 0 1 4.75 16.5v-9A2.75 2.75 0 0 1 7.5 4.75Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M8.25 9.25h7.5M8.25 12.25h7.5M8.25 15.25h4.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="m13.75 14.1 1.35 1.35 2.4-2.55"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <strong>21</strong>
+                <span className="profile-stat-label">day streak</span>
               </span>
             </div>
-          </div>
         </aside>
 
         <div className="profile-composer" ref={composerRef}>
@@ -439,20 +944,29 @@ export function ProfilePage() {
           <span>{posts.length} updates</span>
         </div>
         <div className="profile-posts">
-          {posts.map((post) => (
-            <article className="profile-post-card" key={post.id}>
+          {visiblePosts.map((post) => (
+            <button
+              type="button"
+              className="profile-post-card"
+              key={post.id}
+              onClick={() => setActivePostId(post.id)}
+            >
               {post.image ? (
                 <div className="profile-post-media">
                   <Image
                     alt=""
                     className="profile-post-image"
                     fill
-                    sizes="(max-width: 960px) 100vw, 360px"
+                    sizes="160px"
                     src={post.image}
                     unoptimized={post.image.startsWith("blob:")}
                   />
                 </div>
-              ) : null}
+              ) : (
+                <div className="profile-post-media profile-post-media--quote">
+                  <p>{post.caption}</p>
+                </div>
+              )}
               <div className="profile-post-body">
                 <p className="profile-post-caption">{post.caption}</p>
                 <div className="profile-post-meta">
@@ -461,10 +975,39 @@ export function ProfilePage() {
                   <span>💬 {post.comments}</span>
                 </div>
               </div>
-            </article>
+            </button>
           ))}
         </div>
+
+        <div className="feed-load-more">
+          {hasMorePosts ? (
+            <button
+              type="button"
+              className="feed-load-more-btn"
+              onClick={loadMorePosts}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? "Loading…" : "Load more"}
+            </button>
+          ) : (
+            <p className="feed-load-more-done">You’re all caught up</p>
+          )}
+        </div>
       </section>
+
+      {activePost ? (
+        <ProfilePostModal
+          post={activePost}
+          onClose={() => setActivePostId(null)}
+          onCommentCountChange={(postId, count) => {
+            setPosts((prev) =>
+              prev.map((item) =>
+                item.id === postId ? { ...item, comments: count } : item
+              )
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }
