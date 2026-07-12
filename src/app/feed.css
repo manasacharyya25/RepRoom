@@ -1,0 +1,40 @@
+.feed-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 20% -10%, rgba(255, 92, 43, 0.12), transparent 45%),
+    radial-gradient(ellipse at 90% 10%, rgba(255, 92, 43, 0.06), transparent 40%),
+    var(--bg);
+}
+
+.feed-page-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 28px 40px;
+}
+
+.feed-page-panel {
+  max-height: none;
+  min-height: calc(100vh - 120px);
+}
+
+.feed-page-panel .feed-mock-posts {
+  column-count: 3;
+  overflow: visible;
+  padding: 16px;
+}
+
+@media (max-width: 960px) {
+  .feed-page-panel .feed-mock-posts {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 560px) {
+  .feed-page-main {
+    padding: 8px 16px 32px;
+  }
+
+  .feed-page-panel .feed-mock-posts {
+    column-count: 1;
+  }
+}
