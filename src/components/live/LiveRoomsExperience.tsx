@@ -11,8 +11,19 @@ import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   getRoomLiveSets,
   WORKOUT_ROOMS,
+  type RoomLiveSet,
   type WorkoutRoom
 } from "@/lib/rooms";
+
+type PreviewZone = "main" | "bottom" | "rail";
+
+function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
+  return {
+    main: [set.main[0], set.main[1]],
+    bottom: [set.bottom[0], set.bottom[1], set.bottom[2], set.bottom[3]],
+    rail: [set.rail[0], set.rail[1], set.rail[2], set.rail[3], set.rail[4]]
+  };
+}
 
 const CHAT_MESSAGES = [
   {
@@ -47,7 +58,8 @@ function LiveTile({
   label,
   labelPosition = "left",
   priority = false,
-  sizes
+  sizes,
+  onClick
 }: {
   className?: string;
   image: string;
@@ -55,9 +67,15 @@ function LiveTile({
   labelPosition?: "left" | "center";
   priority?: boolean;
   sizes: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className={className}>
+    <button
+      aria-label={`Focus ${label}`}
+      className={`live-rooms-preview-button ${className ?? ""}`}
+      onClick={onClick}
+      type="button"
+    >
       <Image
         alt=""
         className="live-rooms-tile-image"
@@ -71,7 +89,7 @@ function LiveTile({
       >
         {label}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -84,6 +102,10 @@ export function ImmersiveRoom({
 }) {
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
+  const [layout, setLayout] = useState<RoomLiveSet>(() =>
+    cloneLiveSet(liveSets[0] ?? getRoomLiveSets(room)[0])
+  );
+  const [selfMainSlot, setSelfMainSlot] = useState<0 | 1>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGoingLive, setIsGoingLive] = useState(false);
   const [isLive, setIsLive] = useState(false);
@@ -91,6 +113,46 @@ export function ImmersiveRoom({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
+
+  useEffect(() => {
+    setLayout(cloneLiveSet(activeSet));
+    setSelfMainSlot(0);
+  }, [liveSetIndex, liveSets]);
+
+  const handlePreviewClick = useCallback(
+    (zone: PreviewZone, index: number) => {
+      if (isLive && zone === "main" && index === selfMainSlot) {
+        setSelfMainSlot((slot) => (slot === 0 ? 1 : 0));
+        return;
+      }
+
+      setLayout((previous) => {
+        const next = cloneLiveSet(previous);
+
+        if (zone === "main") {
+          const otherIndex = index === 0 ? 1 : 0;
+          const current = next.main[index];
+          next.main[index] = next.main[otherIndex];
+          next.main[otherIndex] = current;
+          return next;
+        }
+
+        const clicked =
+          zone === "bottom" ? next.bottom[index] : next.rail[index];
+        const displaced = next.main[1];
+
+        next.main[1] = clicked;
+        if (zone === "bottom") {
+          next.bottom[index] = displaced;
+        } else {
+          next.rail[index] = displaced;
+        }
+
+        return next;
+      });
+    },
+    [isLive, selfMainSlot]
+  );
 
   const attachStreamToVideo = useCallback((video: HTMLVideoElement | null) => {
     videoRef.current = video;
@@ -261,17 +323,16 @@ export function ImmersiveRoom({
       <div className="live-rooms-immersive-body">
         <div className="live-rooms-immersive-main-column">
           <div className="live-rooms-immersive-pinned">
-            {activeSet.main.map((feed, index) => {
-              const showSelf = isLive && index === 0;
+            {layout.main.map((feed, index) => {
+              const showSelf = isLive && index === selfMainSlot;
 
               return (
-                <div
-                  className="live-rooms-immersive-pinned-tile"
-                  key={
-                    showSelf
-                      ? `pinned-self-${room.id}`
-                      : `pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`
-                  }
+                <button
+                  aria-label={showSelf ? "Move your live feed" : `Focus ${feed.name}`}
+                  className="live-rooms-preview-button live-rooms-immersive-pinned-tile"
+                  key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
+                  onClick={() => handlePreviewClick("main", index)}
+                  type="button"
                 >
                   {showSelf ? (
                     <video
@@ -294,7 +355,7 @@ export function ImmersiveRoom({
                   <span className="live-rooms-featured-label">
                     {showSelf ? "You" : feed.name}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -306,13 +367,14 @@ export function ImmersiveRoom({
 
           <div className="live-rooms-immersive-bottom">
             <div className="live-rooms-immersive-bottom-grid">
-              {activeSet.bottom.map((participant, index) => (
+              {layout.bottom.map((participant, index) => (
                 <LiveTile
                   className="live-rooms-immersive-bottom-tile"
                   image={participant.image}
                   key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
                   label={participant.name}
                   labelPosition="center"
+                  onClick={() => handlePreviewClick("bottom", index)}
                   sizes="(max-width: 960px) 25vw, 180px"
                 />
               ))}
@@ -321,12 +383,13 @@ export function ImmersiveRoom({
         </div>
 
         <div className="live-rooms-immersive-rail">
-          {activeSet.rail.map((participant, index) => (
+          {layout.rail.map((participant, index) => (
             <LiveTile
               className="live-rooms-immersive-rail-tile"
               image={participant.image}
               key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
               label={participant.name}
+              onClick={() => handlePreviewClick("rail", index)}
               sizes="200px"
             />
           ))}
