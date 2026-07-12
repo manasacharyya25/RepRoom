@@ -7,7 +7,7 @@ import { getRoomById, type RoomId } from "@/lib/rooms";
 
 const ROOM_TAGS = [
   { label: "Cardio", roomId: "cardio" as RoomId },
-  { label: "Workout", roomId: "strength" as RoomId },
+  { label: "Workout", roomId: "workout" as RoomId },
   { label: "Meditation", roomId: "meditation" as RoomId }
 ] as const;
 

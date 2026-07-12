@@ -1,11 +1,10 @@
 import { HERO_PARTICIPANTS, HERO_SIDEBAR_LIVE, LIVE_IMAGES } from "@/lib/live-images";
 
 export type RoomId =
-  | "hiit"
-  | "strength"
   | "yoga"
   | "cardio"
   | "zumba"
+  | "workout"
   | "meditation";
 
 export type LiveParticipant = {
@@ -74,38 +73,10 @@ function avatarsForRoom(offset: number): LiveParticipant[] {
 
 export const WORKOUT_ROOMS: WorkoutRoom[] = [
   {
-    id: "hiit",
-    icon: "🔥",
-    name: "HIIT",
-    title: "6am HIIT Circuit",
-    description: "High-intensity intervals to start strong.",
-    liveCount: 52,
-    roomNumber: 4,
-    coverImage: LIVE_IMAGES.main,
-    pinnedFeeds: pinnedFeedsForRoom(0),
-    participants: avatarsForRoom(0),
-    sidebarParticipants: sidebarForRoom(0),
-    gridParticipants: gridForRoom(0)
-  },
-  {
-    id: "strength",
-    icon: "💪",
-    name: "Strength",
-    title: "Strength Training",
-    description: "Lifts, conditioning, and form checks.",
-    liveCount: 38,
-    roomNumber: 2,
-    coverImage: LIVE_IMAGES.participant3,
-    pinnedFeeds: pinnedFeedsForRoom(2),
-    participants: avatarsForRoom(2),
-    sidebarParticipants: sidebarForRoom(1),
-    gridParticipants: gridForRoom(2)
-  },
-  {
     id: "yoga",
     icon: "🧘",
     name: "Yoga",
-    title: "Sunrise Yoga Flow",
+    title: "Yoga",
     description: "Stretch, breathe, and flow together.",
     liveCount: 28,
     roomNumber: 1,
@@ -119,10 +90,10 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
     id: "cardio",
     icon: "🏃",
     name: "Cardio",
-    title: "Cardio Burn",
+    title: "Cardio",
     description: "High-energy sweat sessions.",
     liveCount: 41,
-    roomNumber: 3,
+    roomNumber: 2,
     coverImage: LIVE_IMAGES.participant1,
     pinnedFeeds: pinnedFeedsForRoom(4),
     participants: avatarsForRoom(4),
@@ -133,10 +104,10 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
     id: "zumba",
     icon: "💃",
     name: "Zumba",
-    title: "Dance Zumba Party",
+    title: "Zumba",
     description: "Dance cardio with the room.",
     liveCount: 33,
-    roomNumber: 5,
+    roomNumber: 3,
     coverImage: LIVE_IMAGES.participant5,
     pinnedFeeds: pinnedFeedsForRoom(6),
     participants: avatarsForRoom(6),
@@ -144,13 +115,27 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
     gridParticipants: gridForRoom(6)
   },
   {
+    id: "workout",
+    icon: "💪",
+    name: "Workout",
+    title: "Workout",
+    description: "Lifts, conditioning, and form checks.",
+    liveCount: 38,
+    roomNumber: 4,
+    coverImage: LIVE_IMAGES.participant3,
+    pinnedFeeds: pinnedFeedsForRoom(2),
+    participants: avatarsForRoom(2),
+    sidebarParticipants: sidebarForRoom(1),
+    gridParticipants: gridForRoom(2)
+  },
+  {
     id: "meditation",
     icon: "🧠",
     name: "Meditation",
-    title: "Evening Meditation",
+    title: "Meditation",
     description: "Recover and reset as a group.",
     liveCount: 19,
-    roomNumber: 6,
+    roomNumber: 5,
     coverImage: LIVE_IMAGES.participant4,
     pinnedFeeds: pinnedFeedsForRoom(3),
     participants: avatarsForRoom(3),
@@ -159,7 +144,7 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
   }
 ];
 
-export const DEFAULT_ROOM_ID: RoomId = "hiit";
+export const DEFAULT_ROOM_ID: RoomId = "yoga";
 
 export function getRoomById(roomId: RoomId): WorkoutRoom {
   return WORKOUT_ROOMS.find((room) => room.id === roomId) ?? WORKOUT_ROOMS[0];

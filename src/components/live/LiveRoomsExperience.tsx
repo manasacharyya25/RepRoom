@@ -166,6 +166,8 @@ function ImmersiveRoom({
 export function LiveRoomsExperience() {
   const [query, setQuery] = useState("");
   const [activeRoomId, setActiveRoomId] = useState<RoomId | null>(null);
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState(CHAT_MESSAGES);
 
   const filteredRooms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -188,6 +190,24 @@ export function LiveRoomsExperience() {
     [activeRoomId]
   );
 
+  const sendMessage = () => {
+    const text = draft.trim();
+    if (!text) return;
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `local-${Date.now()}`,
+        author: "You",
+        handle: "@you",
+        avatar: LIVE_IMAGES.participant4,
+        text,
+        hashtag: "#live"
+      }
+    ]);
+    setDraft("");
+  };
+
   if (activeRoom) {
     return <ImmersiveRoom onBack={() => setActiveRoomId(null)} room={activeRoom} />;
   }
@@ -206,11 +226,8 @@ export function LiveRoomsExperience() {
           <Link className="btn-ghost" href="/feed">
             Feed
           </Link>
-          <button className="btn-ghost" type="button">
-            My Rooms
-          </button>
           <Link className="btn-primary" href="/">
-            Leave Room
+            Profile
           </Link>
         </div>
       </header>
@@ -246,7 +263,10 @@ export function LiveRoomsExperience() {
                 </div>
                 <div className="room-select-card-body">
                   <strong>{room.title}</strong>
-                  <span>{room.liveCount} Live</span>
+                  <span className="room-select-live-count">
+                    <span className="room-select-live-dot" aria-hidden />
+                    {room.liveCount} Live
+                  </span>
                   <div className="room-select-avatars">
                     {room.participants.slice(0, 3).map((participant) => (
                       <span className="room-select-avatar" key={`${room.id}-${participant.name}`}>
@@ -264,6 +284,20 @@ export function LiveRoomsExperience() {
                 </div>
               </button>
             ))}
+
+            {!query.trim() ? (
+              <button className="room-select-card room-select-card--create" type="button">
+                <div className="room-select-create-media">
+                  <span className="room-select-create-plus" aria-hidden>
+                    +
+                  </span>
+                </div>
+                <div className="room-select-card-body">
+                  <strong>Create Private Room</strong>
+                  <span>Invite-only session</span>
+                </div>
+              </button>
+            ) : null}
           </div>
 
           {filteredRooms.length === 0 ? (
@@ -277,7 +311,7 @@ export function LiveRoomsExperience() {
             <span aria-hidden>—</span>
           </div>
           <div className="room-select-chat-list">
-            {CHAT_MESSAGES.map((message) => (
+            {messages.map((message) => (
               <article className="room-select-chat-item" key={message.id}>
                 <div className="room-select-chat-top">
                   <span className="room-select-chat-avatar">
@@ -299,6 +333,34 @@ export function LiveRoomsExperience() {
               </article>
             ))}
           </div>
+          <form
+            className="room-select-chat-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              sendMessage();
+            }}
+          >
+            <label className="sr-only" htmlFor="room-chat-input">
+              Type a message
+            </label>
+            <textarea
+              id="room-chat-input"
+              className="room-select-chat-input"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Type a message…"
+              rows={2}
+              value={draft}
+            />
+            <button className="room-select-chat-send" type="submit" disabled={!draft.trim()}>
+              Send
+            </button>
+          </form>
         </aside>
       </div>
     </div>
