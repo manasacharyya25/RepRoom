@@ -30,6 +30,11 @@ html:has(.landing) body::-webkit-scrollbar {
   padding: 24px 28px;
 }
 
+.feed-page .landing-nav,
+.profile-shell .landing-nav {
+  max-width: 1280px;
+}
+
 .landing-logo {
   display: flex;
   align-items: center;
@@ -988,9 +993,21 @@ html:has(.landing) body::-webkit-scrollbar {
   color: var(--text);
 }
 
+.feed-page .landing-nav-links,
+.profile-shell .landing-nav-links,
+.room-select-page .landing-nav-links {
+  display: flex;
+}
+
 @media (max-width: 960px) {
   .landing-nav-links {
     display: none;
+  }
+
+  .feed-page .landing-nav-links,
+  .profile-shell .landing-nav-links,
+  .room-select-page .landing-nav-links {
+    display: flex;
   }
 
   .landing-hero {

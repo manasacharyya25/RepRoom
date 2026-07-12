@@ -223,10 +223,10 @@ export function LiveRoomsExperience() {
         </Link>
         <div className="room-select-nav-actions">
           <ThemeSwitch />
-          <Link className="btn-ghost" href="/feed">
+          <Link className="btn-secondary" href="/feed">
             Feed
           </Link>
-          <Link className="btn-primary" href="/">
+          <Link className="btn-primary" href="/profile">
             Profile
           </Link>
         </div>

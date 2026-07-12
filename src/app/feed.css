@@ -6,6 +6,19 @@
     var(--bg);
 }
 
+html:has(.feed-page),
+html:has(.feed-page) body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html:has(.feed-page)::-webkit-scrollbar,
+html:has(.feed-page) body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -19,9 +32,29 @@
 }
 
 .feed-page-main {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 8px 28px 40px;
+}
+
+.inbox-empty {
+  margin-top: 48px;
+  padding: 48px 28px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: center;
+}
+
+.inbox-empty h1 {
+  margin: 0 0 10px;
+  font-size: 1.6rem;
+  letter-spacing: -0.03em;
+}
+
+.inbox-empty p {
+  margin: 0;
+  color: var(--text-muted);
 }
 
 .feed-page-panel {
