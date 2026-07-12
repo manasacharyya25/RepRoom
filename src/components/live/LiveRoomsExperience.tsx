@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
@@ -85,7 +85,23 @@ export function ImmersiveRoom({
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isGoingLive, setIsGoingLive] = useState(false);
+  const [isLive, setIsLive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
+
+  const attachStreamToVideo = useCallback((video: HTMLVideoElement | null) => {
+    videoRef.current = video;
+    if (!video || !streamRef.current) return;
+    if (video.srcObject !== streamRef.current) {
+      video.srcObject = streamRef.current;
+    }
+    void video.play().catch(() => {
+      /* Autoplay can fail briefly while permissions settle */
+    });
+  }, []);
 
   const showPreviousSet = () => {
     setLiveSetIndex((index) => (index - 1 + liveSets.length) % liveSets.length);
@@ -93,6 +109,58 @@ export function ImmersiveRoom({
 
   const showNextSet = () => {
     setLiveSetIndex((index) => (index + 1) % liveSets.length);
+  };
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsLive(false);
+    setIsGoingLive(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera is not supported in this browser.");
+      return;
+    }
+
+    setIsGoingLive(true);
+    setCameraError(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user"
+        },
+        audio: false
+      });
+
+      streamRef.current = stream;
+      setIsLive(true);
+      attachStreamToVideo(videoRef.current);
+    } catch (error) {
+      stopCamera();
+      setCameraError(
+        error instanceof Error
+          ? error.message
+          : "Could not access your camera. Check permissions and try again."
+      );
+    } finally {
+      setIsGoingLive(false);
+    }
+  }, [attachStreamToVideo, stopCamera]);
+
+  const toggleGoLive = () => {
+    if (isLive || isGoingLive) {
+      stopCamera();
+      return;
+    }
+    void startCamera();
   };
 
   useEffect(() => {
@@ -110,18 +178,24 @@ export function ImmersiveRoom({
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
+      stopCamera();
       void exitFullscreen();
       document.body.style.overflow = "";
       document.removeEventListener("fullscreenchange", syncFullscreen);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onLeave]);
+  }, [onLeave, stopCamera]);
 
   return (
     <div className="live-rooms-immersive">
       <header className="live-rooms-immersive-header">
-        <button className="live-rooms-immersive-action" type="button">
-          Go Live
+        <button
+          className={`live-rooms-immersive-action${isLive ? " live-rooms-immersive-action--live" : ""}`}
+          disabled={isGoingLive}
+          onClick={toggleGoLive}
+          type="button"
+        >
+          {isGoingLive ? "Starting…" : isLive ? "End Live" : "Go Live"}
         </button>
         <div className="live-rooms-immersive-title-wrap">
           <button
@@ -187,23 +261,48 @@ export function ImmersiveRoom({
       <div className="live-rooms-immersive-body">
         <div className="live-rooms-immersive-main-column">
           <div className="live-rooms-immersive-pinned">
-            {activeSet.main.map((feed, index) => (
-              <div
-                className="live-rooms-immersive-pinned-tile"
-                key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
-              >
-                <Image
-                  alt=""
-                  className="live-rooms-featured-image"
-                  fill
-                  priority={index === 0}
-                  sizes="(max-width: 960px) 50vw, 38vw"
-                  src={feed.image}
-                />
-                <span className="live-rooms-featured-label">{feed.name}</span>
-              </div>
-            ))}
+            {activeSet.main.map((feed, index) => {
+              const showSelf = isLive && index === 0;
+
+              return (
+                <div
+                  className="live-rooms-immersive-pinned-tile"
+                  key={
+                    showSelf
+                      ? `pinned-self-${room.id}`
+                      : `pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`
+                  }
+                >
+                  {showSelf ? (
+                    <video
+                      autoPlay
+                      className="live-rooms-featured-video"
+                      muted
+                      playsInline
+                      ref={attachStreamToVideo}
+                    />
+                  ) : (
+                    <Image
+                      alt=""
+                      className="live-rooms-featured-image"
+                      fill
+                      priority={index === 0}
+                      sizes="(max-width: 960px) 50vw, 38vw"
+                      src={feed.image}
+                    />
+                  )}
+                  <span className="live-rooms-featured-label">
+                    {showSelf ? "You" : feed.name}
+                  </span>
+                </div>
+              );
+            })}
           </div>
+          {cameraError ? (
+            <p className="live-rooms-camera-error" role="alert">
+              {cameraError}
+            </p>
+          ) : null}
 
           <div className="live-rooms-immersive-bottom">
             <div className="live-rooms-immersive-bottom-grid">
