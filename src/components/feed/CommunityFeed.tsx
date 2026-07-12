@@ -1,7 +1,20 @@
+"use client";
+
 import Image from "next/image";
+import { useState } from "react";
 import { FEED_POSTS, type FeedPost } from "@/lib/feed-posts";
 
 function FeedPostCard({ post }: { post: FeedPost }) {
+  const [liked, setLiked] = useState(false);
+  const [likeBurst, setLikeBurst] = useState(false);
+  const likeCount = post.likes + (liked ? 1 : 0);
+
+  const onLike = () => {
+    setLiked((prev) => !prev);
+    setLikeBurst(true);
+    window.setTimeout(() => setLikeBurst(false), 320);
+  };
+
   return (
     <article className="feed-post">
       <div className="feed-post-top">
@@ -79,8 +92,27 @@ function FeedPostCard({ post }: { post: FeedPost }) {
       ) : null}
 
       <div className="feed-post-actions">
-        <span>♥ {post.likes}</span>
-        <span>💬 {post.comments}</span>
+        <button
+          type="button"
+          className={`feed-post-action feed-post-like${liked ? " is-liked" : ""}${
+            likeBurst ? " is-burst" : ""
+          }`}
+          aria-label={liked ? "Unlike" : "Like"}
+          aria-pressed={liked}
+          onClick={onLike}
+        >
+          <span aria-hidden>{liked ? "♥" : "♡"}</span> {likeCount}
+        </button>
+        <button
+          type="button"
+          className="feed-post-action feed-post-comment"
+          aria-label="Comments"
+          onClick={(event) => {
+            event.preventDefault();
+          }}
+        >
+          <span aria-hidden>💬</span> {post.comments}
+        </button>
       </div>
     </article>
   );
@@ -88,7 +120,7 @@ function FeedPostCard({ post }: { post: FeedPost }) {
 
 export function CommunityFeed({
   className,
-  decorative = false,
+  decorative: _decorative = false,
   posts = FEED_POSTS,
   subtitle = "For you",
   title = "Community Feed"
@@ -100,10 +132,7 @@ export function CommunityFeed({
   title?: string;
 }) {
   return (
-    <div
-      aria-hidden={decorative || undefined}
-      className={`feed-mock${className ? ` ${className}` : ""}`}
-    >
+    <div className={`feed-mock${className ? ` ${className}` : ""}`}>
       <div className="feed-mock-header">
         <strong>{title}</strong>
         <span>{subtitle}</span>

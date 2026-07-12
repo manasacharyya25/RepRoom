@@ -2,36 +2,49 @@ import Image from "next/image";
 import Link from "next/link";
 import "@/app/landing.css";
 import { CommunityFeed } from "@/components/feed/CommunityFeed";
-import { HERO_PARTICIPANTS, HERO_SIDEBAR_LIVE, LIVE_IMAGES } from "@/lib/live-images";
+import { HeroLivePreview } from "@/components/landing/HeroLivePreview";
+import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+import { LIVE_IMAGES } from "@/lib/live-images";
 
-const TRIBES = [
+const FEED_FEATURES = [
   {
-    id: "hiit",
-    name: "6am HIIT Crew",
-    members: "2.4k members",
-    image: LIVE_IMAGES.participant1
+    id: "progress",
+    eyebrow: "Before / after transformation posts",
+    title: "Share Your Progress",
+    cta: "Share",
+    href: "/feed",
+    image: LIVE_IMAGES.participant2,
+    secondaryImage: LIVE_IMAGES.participant4,
+    variant: "split" as const
   },
   {
-    id: "yoga",
-    name: "Sunrise Flow",
-    members: "1.8k members",
-    image: LIVE_IMAGES.participant2
+    id: "feedback",
+    eyebrow: "Fit checks and pump checks",
+    title: "Get Feedback",
+    cta: "Post Form",
+    href: "/feed",
+    image: LIVE_IMAGES.participant3,
+    variant: "single" as const
   },
   {
-    id: "zumba",
-    name: "Dance Burn",
-    members: "980 members",
-    image: LIVE_IMAGES.main
+    id: "fuel",
+    eyebrow: "Meal prep and nutrition wins",
+    title: "Fuel Your Body",
+    cta: "Share Plate",
+    href: "/feed",
+    image: LIVE_IMAGES.participant8,
+    secondaryImage: LIVE_IMAGES.participant1,
+    variant: "split" as const
   },
   {
-    id: "lift",
-    name: "Strength Circle",
-    members: "3.1k members",
-    image: LIVE_IMAGES.participant3
+    id: "consistent",
+    eyebrow: "Streaks, weight checks, and comments",
+    title: "Stay Consistent",
+    cta: "Update Stats",
+    href: "/feed",
+    variant: "stats" as const
   }
 ];
-
-const ROOM_TAGS = ["Cardio", "Workout", "Meditation"];
 
 export function LandingPage() {
   return (
@@ -43,15 +56,10 @@ export function LandingPage() {
           </span>
           Satara
         </Link>
-        <nav className="landing-nav-links" aria-label="Main">
-          <Link href="/feed">Feed</Link>
-        </nav>
         <div className="landing-nav-actions">
-          <button className="btn-ghost" type="button">
-            Log in
-          </button>
+          <ThemeSwitch />
           <Link className="btn-primary" href="/rooms">
-            Getting started
+            Get Started
           </Link>
         </div>
       </header>
@@ -67,17 +75,13 @@ export function LandingPage() {
           </p>
           <div className="landing-cta-row">
             <Link className="btn-primary" href="/rooms">
-              Getting started
+              Get Started
             </Link>
             <Link className="btn-secondary" href="/feed">
               Explore the feed
             </Link>
           </div>
           <div className="landing-stats">
-            <div className="landing-stat">
-              <strong>5</strong>
-              <span>Live room types</span>
-            </div>
             <div className="landing-stat">
               <strong>10 min</strong>
               <span>Free daily access</span>
@@ -89,109 +93,93 @@ export function LandingPage() {
           </div>
         </div>
 
-        <div className="hero-mock-wrap">
-          <div className="hero-room-tags" aria-hidden>
-            {ROOM_TAGS.map((tag) => (
-              <span className="hero-room-tag" key={tag}>
-                {tag}
-              </span>
-            ))}
-          </div>
-          <div className="hero-mock" aria-hidden>
-            <div className="hero-mock-header">
-              <span>← Back</span>
-              <strong>HIIT Circuit · Room 4</strong>
-              <span className="hero-mock-live-count">12 live</span>
-            </div>
-            <div className="hero-mock-body">
-              <div className="hero-mock-main">
-                <div className="hero-mock-video">
-                  <Image
-                    alt=""
-                    className="hero-mock-video-image"
-                    fill
-                    priority
-                    sizes="(max-width: 960px) 100vw, 560px"
-                    src={LIVE_IMAGES.main}
-                  />
-                  <span className="hero-mock-live-badge">● Live</span>
-                  <span className="hero-mock-tile-label">Coach Maya</span>
-                </div>
-                <div className="hero-mock-avatars">
-                  {HERO_PARTICIPANTS.slice(0, 5).map((participant) => (
-                    <div className="hero-mock-avatar" key={participant.name}>
-                      <div className="hero-mock-avatar-media">
-                        <Image
-                          alt=""
-                          className="hero-mock-avatar-image"
-                          fill
-                          sizes="52px"
-                          src={participant.image}
-                        />
-                      </div>
-                      <span>{participant.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="hero-mock-sidebar">
-                {HERO_SIDEBAR_LIVE.map((participant) => (
-                  <div className="hero-mock-sidebar-tile" key={participant.name}>
-                    <Image
-                      alt=""
-                      className="hero-mock-sidebar-tile-image"
-                      fill
-                      sizes="160px"
-                      src={participant.image}
-                    />
-                    <span className="hero-mock-live-badge">● Live</span>
-                    <span className="hero-mock-tile-label">{participant.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        <HeroLivePreview />
       </section>
 
       <section className="landing-section feed-section" id="feed">
         <div className="feed-section-layout">
-          <CommunityFeed decorative />
+          <div className="feed-visual">
+            <div aria-hidden className="feed-visual-backdrop" />
+            <CommunityFeed decorative />
+          </div>
 
           <div className="feed-copy">
-            <h2>Share the work between workouts</h2>
-            <p className="feed-copy-description">
-              The feed keeps motivation going when you are not in a live room. Post
-              transformations, fit checks, meal prep, pump checks, streaks, and progress —
-              then comment, connect, and build a crew that holds you accountable.
-            </p>
-            <ul className="feed-feature-list">
-              <li>Before / after transformation posts</li>
-              <li>Fit checks and pump checks</li>
-              <li>Meal prep and nutrition wins</li>
-              <li>Streaks, weight checks, and comments</li>
-            </ul>
+            <div aria-hidden className="feed-copy-backdrop">
+              <Image
+                alt=""
+                className="feed-copy-backdrop-image"
+                fill
+                sizes="(max-width: 960px) 90vw, 560px"
+                src="/images/decor/feed-bg.png"
+              />
+            </div>
+            <div className="feed-copy-inner">
+              <div className="feed-copy-top">
+                <h2>Share the work between workouts</h2>
+                <span aria-hidden className="feed-copy-mark">
+                  ⌇
+                </span>
+              </div>
+              <p className="feed-copy-description">
+                The feed keeps motivation going when you are not in a live room. Post
+                transformations, fit checks, meal prep, pump checks, streaks, and progress —
+                then comment, connect, and build a crew that holds you accountable.
+              </p>
 
-            <div className="tribe-block">
-              <h3>Find Your Tribe</h3>
-              <div className="tribe-grid">
-                {TRIBES.map((tribe) => (
-                  <article className="tribe-card" key={tribe.id}>
-                    <div className="tribe-card-media">
-                      <Image
-                        alt=""
-                        className="tribe-card-image"
-                        fill
-                        sizes="180px"
-                        src={tribe.image}
-                      />
+              <div className="feed-feature-grid">
+                {FEED_FEATURES.map((feature) => (
+                  <article className="feed-feature-card" key={feature.id}>
+                    <div
+                      className={`feed-feature-media${feature.variant === "stats" ? " feed-feature-media--stats" : ""}`}
+                    >
+                      {feature.variant === "split" && feature.image && feature.secondaryImage ? (
+                        <div className="feed-feature-split">
+                          <div className="feed-feature-half">
+                            <Image
+                              alt=""
+                              className="feed-feature-image"
+                              fill
+                              sizes="140px"
+                              src={feature.image}
+                            />
+                          </div>
+                          <div className="feed-feature-half">
+                            <Image
+                              alt=""
+                              className="feed-feature-image"
+                              fill
+                              sizes="140px"
+                              src={feature.secondaryImage}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {feature.variant === "single" && feature.image ? (
+                        <Image
+                          alt=""
+                          className="feed-feature-image"
+                          fill
+                          sizes="280px"
+                          src={feature.image}
+                        />
+                      ) : null}
+
+                      {feature.variant === "stats" ? (
+                        <div className="feed-feature-stats" aria-hidden>
+                          <span className="feed-feature-stat-chip">🔥 21 day streak</span>
+                          <span className="feed-feature-stat-chip">⚖ −2.4 kg</span>
+                          <span className="feed-feature-stat-chip">🏅 PR week</span>
+                          <span className="feed-feature-stat-chip">📅 5 / 7</span>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="tribe-card-body">
-                      <strong>{tribe.name}</strong>
-                      <span>{tribe.members}</span>
-                      <button className="tribe-join" type="button">
-                        Join
-                      </button>
+                    <div className="feed-feature-body">
+                      <p>{feature.eyebrow}</p>
+                      <strong>{feature.title}</strong>
+                      <Link className="feed-feature-cta" href={feature.href}>
+                        {feature.cta}
+                      </Link>
                     </div>
                   </article>
                 ))}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CommunityFeed } from "@/components/feed/CommunityFeed";
+import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import "@/app/landing.css";
 import "@/app/feed.css";
 
@@ -18,6 +19,7 @@ export default function FeedPage() {
           <Link href="/rooms">Rooms</Link>
         </nav>
         <div className="landing-nav-actions">
+          <ThemeSwitch />
           <Link className="btn-ghost" href="/rooms">
             My Rooms
           </Link>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
+import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   DEFAULT_ROOM_ID,
@@ -201,6 +202,7 @@ export function LiveRoomsExperience() {
           Satara
         </Link>
         <div className="room-select-nav-actions">
+          <ThemeSwitch />
           <Link className="btn-ghost" href="/feed">
             Feed
           </Link>
