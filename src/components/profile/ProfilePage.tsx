@@ -3,8 +3,14 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LIVE_IMAGES } from "@/lib/live-images";
+import {
+  formatGoalDetail,
+  resolveGoalProgress
+} from "@/lib/profile-format";
+import { createClient } from "@/lib/supabase/client";
+import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 
-type Goal = {
+type ProfileGoalCard = {
   id: string;
   title: string;
   progress: number;
@@ -20,7 +26,7 @@ type SelfPost = {
   comments: number;
 };
 
-const INITIAL_GOALS: Goal[] = [
+const INITIAL_GOALS: ProfileGoalCard[] = [
   {
     id: "g1",
     title: "Train 5 days a week",
@@ -195,11 +201,17 @@ function seedProfileComments(post: SelfPost): ProfileComment[] {
 function ProfilePostModal({
   post,
   onClose,
-  onCommentCountChange
+  onCommentCountChange,
+  displayName,
+  handle,
+  avatarSrc
 }: {
   post: SelfPost;
   onClose: () => void;
   onCommentCountChange: (postId: string, count: number) => void;
+  displayName: string;
+  handle: string;
+  avatarSrc: string;
 }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.likes);
@@ -230,9 +242,9 @@ function ProfilePostModal({
       ...comments,
       {
         id: `local-${Date.now()}`,
-        author: "You",
-        handle: "@you",
-        avatar: LIVE_IMAGES.participant4,
+        author: displayName,
+        handle,
+        avatar: avatarSrc,
         text
       }
     ];
@@ -295,12 +307,15 @@ function ProfilePostModal({
                   className="feed-post-avatar-image"
                   fill
                   sizes="40px"
-                  src={LIVE_IMAGES.participant4}
+                  src={avatarSrc}
+                  unoptimized={avatarSrc.startsWith("blob:")}
                 />
               </div>
               <div>
-                <p className="feed-post-author">You</p>
-                <p className="feed-post-handle">@you · {post.createdAt}</p>
+                <p className="feed-post-author">{displayName}</p>
+                <p className="feed-post-handle">
+                  {handle} · {post.createdAt}
+                </p>
               </div>
             </div>
 
@@ -387,16 +402,28 @@ function ProfilePostModal({
 }
 
 const POSTS_PAGE_SIZE = 9;
-const HOURS_WORKED = 127;
 
-function hoursMilestone(hours: number) {
-  if (hours <= 0) return 50;
-  const rounded = Math.round(hours / 50) * 50;
-  const nearest = Math.max(rounded, 50);
-  return nearest < hours ? nearest + 50 : nearest;
+function mapGoalsToCards(goals: DbGoal[]): ProfileGoalCard[] {
+  return goals
+    .filter((goal) => goal.template_id !== "hours_worked")
+    .map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      progress: resolveGoalProgress(goal),
+      detail: formatGoalDetail(goal)
+    }));
 }
 
-export function ProfilePage() {
+function formatHours(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return value >= 10 ? String(Math.round(value)) : String(Math.round(value * 10) / 10);
+}
+
+export function ProfilePage({
+  initialData = null
+}: {
+  initialData?: ProfileViewModel | null;
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gifInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -406,12 +433,100 @@ export function ProfilePage() {
   const [draft, setDraft] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [posts, setPosts] = useState<SelfPost[]>(INITIAL_POSTS);
-  const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
+  const [profileData, setProfileData] = useState<ProfileViewModel | null>(
+    initialData
+  );
+  const [goals, setGoals] = useState<ProfileGoalCard[]>(() =>
+    initialData ? mapGoalsToCards(initialData.goals) : INITIAL_GOALS
+  );
   const [showEmojis, setShowEmojis] = useState(false);
   const [showGoals, setShowGoals] = useState(false);
   const [visiblePostCount, setVisiblePostCount] = useState(POSTS_PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [activePostId, setActivePostId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setProfileData(initialData);
+    if (initialData) {
+      setGoals(mapGoalsToCards(initialData.goals));
+    }
+  }, [initialData]);
+
+  useEffect(() => {
+    if (initialData) return;
+
+    let cancelled = false;
+    const load = async () => {
+      const supabase = createClient();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+
+      const [{ data: profile }, { data: goalRows }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+        supabase
+          .from("goals")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("sort_order", { ascending: true })
+      ]);
+
+      if (!profile || cancelled) return;
+
+      const typedGoals = (goalRows ?? []) as DbGoal[];
+      const hoursGoalRow = typedGoals.find((g) => g.template_id === "hours_worked");
+      const streakGoal = typedGoals.find((g) => g.template_id === "mobility_streak");
+      const hoursWorked = Number(hoursGoalRow?.current_value ?? 0);
+      const hoursGoal = Number(hoursGoalRow?.target_value ?? 50);
+      const view: ProfileViewModel = {
+        profile: profile as ProfileViewModel["profile"],
+        goals: typedGoals,
+        hoursWorked,
+        hoursGoal,
+        hoursProgress: resolveGoalProgress(
+          hoursGoalRow ?? {
+            id: "hours",
+            user_id: user.id,
+            template_id: "hours_worked",
+            title: "Hours worked",
+            detail: null,
+            category: "consistency",
+            current_value: hoursWorked,
+            target_value: hoursGoal,
+            unit: "hours",
+            progress: 0,
+            sort_order: 0,
+            created_at: "",
+            updated_at: ""
+          }
+        ),
+        dayStreak: Math.round(Number(streakGoal?.current_value ?? 0))
+      };
+
+      setProfileData(view);
+      setGoals(mapGoalsToCards(typedGoals));
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData]);
+
+  const displayName = profileData?.profile.display_name?.trim() || "You";
+  const handle = profileData?.profile.username
+    ? `@${profileData.profile.username}`
+    : "@you";
+  const bio =
+    profileData?.profile.bio?.trim() ||
+    "Building strength one session at a time. Yoga · Cardio · Accountability.";
+  const avatarSrc =
+    profileData?.profile.avatar_url?.trim() || LIVE_IMAGES.participant4;
+  const hoursWorked = profileData?.hoursWorked ?? 0;
+  const hoursGoal = profileData?.hoursGoal ?? 50;
+  const hoursProgress = profileData?.hoursProgress ?? 0;
+  const dayStreak = profileData?.dayStreak ?? 0;
 
   useEffect(() => {
     const identity = identityRef.current;
@@ -442,7 +557,7 @@ export function ProfilePage() {
       observer.disconnect();
       window.removeEventListener("resize", syncHeight);
     };
-  }, []);
+  }, [displayName, bio, handle, avatarSrc, hoursWorked, hoursGoal, dayStreak]);
 
   const canPost = useMemo(
     () => draft.trim().length > 0 || Boolean(previewUrl),
@@ -455,8 +570,6 @@ export function ProfilePage() {
   );
   const hasMorePosts = visiblePostCount < posts.length;
   const activePost = posts.find((post) => post.id === activePostId) ?? null;
-  const hoursGoal = hoursMilestone(HOURS_WORKED);
-  const hoursProgress = Math.min(100, Math.round((HOURS_WORKED / hoursGoal) * 100));
 
   const loadMorePosts = () => {
     if (!hasMorePosts || isLoadingMore) return;
@@ -531,8 +644,12 @@ export function ProfilePage() {
                 className="profile-avatar-image"
                 fill
                 sizes="160px"
-                src={LIVE_IMAGES.participant4}
+                src={avatarSrc}
                 priority
+                unoptimized={
+                  avatarSrc.startsWith("blob:") ||
+                  avatarSrc.includes("supabase.co")
+                }
               />
             </div>
             <div className="profile-identity-metrics">
@@ -574,23 +691,25 @@ export function ProfilePage() {
                       />
                     </svg>
                   </span>
-                  <strong className="profile-buddies-count">48</strong>
+                  <strong className="profile-buddies-count">0</strong>
                 </div>
                 <span className="profile-buddies-label">Workout Buddies</span>
-                <span className="profile-buddies-badge">+3 new this week</span>
+                <span className="profile-buddies-badge">Invite friends</span>
               </div>
 
               <div className="profile-hours">
                 <div className="profile-hours-top">
-                  <strong className="profile-hours-value">{HOURS_WORKED} hrs</strong>
-                  <span className="profile-hours-goal">/ {hoursGoal}</span>
+                  <strong className="profile-hours-value">
+                    {formatHours(hoursWorked)} hrs
+                  </strong>
+                  <span className="profile-hours-goal">/ {Math.round(hoursGoal)}</span>
                 </div>
                 <div
                   className="profile-hours-track"
                   role="progressbar"
                   aria-valuemin={0}
-                  aria-valuemax={hoursGoal}
-                  aria-valuenow={HOURS_WORKED}
+                  aria-valuemax={Math.round(hoursGoal)}
+                  aria-valuenow={Math.round(hoursWorked)}
                   aria-label="Hours worked progress"
                 >
                   <span
@@ -621,11 +740,9 @@ export function ProfilePage() {
             </div>
           </div>
           <div className="profile-identity-copy">
-            <h1>You</h1>
-            <p className="profile-handle">@you</p>
-            <p className="profile-bio">
-              Building strength one session at a time. Yoga · Cardio · Accountability.
-            </p>
+            <h1>{displayName}</h1>
+            <p className="profile-handle">{handle}</p>
+            <p className="profile-bio">{bio}</p>
           </div>
           </div>
             <div className="profile-stats">
@@ -665,7 +782,7 @@ export function ProfilePage() {
                     />
                   </svg>
                 </span>
-                <strong>12</strong>
+                <strong>0</strong>
                 <span className="profile-stat-label">rooms joined</span>
               </span>
               <span className="profile-stat">
@@ -691,7 +808,7 @@ export function ProfilePage() {
                     />
                   </svg>
                 </span>
-                <strong>21</strong>
+                <strong>{dayStreak}</strong>
                 <span className="profile-stat-label">day streak</span>
               </span>
             </div>
@@ -920,21 +1037,27 @@ export function ProfilePage() {
           <span>Stay accountable</span>
         </div>
         <div className="profile-goals">
-          {goals.map((goal) => (
-            <article className="profile-goal-card" key={goal.id}>
-              <div className="profile-goal-top">
-                <strong>{goal.title}</strong>
-                <span>{goal.progress}%</span>
-              </div>
-              <div className="profile-goal-track" aria-hidden>
-                <span
-                  className="profile-goal-fill"
-                  style={{ width: `${goal.progress}%` }}
-                />
-              </div>
-              <p>{goal.detail}</p>
-            </article>
-          ))}
+          {goals.length > 0 ? (
+            goals.map((goal) => (
+              <article className="profile-goal-card" key={goal.id}>
+                <div className="profile-goal-top">
+                  <strong>{goal.title}</strong>
+                  <span>{goal.progress}%</span>
+                </div>
+                <div className="profile-goal-track" aria-hidden>
+                  <span
+                    className="profile-goal-fill"
+                    style={{ width: `${goal.progress}%` }}
+                  />
+                </div>
+                <p>{goal.detail}</p>
+              </article>
+            ))
+          ) : (
+            <p className="profile-goals-empty">
+              No goals yet. Finish onboarding or add one from the composer.
+            </p>
+          )}
         </div>
       </section>
 
@@ -998,6 +1121,9 @@ export function ProfilePage() {
       {activePost ? (
         <ProfilePostModal
           post={activePost}
+          displayName={displayName}
+          handle={handle}
+          avatarSrc={avatarSrc}
           onClose={() => setActivePostId(null)}
           onCommentCountChange={(postId, count) => {
             setPosts((prev) =>

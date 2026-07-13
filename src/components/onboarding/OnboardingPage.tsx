@@ -7,7 +7,11 @@ import { useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+import { heightToCm, hoursGoalTarget, slugifyUsername, toKg } from "@/lib/goals";
+import { completeOnboarding } from "@/lib/onboarding";
 import { LIVE_IMAGES } from "@/lib/live-images";
+import { createClient } from "@/lib/supabase/client";
+import type { OnboardingGoalInput } from "@/lib/types/profile";
 
 const STEPS = [
   { id: "identity", label: "Profile" },
@@ -50,14 +54,6 @@ const DEFAULT_AVATARS = [
 
 const STREAK_TARGETS = [10, 20, 30] as const;
 
-function slugifyUsername(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 20);
-}
-
 function usernameSuggestions(displayName: string) {
   const base = slugifyUsername(displayName);
   if (!base) return ["athlete", "moves_daily", "show_up"];
@@ -69,6 +65,7 @@ function usernameSuggestions(displayName: string) {
 export function OnboardingPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const supabase = useMemo(() => createClient(), []);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [displayName, setDisplayName] = useState("");
@@ -76,6 +73,7 @@ export function OnboardingPage() {
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(DEFAULT_AVATARS[3]);
   const [customAvatar, setCustomAvatar] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [ageRange, setAgeRange] = useState("");
   const [region, setRegion] = useState("");
   const [trainCurrentDays, setTrainCurrentDays] = useState("5");
@@ -94,6 +92,7 @@ export function OnboardingPage() {
   const [currentWeight, setCurrentWeight] = useState("95");
   const [targetWeight, setTargetWeight] = useState("85");
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const suggestions = useMemo(
     () => usernameSuggestions(displayName || "you"),
@@ -103,8 +102,147 @@ export function OnboardingPage() {
   const activeAvatar = customAvatar ?? avatarUrl;
   const step = STEPS[stepIndex];
 
-  const finish = () => {
-    router.push("/rooms");
+  const buildGoals = (): OnboardingGoalInput[] => {
+    const trainCurrent = Number.parseFloat(trainCurrentDays) || 0;
+    const trainExpected = Number.parseFloat(trainExpectedDays) || 5;
+    const streakNow = Number.parseFloat(streakCurrent) || 0;
+    const liftNow = Number.parseFloat(liftCurrent) || 0;
+    const liftGoal = Number.parseFloat(liftTarget) || 0;
+    const calNow = Number.parseFloat(caloriesCurrent) || 0;
+    const calGoal = Number.parseFloat(caloriesTarget) || 0;
+    const weightNowRaw = Number.parseFloat(currentWeight) || 0;
+    const weightGoalRaw = Number.parseFloat(targetWeight) || 0;
+    const weightNow = toKg(weightNowRaw, weightUnit);
+    const weightGoal = toKg(weightGoalRaw, weightUnit);
+    const hoursCurrent = 0;
+    const hoursTarget = hoursGoalTarget(hoursCurrent);
+
+    return [
+      {
+        template_id: "train_weekly",
+        title: "Train 5 days a week",
+        detail: "Consistency over perfection",
+        category: "consistency",
+        current_value: trainCurrent,
+        target_value: trainExpected,
+        unit: "days",
+        sort_order: 0
+      },
+      {
+        template_id: "mobility_streak",
+        title: "Morning mobility streak",
+        detail: "Build a daily habit",
+        category: "consistency",
+        current_value: streakNow,
+        target_value: streakTarget,
+        unit: "days",
+        sort_order: 1
+      },
+      {
+        template_id: "lift_target",
+        title: "Hit a lift target",
+        detail: "Track a milestone PR",
+        category: "performance",
+        current_value: liftNow,
+        target_value: liftGoal,
+        unit: "kg",
+        sort_order: 2
+      },
+      {
+        template_id: "meal_prep",
+        title: "Meal Prep & Nutrition",
+        detail: "Wins between workouts",
+        category: "lifestyle",
+        current_value: calNow,
+        target_value: calGoal,
+        unit: "kcal",
+        sort_order: 3
+      },
+      {
+        template_id: "target_weight",
+        title: "Hit target weight",
+        detail: "Track toward your goal weight",
+        category: "lifestyle",
+        current_value: weightNow,
+        target_value: weightGoal,
+        unit: "kg",
+        sort_order: 4
+      },
+      {
+        template_id: "hours_worked",
+        title: "Hours worked",
+        detail: "Time in live rooms",
+        category: "consistency",
+        current_value: hoursCurrent,
+        target_value: hoursTarget,
+        unit: "hours",
+        sort_order: 5
+      }
+    ];
+  };
+
+  const finish = async (skipped: boolean) => {
+    if (saving) return;
+
+    if (!skipped && !validateIdentity()) {
+      setStepIndex(0);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const weightNowRaw = Number.parseFloat(currentWeight);
+      const weightGoalRaw = Number.parseFloat(targetWeight);
+      const height = heightToCm({
+        unit: heightUnit,
+        feet: Number.parseFloat(heightFeet) || 0,
+        inches: Number.parseFloat(heightInches) || 0,
+        cm: Number.parseFloat(heightCm) || 0
+      });
+
+      const timezone =
+        typeof Intl !== "undefined"
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone
+          : "";
+
+      await completeOnboarding(supabase, {
+        displayName: displayName.trim() || (skipped ? "Athlete" : ""),
+        username: slugifyUsername(username) || slugifyUsername(displayName),
+        bio,
+        avatarUrl: activeAvatar,
+        avatarFile,
+        ageRange,
+        countryCode: region,
+        timezone,
+        heightCm: Number.isFinite(height) && height > 0 ? height : null,
+        currentWeightKg: Number.isFinite(weightNowRaw)
+          ? toKg(weightNowRaw, weightUnit)
+          : null,
+        targetWeightKg: Number.isFinite(weightGoalRaw)
+          ? toKg(weightGoalRaw, weightUnit)
+          : null,
+        weightUnit,
+        goals: skipped ? [] : buildGoals(),
+        skipped
+      });
+
+      router.replace("/rooms");
+      router.refresh();
+    } catch (caught) {
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : "Could not save your profile. Please try again.";
+      setError(
+        message.includes("duplicate key") || message.includes("username")
+          ? "That username is taken. Try another."
+          : message
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const validateIdentity = () => {
@@ -125,7 +263,7 @@ export function OnboardingPage() {
   const goNext = () => {
     if (stepIndex === 0 && !validateIdentity()) return;
     if (stepIndex >= STEPS.length - 1) {
-      finish();
+      void finish(false);
       return;
     }
     setError(null);
@@ -142,16 +280,17 @@ export function OnboardingPage() {
     if (customAvatar) URL.revokeObjectURL(customAvatar);
     const url = URL.createObjectURL(file);
     setCustomAvatar(url);
+    setAvatarFile(file);
   };
 
   const toLbs = (kg: number) => kg * 2.20462;
-  const toKg = (lbs: number) => lbs / 2.20462;
+  const lbsToKg = (lbs: number) => lbs / 2.20462;
 
   const convertWeightDisplay = (value: string, from: "kg" | "lbs") => {
     const amount = Number.parseFloat(value);
     if (!Number.isFinite(amount)) return "—";
     if (from === "kg") return `${Math.round(toLbs(amount))} lbs`;
-    return `${Math.round(toKg(amount))} kg`;
+    return `${Math.round(lbsToKg(amount))} kg`;
   };
 
   const switchWeightUnit = (next: "kg" | "lbs") => {
@@ -159,7 +298,7 @@ export function OnboardingPage() {
     const convert = (value: string) => {
       const amount = Number.parseFloat(value);
       if (!Number.isFinite(amount)) return value;
-      const converted = next === "kg" ? toKg(amount) : toLbs(amount);
+      const converted = next === "kg" ? lbsToKg(amount) : toLbs(amount);
       return String(Math.round(converted * 10) / 10);
     };
     setCurrentWeight((value) => convert(value));
@@ -199,7 +338,10 @@ export function OnboardingPage() {
           <button
             type="button"
             className="btn-ghost onboarding-skip"
-            onClick={finish}
+            disabled={saving}
+            onClick={() => {
+              void finish(true);
+            }}
           >
             Skip for now
           </button>
@@ -259,6 +401,7 @@ export function OnboardingPage() {
                             URL.revokeObjectURL(customAvatar);
                             setCustomAvatar(null);
                           }
+                          setAvatarFile(null);
                           setAvatarUrl(src);
                         }}
                       >
@@ -509,21 +652,21 @@ export function OnboardingPage() {
                   <p className="onboarding-goal-detail">Track a milestone PR</p>
                   <div className="onboarding-goal-fields onboarding-goal-fields--row">
                     <label className="onboarding-metric">
-                      <span>Target (kg)</span>
-                      <input
-                        inputMode="decimal"
-                        onChange={(event) => setLiftTarget(event.target.value)}
-                        type="text"
-                        value={liftTarget}
-                      />
-                    </label>
-                    <label className="onboarding-metric">
                       <span>Current (kg)</span>
                       <input
                         inputMode="decimal"
                         onChange={(event) => setLiftCurrent(event.target.value)}
                         type="text"
                         value={liftCurrent}
+                      />
+                    </label>
+                    <label className="onboarding-metric">
+                      <span>Target (kg)</span>
+                      <input
+                        inputMode="decimal"
+                        onChange={(event) => setLiftTarget(event.target.value)}
+                        type="text"
+                        value={liftTarget}
                       />
                     </label>
                   </div>
@@ -539,17 +682,6 @@ export function OnboardingPage() {
                   </p>
                   <div className="onboarding-goal-fields">
                     <label className="onboarding-metric">
-                      <span>Target Daily Calorie Intake</span>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setCaloriesTarget(event.target.value)
-                        }
-                        type="text"
-                        value={caloriesTarget}
-                      />
-                    </label>
-                    <label className="onboarding-metric">
                       <span>Current Daily Calorie Intake</span>
                       <input
                         inputMode="numeric"
@@ -558,6 +690,17 @@ export function OnboardingPage() {
                         }
                         type="text"
                         value={caloriesCurrent}
+                      />
+                    </label>
+                    <label className="onboarding-metric">
+                      <span>Target Daily Calorie Intake</span>
+                      <input
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          setCaloriesTarget(event.target.value)
+                        }
+                        type="text"
+                        value={caloriesTarget}
                       />
                     </label>
                   </div>
@@ -731,7 +874,12 @@ export function OnboardingPage() {
 
           <footer className="onboarding-actions">
             {stepIndex > 0 ? (
-              <button type="button" className="btn-secondary" onClick={goBack}>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={saving}
+                onClick={goBack}
+              >
                 Back
               </button>
             ) : (
@@ -742,6 +890,7 @@ export function OnboardingPage() {
                 <button
                   type="button"
                   className="btn-ghost"
+                  disabled={saving}
                   onClick={() => {
                     setError(null);
                     setStepIndex((index) => index + 1);
@@ -750,8 +899,17 @@ export function OnboardingPage() {
                   Skip step
                 </button>
               ) : null}
-              <button type="button" className="btn-primary" onClick={goNext}>
-                {stepIndex >= STEPS.length - 1 ? "Enter Satara" : "Continue"}
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={saving}
+                onClick={goNext}
+              >
+                {saving
+                  ? "Saving…"
+                  : stepIndex >= STEPS.length - 1
+                    ? "Enter Satara"
+                    : "Continue"}
               </button>
             </div>
           </footer>

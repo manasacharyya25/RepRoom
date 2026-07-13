@@ -12,7 +12,7 @@ const PROTECTED_PREFIXES = [
 ];
 
 export async function middleware(request: NextRequest) {
-  const { supabaseResponse, user } = await updateSession(request);
+  const { supabase, supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED_PREFIXES.some(
@@ -26,7 +26,40 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  let onboardingComplete = true;
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarding_completed_at")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    onboardingComplete = Boolean(profile?.onboarding_completed_at);
+
+    // Profile row missing (trigger not run yet) → treat as incomplete
+    if (!profile) {
+      onboardingComplete = false;
+    }
+  }
+
+  if (user && !onboardingComplete && pathname !== "/onboarding") {
+    if (!pathname.startsWith("/auth") && isProtected) {
+      const onboardingUrl = request.nextUrl.clone();
+      onboardingUrl.pathname = "/onboarding";
+      onboardingUrl.search = "";
+      return NextResponse.redirect(onboardingUrl);
+    }
+  }
+
   if (pathname === "/login" && user) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = onboardingComplete ? "/rooms" : "/onboarding";
+    redirectUrl.search = "";
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (pathname === "/onboarding" && user && onboardingComplete) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/rooms";
     redirectUrl.search = "";
