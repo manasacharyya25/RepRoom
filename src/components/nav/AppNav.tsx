@@ -5,7 +5,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { InboxDrawer } from "@/components/inbox/InboxDrawer";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+import { createClient } from "@/lib/supabase/client";
 import "@/app/inbox.css";
+
+async function signOutAndRedirect(router: ReturnType<typeof useRouter>) {
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  router.replace("/login");
+  router.refresh();
+}
 
 type AppNavProps = {
   /** feed: Rooms (white) + Profile (orange). profile: Rooms/Feed/Inbox + Log out. */
@@ -113,7 +121,9 @@ export function AppNav({
             <button
               type="button"
               className="btn-primary"
-              onClick={() => router.push("/")}
+              onClick={() => {
+                void signOutAndRedirect(router);
+              }}
             >
               Log out
             </button>
@@ -135,7 +145,9 @@ export function AppNav({
         <button
           type="button"
           className="btn-primary"
-          onClick={() => router.push("/")}
+          onClick={() => {
+            void signOutAndRedirect(router);
+          }}
         >
           Log out
         </button>

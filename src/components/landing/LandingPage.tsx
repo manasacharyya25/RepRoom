@@ -58,7 +58,10 @@ export function LandingPage() {
         </Link>
         <div className="landing-nav-actions">
           <ThemeSwitch />
-          <Link className="btn-primary" href="/rooms">
+          <Link className="btn-secondary" href="/login">
+            Sign in
+          </Link>
+          <Link className="btn-primary" href="/login">
             Get Started
           </Link>
         </div>
@@ -74,7 +77,7 @@ export function LandingPage() {
             filters when you want privacy.
           </p>
           <div className="landing-cta-row">
-            <Link className="btn-primary" href="/rooms">
+            <Link className="btn-primary" href="/login">
               Get Started
             </Link>
             <Link className="btn-secondary" href="/feed">
