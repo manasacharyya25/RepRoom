@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { uploadAvatar } from "@/lib/avatar";
 import {
   goalProgress,
   hoursGoalTarget,
@@ -9,31 +10,6 @@ import type {
   OnboardingGoalInput,
   OnboardingPayload
 } from "@/lib/types/profile";
-
-const AVATAR_BUCKET = "avatars";
-
-async function uploadAvatar(
-  supabase: SupabaseClient,
-  userId: string,
-  file: File
-) {
-  const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const safeExt = ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)
-    ? extension
-    : "jpg";
-  const path = `${userId}/${Date.now()}.${safeExt}`;
-
-  const { error } = await supabase.storage.from(AVATAR_BUCKET).upload(path, file, {
-    cacheControl: "3600",
-    upsert: true,
-    contentType: file.type || `image/${safeExt}`
-  });
-
-  if (error) throw error;
-
-  const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
-}
 
 function buildDefaultGoals(payload: OnboardingPayload): OnboardingGoalInput[] {
   if (payload.goals.length > 0) return payload.goals;

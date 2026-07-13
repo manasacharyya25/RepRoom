@@ -272,6 +272,35 @@
   letter-spacing: -0.03em;
 }
 
+.profile-identity-copy-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-edit-trigger {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
+.profile-section-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-section-edit {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.profile-section-edit:hover {
+  color: var(--text);
+}
+
 .profile-handle {
   margin: 4px 0 10px;
   color: var(--text-muted);

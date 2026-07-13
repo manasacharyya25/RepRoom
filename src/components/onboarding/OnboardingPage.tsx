@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
 import { heightToCm, hoursGoalTarget, slugifyUsername, toKg } from "@/lib/goals";
 import { completeOnboarding } from "@/lib/onboarding";
 import { LIVE_IMAGES } from "@/lib/live-images";
@@ -74,6 +75,7 @@ export function OnboardingPage() {
   const [avatarUrl, setAvatarUrl] = useState(DEFAULT_AVATARS[3]);
   const [customAvatar, setCustomAvatar] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [ageRange, setAgeRange] = useState("");
   const [region, setRegion] = useState("");
   const [trainCurrentDays, setTrainCurrentDays] = useState("5");
@@ -211,7 +213,9 @@ export function OnboardingPage() {
         displayName: displayName.trim() || (skipped ? "Athlete" : ""),
         username: slugifyUsername(username) || slugifyUsername(displayName),
         bio,
-        avatarUrl: activeAvatar,
+        avatarUrl: customAvatar && !customAvatar.startsWith("blob:")
+          ? customAvatar
+          : activeAvatar,
         avatarFile,
         ageRange,
         countryCode: region,
@@ -261,6 +265,10 @@ export function OnboardingPage() {
   };
 
   const goNext = () => {
+    if (avatarUploading) {
+      setError("Wait for your photo to finish uploading.");
+      return;
+    }
     if (stepIndex === 0 && !validateIdentity()) return;
     if (stepIndex >= STEPS.length - 1) {
       void finish(false);
@@ -275,12 +283,51 @@ export function OnboardingPage() {
     setStepIndex((index) => Math.max(0, index - 1));
   };
 
-  const onPickFile = (file: File | null) => {
+  const onPickFile = async (file: File | null) => {
     if (!file) return;
-    if (customAvatar) URL.revokeObjectURL(customAvatar);
-    const url = URL.createObjectURL(file);
-    setCustomAvatar(url);
+
+    const validationError = validateAvatarFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (customAvatar?.startsWith("blob:")) {
+      URL.revokeObjectURL(customAvatar);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setCustomAvatar(previewUrl);
     setAvatarFile(file);
+    setError(null);
+    setAvatarUploading(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user) throw new Error("Sign in again to upload a photo.");
+
+      const publicUrl = await uploadAvatar(supabase, user.id, file);
+      if (previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      setCustomAvatar(publicUrl);
+      setAvatarUrl(publicUrl);
+      setAvatarFile(null);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not upload your photo. Try again."
+      );
+      // Keep local preview + file so finish() can retry upload
+      setAvatarFile(file);
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   const toLbs = (kg: number) => kg * 2.20462;
@@ -382,8 +429,14 @@ export function OnboardingPage() {
                     fill
                     sizes="96px"
                     src={activeAvatar}
-                    unoptimized={activeAvatar.startsWith("blob:")}
+                    unoptimized={
+                      activeAvatar.startsWith("blob:") ||
+                      activeAvatar.includes("supabase.co")
+                    }
                   />
+                  {avatarUploading ? (
+                    <span className="onboarding-avatar-uploading">Uploading…</span>
+                  ) : null}
                 </div>
                 <div className="onboarding-avatar-actions">
                   <p className="onboarding-field-label">Add a profile photo</p>
@@ -396,13 +449,15 @@ export function OnboardingPage() {
                           !customAvatar && avatarUrl === src ? " is-selected" : ""
                         }`}
                         aria-label="Choose default avatar"
+                        disabled={avatarUploading || saving}
                         onClick={() => {
-                          if (customAvatar) {
+                          if (customAvatar?.startsWith("blob:")) {
                             URL.revokeObjectURL(customAvatar);
-                            setCustomAvatar(null);
                           }
+                          setCustomAvatar(null);
                           setAvatarFile(null);
                           setAvatarUrl(src);
+                          setError(null);
                         }}
                       >
                         <Image
@@ -415,20 +470,50 @@ export function OnboardingPage() {
                       </button>
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    className="btn-secondary onboarding-upload"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Upload photo
-                  </button>
+                  <div className="onboarding-upload-row">
+                    <button
+                      type="button"
+                      className="btn-secondary onboarding-upload"
+                      disabled={avatarUploading || saving}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {avatarUploading
+                        ? "Uploading…"
+                        : customAvatar
+                          ? "Change photo"
+                          : "Upload photo"}
+                    </button>
+                    {customAvatar ? (
+                      <button
+                        type="button"
+                        className="btn-ghost onboarding-upload-clear"
+                        disabled={avatarUploading || saving}
+                        onClick={() => {
+                          if (customAvatar.startsWith("blob:")) {
+                            URL.revokeObjectURL(customAvatar);
+                          }
+                          setCustomAvatar(null);
+                          setAvatarFile(null);
+                          setAvatarUrl(DEFAULT_AVATARS[3]);
+                          setError(null);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  {customAvatar && !avatarUploading ? (
+                    <p className="onboarding-upload-status">
+                      Custom photo ready
+                    </p>
+                  ) : null}
                   <input
                     ref={fileInputRef}
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
                     className="sr-only"
                     type="file"
                     onChange={(event) => {
-                      onPickFile(event.target.files?.[0] ?? null);
+                      void onPickFile(event.target.files?.[0] ?? null);
                       event.target.value = "";
                     }}
                   />

@@ -46,8 +46,24 @@ export function formatGoalDetail(goal: Goal): string {
 }
 
 export function resolveGoalProgress(goal: Goal): number {
-  if (goal.current_value != null && goal.target_value != null) {
-    return goalProgress(Number(goal.current_value), Number(goal.target_value));
+  if (goal.current_value == null || goal.target_value == null) {
+    return goal.progress ?? 0;
   }
-  return goal.progress ?? 0;
+
+  const current = Number(goal.current_value);
+  const target = Number(goal.target_value);
+  if (!Number.isFinite(current) || !Number.isFinite(target)) {
+    return goal.progress ?? 0;
+  }
+
+  const minimize =
+    goal.template_id === "target_weight" ||
+    (goal.template_id === "meal_prep" && current > target);
+
+  if (minimize) {
+    if (current <= target) return 100;
+    return 0;
+  }
+
+  return goalProgress(current, target);
 }

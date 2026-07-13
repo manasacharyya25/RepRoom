@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ProfileEditDrawer } from "@/components/profile/ProfileEditDrawer";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   formatGoalDetail,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/profile-format";
 import { createClient } from "@/lib/supabase/client";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
+import "@/app/profile-edit.css";
 
 type ProfileGoalCard = {
   id: string;
@@ -444,6 +446,7 @@ export function ProfilePage({
   const [visiblePostCount, setVisiblePostCount] = useState(POSTS_PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [activePostId, setActivePostId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     setProfileData(initialData);
@@ -740,8 +743,20 @@ export function ProfilePage({
             </div>
           </div>
           <div className="profile-identity-copy">
-            <h1>{displayName}</h1>
-            <p className="profile-handle">{handle}</p>
+            <div className="profile-identity-copy-head">
+              <div>
+                <h1>{displayName}</h1>
+                <p className="profile-handle">{handle}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary profile-edit-trigger"
+                onClick={() => setEditOpen(true)}
+                disabled={!profileData}
+              >
+                Edit
+              </button>
+            </div>
             <p className="profile-bio">{bio}</p>
           </div>
           </div>
@@ -1034,7 +1049,17 @@ export function ProfilePage({
       <section className="profile-section">
         <div className="profile-section-head">
           <h2>Goals</h2>
-          <span>Stay accountable</span>
+          <div className="profile-section-head-actions">
+            <span>Stay accountable</span>
+            <button
+              type="button"
+              className="btn-ghost profile-section-edit"
+              onClick={() => setEditOpen(true)}
+              disabled={!profileData}
+            >
+              Edit
+            </button>
+          </div>
         </div>
         <div className="profile-goals">
           {goals.length > 0 ? (
@@ -1131,6 +1156,19 @@ export function ProfilePage({
                 item.id === postId ? { ...item, comments: count } : item
               )
             );
+          }}
+        />
+      ) : null}
+
+      {profileData ? (
+        <ProfileEditDrawer
+          open={editOpen}
+          profile={profileData.profile}
+          goals={profileData.goals}
+          onClose={() => setEditOpen(false)}
+          onSaved={(next) => {
+            setProfileData(next);
+            setGoals(mapGoalsToCards(next.goals));
           }}
         />
       ) : null}

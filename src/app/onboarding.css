@@ -144,6 +144,19 @@
   border: 1px solid var(--border-strong);
 }
 
+.onboarding-avatar-uploading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .onboarding-avatar-image,
 .onboarding-avatar-choice-image {
   object-fit: cover;
@@ -188,6 +201,32 @@
   align-self: flex-start;
   padding: 8px 14px;
   font-size: 0.85rem;
+}
+
+.onboarding-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-upload-clear {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.onboarding-upload-status {
+  margin: 0;
+  color: color-mix(in srgb, var(--accent) 80%, #fff);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.onboarding-avatar-choice:disabled,
+.onboarding-upload:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 .onboarding-field {
