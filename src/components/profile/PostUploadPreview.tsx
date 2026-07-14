@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
 import type { ComposerPublishPayload } from "@/components/profile/ProfileComposer";
@@ -11,7 +11,9 @@ type PostUploadPreviewProps = {
   author: string;
   handle: string;
   avatarSrc: string;
-  onComplete: () => void;
+  progress: number;
+  error?: string | null;
+  onDismissError?: () => void;
 };
 
 function formatCaption(caption: string, tags?: string[]) {
@@ -44,9 +46,10 @@ export function PostUploadPreview({
   author,
   handle,
   avatarSrc,
-  onComplete
+  progress,
+  error,
+  onDismissError
 }: PostUploadPreviewProps) {
-  const [progress, setProgress] = useState(0);
   const { parts, extras } = formatCaption(payload.caption, payload.tags);
   const isTransform =
     payload.kind === "transform" &&
@@ -59,36 +62,10 @@ export function PostUploadPreview({
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
-    const durationMs = 2200;
-    const started = performance.now();
-    let frame = 0;
-    let finished = false;
-
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - started) / durationMs);
-      // Ease-out cubic so it feels like a real upload.
-      const eased = 1 - Math.pow(1 - t, 3);
-      setProgress(Math.round(eased * 100));
-
-      if (t < 1) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
-
-      if (!finished) {
-        finished = true;
-        window.setTimeout(onComplete, 280);
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-
     return () => {
       document.body.style.overflow = previousOverflow;
-      cancelAnimationFrame(frame);
     };
-  }, [onComplete]);
+  }, []);
 
   return (
     <div className="post-upload-backdrop" role="presentation">
@@ -96,7 +73,7 @@ export function PostUploadPreview({
         className="post-upload-card feed-post"
         role="status"
         aria-live="polite"
-        aria-label="Uploading post"
+        aria-label={error ? "Upload failed" : "Uploading post"}
       >
         <div
           className="post-upload-progress"
@@ -184,6 +161,21 @@ export function PostUploadPreview({
             <span aria-hidden>💬</span> 0
           </span>
         </div>
+
+        {error ? (
+          <div className="post-upload-error-row">
+            <p className="post-upload-error">{error}</p>
+            {onDismissError ? (
+              <button
+                type="button"
+                className="post-upload-error-close"
+                onClick={onDismissError}
+              >
+                Close
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </article>
     </div>
   );

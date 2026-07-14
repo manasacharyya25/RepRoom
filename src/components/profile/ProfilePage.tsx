@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
 import {
@@ -17,6 +17,8 @@ import {
 } from "@/lib/profile-format";
 import { categoryLabel, type PostCategory, type PostKind } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
+import { createPost, listUserPosts } from "@/lib/posts-api";
+import type { DbPost } from "@/lib/types/post";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
 
@@ -42,6 +44,45 @@ type SelfPost = {
   comments: number;
 };
 
+function formatRelativeTime(iso: string) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "Just now";
+  const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (diffSec < 45) return "Just now";
+  if (diffSec < 3600) return `${Math.max(1, Math.round(diffSec / 60))}m ago`;
+  if (diffSec < 86400) return `${Math.max(1, Math.round(diffSec / 3600))}h ago`;
+  if (diffSec < 86400 * 7) {
+    return `${Math.max(1, Math.round(diffSec / 86400))}d ago`;
+  }
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  });
+}
+
+function mapDbPost(post: DbPost): SelfPost {
+  return {
+    id: post.id,
+    kind: post.kind,
+    category: post.category,
+    caption: post.caption,
+    image: post.image_url ?? undefined,
+    beforeImage: post.before_image_url ?? undefined,
+    afterImage: post.after_image_url ?? undefined,
+    location: post.location ?? undefined,
+    tags: post.tags?.length ? post.tags : undefined,
+    createdAt: formatRelativeTime(post.created_at),
+    likes: post.likes_count,
+    comments: post.comments_count
+  };
+}
+
+function revokePreviewUrls(payload: ComposerPublishPayload) {
+  for (const url of [payload.image, payload.beforeImage, payload.afterImage]) {
+    if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+  }
+}
+
 const INITIAL_GOALS: ProfileGoalCard[] = [
   {
     id: "g1",
@@ -60,157 +101,6 @@ const INITIAL_GOALS: ProfileGoalCard[] = [
     title: "Morning mobility streak",
     progress: 40,
     detail: "8 day streak"
-  }
-];
-
-const INITIAL_POSTS: SelfPost[] = [
-  {
-    id: "p1",
-    kind: "standard",
-    category: "achievement",
-    caption: "Heavy day done. Showing up matters more than perfect form every time.",
-    image: LIVE_IMAGES.participant4,
-    createdAt: "2h ago",
-    likes: 24,
-    comments: 5
-  },
-  {
-    id: "p2",
-    kind: "standard",
-    category: "meal_prep",
-    caption: "Meal prep locked for the week. Consistency over perfection.",
-    image: LIVE_IMAGES.participant8,
-    createdAt: "Yesterday",
-    likes: 41,
-    comments: 8
-  },
-  {
-    id: "p3",
-    kind: "standard",
-    category: "motivation",
-    caption: "There is no finish line — only the community that keeps you going.",
-    createdAt: "3 days ago",
-    likes: 18,
-    comments: 2
-  },
-  {
-    id: "p4",
-    kind: "standard",
-    category: "pump_check",
-    caption: "Cardio finishers hit different when the room is hyped.",
-    image: LIVE_IMAGES.participant6,
-    createdAt: "4 days ago",
-    likes: 33,
-    comments: 4
-  },
-  {
-    id: "p5",
-    kind: "standard",
-    category: "achievement",
-    caption: "New PR on deadlift. Slow progress still counts.",
-    image: LIVE_IMAGES.participant3,
-    createdAt: "5 days ago",
-    likes: 56,
-    comments: 11
-  },
-  {
-    id: "p6",
-    kind: "transform",
-    category: "transformation",
-    caption: "Recovery walk + stretch. Rest is part of the plan.",
-    beforeImage: LIVE_IMAGES.participant2,
-    afterImage: LIVE_IMAGES.participant4,
-    createdAt: "1 week ago",
-    likes: 14,
-    comments: 1
-  },
-  {
-    id: "p7",
-    kind: "standard",
-    category: "fit_check",
-    caption: "Zumba night was chaotic in the best way.",
-    image: LIVE_IMAGES.sidebar1,
-    createdAt: "1 week ago",
-    likes: 29,
-    comments: 6
-  },
-  {
-    id: "p8",
-    kind: "standard",
-    category: "meal_prep",
-    caption: "Tracking protein for the next 14 days. Accountability unlocked.",
-    image: LIVE_IMAGES.participant7,
-    createdAt: "8 days ago",
-    likes: 22,
-    comments: 3
-  },
-  {
-    id: "p9",
-    kind: "standard",
-    category: "motivation",
-    caption: "Show up for yourself — the feed will celebrate with you.",
-    createdAt: "2 weeks ago",
-    likes: 47,
-    comments: 9
-  },
-  {
-    id: "p10",
-    kind: "standard",
-    category: "pump_check",
-    caption: "Early gym, empty racks, perfect playlist.",
-    image: LIVE_IMAGES.participant2,
-    createdAt: "2 weeks ago",
-    likes: 31,
-    comments: 4
-  },
-  {
-    id: "p11",
-    kind: "standard",
-    category: "motivation",
-    caption: "Rest is part of the plan. Tomorrow you train again.",
-    createdAt: "3 weeks ago",
-    likes: 19,
-    comments: 2
-  },
-  {
-    id: "p12",
-    kind: "standard",
-    category: "fit_check",
-    caption: "Shared a form check. Got great feedback from the room.",
-    image: LIVE_IMAGES.sidebar3,
-    createdAt: "3 weeks ago",
-    likes: 38,
-    comments: 7
-  },
-  {
-    id: "p13",
-    kind: "standard",
-    category: "achievement",
-    caption: "Hit my weekly goal streak. Small wins add up.",
-    image: LIVE_IMAGES.participant4,
-    createdAt: "1 month ago",
-    likes: 26,
-    comments: 3
-  },
-  {
-    id: "p14",
-    kind: "standard",
-    category: "weight_check",
-    caption: "Leg day leftovers. Walking downstairs is a sport.",
-    image: LIVE_IMAGES.participant8,
-    createdAt: "1 month ago",
-    likes: 44,
-    comments: 5
-  },
-  {
-    id: "p15",
-    kind: "standard",
-    category: "pump_check",
-    caption: "Joined a live cardio room at midnight. Worth it.",
-    image: LIVE_IMAGES.participant6,
-    createdAt: "1 month ago",
-    likes: 35,
-    comments: 6
   }
 ];
 
@@ -501,7 +391,8 @@ export function ProfilePage({
   const identityRef = useRef<HTMLElement>(null);
   const identityBodyRef = useRef<HTMLDivElement>(null);
   const goalsPanelRef = useRef<HTMLElement>(null);
-  const [posts, setPosts] = useState<SelfPost[]>(INITIAL_POSTS);
+  const [posts, setPosts] = useState<SelfPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [profileData, setProfileData] = useState<ProfileViewModel | null>(
     initialData
   );
@@ -514,8 +405,8 @@ export function ProfilePage({
   const [editOpen, setEditOpen] = useState(false);
   const [uploadPreview, setUploadPreview] =
     useState<ComposerPublishPayload | null>(null);
-  const uploadPreviewRef = useRef<ComposerPublishPayload | null>(null);
-  uploadPreviewRef.current = uploadPreview;
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     setProfileData(initialData);
@@ -523,6 +414,42 @@ export function ProfilePage({
       setGoals(mapGoalsToCards(initialData.goals));
     }
   }, [initialData]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPosts = async () => {
+      setPostsLoading(true);
+      try {
+        const supabase = createClient();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
+        if (!user) {
+          if (!cancelled) {
+            setPosts([]);
+            setPostsLoading(false);
+          }
+          return;
+        }
+
+        const rows = await listUserPosts(supabase, user.id);
+        if (cancelled) return;
+        setPosts(rows.map(mapDbPost));
+        setVisiblePostCount(POSTS_PAGE_SIZE);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) setPosts([]);
+      } finally {
+        if (!cancelled) setPostsLoading(false);
+      }
+    };
+
+    void loadPosts();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData?.profile.id]);
 
   useEffect(() => {
     if (initialData) return;
@@ -651,25 +578,74 @@ export function ProfilePage({
   };
 
   const publish = (payload: ComposerPublishPayload) => {
+    setUploadError(null);
+    setUploadProgress(0);
     setUploadPreview(payload);
   };
 
-  const finishUpload = useCallback(() => {
-    const current = uploadPreviewRef.current;
-    if (!current) return;
+  useEffect(() => {
+    if (!uploadPreview) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      setUploadError(null);
+      setUploadProgress(0);
+      try {
+        const supabase = createClient();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("You must be signed in to post.");
+        }
+
+        const created = await createPost(
+          supabase,
+          user.id,
+          {
+            kind: uploadPreview.kind,
+            category: uploadPreview.category,
+            caption: uploadPreview.caption,
+            location: uploadPreview.location,
+            tags: uploadPreview.tags,
+            imageFile: uploadPreview.imageFile,
+            beforeFile: uploadPreview.beforeFile,
+            afterFile: uploadPreview.afterFile
+          },
+          (value) => {
+            if (!cancelled) setUploadProgress(value);
+          }
+        );
+
+        if (cancelled) return;
+
+        revokePreviewUrls(uploadPreview);
+        setPosts((prev) => [mapDbPost(created), ...prev]);
+        setVisiblePostCount((count) => Math.max(count, POSTS_PAGE_SIZE));
+        setUploadPreview(null);
+        setUploadProgress(0);
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : "Could not publish post.";
+        setUploadError(message);
+        setUploadProgress(0);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [uploadPreview]);
+
+  const dismissUpload = () => {
+    if (uploadPreview) revokePreviewUrls(uploadPreview);
     setUploadPreview(null);
-    setPosts((prev) => [
-      {
-        id: `local-${Date.now()}`,
-        ...current,
-        createdAt: "Just now",
-        likes: 0,
-        comments: 0
-      },
-      ...prev
-    ]);
-    setVisiblePostCount((count) => Math.max(count, POSTS_PAGE_SIZE));
-  }, []);
+    setUploadError(null);
+    setUploadProgress(0);
+  };
 
   return (
     <div className="profile-page">
@@ -897,9 +873,18 @@ export function ProfilePage({
       <section className="profile-section">
         <div className="profile-section-head">
           <h2>Your posts</h2>
-          <span>{posts.length} updates</span>
+          <span>
+            {postsLoading
+              ? "Loading…"
+              : `${posts.length} update${posts.length === 1 ? "" : "s"}`}
+          </span>
         </div>
         <div className="profile-posts">
+          {!postsLoading && posts.length === 0 ? (
+            <p className="profile-posts-empty">
+              No posts yet. Share your first update above.
+            </p>
+          ) : null}
           {visiblePosts.map((post) => {
             const isMotivation = post.category === "motivation";
             const cover = isMotivation
@@ -977,7 +962,7 @@ export function ProfilePage({
         </div>
 
         <div className="feed-load-more">
-          {hasMorePosts ? (
+          {postsLoading ? null : hasMorePosts ? (
             <button
               type="button"
               className="feed-load-more-btn"
@@ -986,9 +971,9 @@ export function ProfilePage({
             >
               {isLoadingMore ? "Loading…" : "Load more"}
             </button>
-          ) : (
+          ) : posts.length > 0 ? (
             <p className="feed-load-more-done">You’re all caught up</p>
-          )}
+          ) : null}
         </div>
       </section>
 
@@ -998,7 +983,9 @@ export function ProfilePage({
           author={displayName}
           handle={handle}
           avatarSrc={avatarSrc}
-          onComplete={finishUpload}
+          progress={uploadProgress}
+          error={uploadError}
+          onDismissError={dismissUpload}
         />
       ) : null}
 

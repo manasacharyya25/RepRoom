@@ -15,11 +15,16 @@ export type ComposerPublishPayload = {
   kind: PostKind;
   category: PostCategory;
   caption: string;
+  location?: string;
+  tags?: string[];
+  /** Preview blob URLs for the upload card UI */
   image?: string;
   beforeImage?: string;
   afterImage?: string;
-  location?: string;
-  tags?: string[];
+  /** Source files for compressed Storage upload */
+  imageFile?: File;
+  beforeFile?: File;
+  afterFile?: File;
 };
 
 function ComposerTypeIcon({ id }: { id: ComposerTypeId }) {
@@ -60,6 +65,9 @@ export function ProfileComposer({
   const [composerType, setComposerType] = useState<ComposerTypeId>("fit_check");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [beforeFile, setBeforeFile] = useState<File | null>(null);
+  const [afterFile, setAfterFile] = useState<File | null>(null);
   const [location, setLocation] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
@@ -76,8 +84,8 @@ export function ProfileComposer({
     (isMotivation
       ? true
       : isTransform
-        ? Boolean(previewUrl && afterPreviewUrl)
-        : Boolean(previewUrl));
+        ? Boolean(beforeFile && afterFile)
+        : Boolean(imageFile));
 
   const clearMedia = (revoke = true) => {
     if (revoke) {
@@ -86,6 +94,9 @@ export function ProfileComposer({
     }
     setPreviewUrl(null);
     setAfterPreviewUrl(null);
+    setImageFile(null);
+    setBeforeFile(null);
+    setAfterFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (beforeInputRef.current) beforeInputRef.current.value = "";
     if (afterInputRef.current) afterInputRef.current.value = "";
@@ -110,10 +121,18 @@ export function ProfileComposer({
     if (slot === "after") {
       if (afterPreviewUrl) URL.revokeObjectURL(afterPreviewUrl);
       setAfterPreviewUrl(url);
+      setAfterFile(file);
+      return;
+    }
+    if (slot === "before") {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(url);
+      setBeforeFile(file);
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(url);
+    setImageFile(file);
   };
 
   const selectComposerType = (id: ComposerTypeId) => {
@@ -124,16 +143,24 @@ export function ProfileComposer({
       if (afterPreviewUrl) {
         URL.revokeObjectURL(afterPreviewUrl);
         setAfterPreviewUrl(null);
-        if (afterInputRef.current) afterInputRef.current.value = "";
       }
+      setAfterFile(null);
+      if (afterInputRef.current) afterInputRef.current.value = "";
     }
     if (option.category === "motivation") {
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
         setPreviewUrl(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        if (beforeInputRef.current) beforeInputRef.current.value = "";
       }
+      setImageFile(null);
+      setBeforeFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (beforeInputRef.current) beforeInputRef.current.value = "";
+    }
+    if (option.kind === "transform") {
+      setImageFile(null);
+    } else if (option.category !== "motivation") {
+      setBeforeFile(null);
     }
     setComposerType(id);
   };
@@ -161,10 +188,13 @@ export function ProfileComposer({
         isTransform || isMotivation ? undefined : previewUrl ?? undefined,
       beforeImage: isTransform ? previewUrl ?? undefined : undefined,
       afterImage: isTransform ? afterPreviewUrl ?? undefined : undefined,
+      imageFile: isTransform || isMotivation ? undefined : imageFile ?? undefined,
+      beforeFile: isTransform ? beforeFile ?? undefined : undefined,
+      afterFile: isTransform ? afterFile ?? undefined : undefined,
       location: location.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined
     });
-    // Keep blob URLs alive for the upload preview + post grid.
+    // Keep blob URLs alive for the upload preview UI.
     clearComposer(false);
   };
 
@@ -299,6 +329,7 @@ export function ProfileComposer({
                           onClick={() => {
                             if (previewUrl) URL.revokeObjectURL(previewUrl);
                             setPreviewUrl(null);
+                            setBeforeFile(null);
                             if (beforeInputRef.current) {
                               beforeInputRef.current.value = "";
                             }
@@ -351,6 +382,7 @@ export function ProfileComposer({
                               URL.revokeObjectURL(afterPreviewUrl);
                             }
                             setAfterPreviewUrl(null);
+                            setAfterFile(null);
                             if (afterInputRef.current) {
                               afterInputRef.current.value = "";
                             }
@@ -400,6 +432,7 @@ export function ProfileComposer({
                     onClick={() => {
                       if (previewUrl) URL.revokeObjectURL(previewUrl);
                       setPreviewUrl(null);
+                      setImageFile(null);
                       if (fileInputRef.current) fileInputRef.current.value = "";
                     }}
                   >

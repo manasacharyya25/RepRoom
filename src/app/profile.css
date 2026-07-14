@@ -1146,6 +1146,41 @@
   pointer-events: none;
 }
 
+.post-upload-error-row {
+  display: grid;
+  gap: 10px;
+}
+
+.post-upload-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 80, 80, 0.12);
+  color: #ff8f8f;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.post-upload-error-close {
+  justify-self: start;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-posts-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 18px 4px;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
 @keyframes post-upload-in {
   from {
     opacity: 0;
