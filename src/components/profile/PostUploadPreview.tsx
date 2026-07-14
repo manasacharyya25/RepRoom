@@ -11,9 +11,12 @@ type PostUploadPreviewProps = {
   author: string;
   handle: string;
   avatarSrc: string;
-  progress: number;
+  /** When omitted, shows draft preview (no progress bar). */
+  progress?: number;
   error?: string | null;
   onDismissError?: () => void;
+  onCloseDraft?: () => void;
+  onConfirmPost?: () => void;
 };
 
 function formatCaption(caption: string, tags?: string[]) {
@@ -48,8 +51,11 @@ export function PostUploadPreview({
   avatarSrc,
   progress,
   error,
-  onDismissError
+  onDismissError,
+  onCloseDraft,
+  onConfirmPost
 }: PostUploadPreviewProps) {
+  const isDraft = progress === undefined;
   const { parts, extras } = formatCaption(payload.caption, payload.tags);
   const isTransform =
     payload.kind === "transform" &&
@@ -68,26 +74,40 @@ export function PostUploadPreview({
   }, []);
 
   return (
-    <div className="post-upload-backdrop" role="presentation">
+    <div
+      className="post-upload-backdrop"
+      role="presentation"
+      onClick={isDraft ? onCloseDraft : undefined}
+    >
       <article
         className="post-upload-card feed-post"
-        role="status"
-        aria-live="polite"
-        aria-label={error ? "Upload failed" : "Uploading post"}
+        role={isDraft ? "dialog" : "status"}
+        aria-modal={isDraft ? true : undefined}
+        aria-live={isDraft ? undefined : "polite"}
+        aria-label={
+          error
+            ? "Upload failed"
+            : isDraft
+              ? "Post preview"
+              : "Uploading post"
+        }
+        onClick={(event) => event.stopPropagation()}
       >
-        <div
-          className="post-upload-progress"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progress}
-          aria-label="Upload progress"
-        >
-          <span
-            className="post-upload-progress-fill"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        {!isDraft ? (
+          <div
+            className="post-upload-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+            aria-label="Upload progress"
+          >
+            <span
+              className="post-upload-progress-fill"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        ) : null}
 
         <div className="feed-post-top">
           <div className="feed-post-avatar">
@@ -161,6 +181,25 @@ export function PostUploadPreview({
             <span aria-hidden>💬</span> 0
           </span>
         </div>
+
+        {isDraft ? (
+          <div className="post-draft-actions">
+            <button
+              type="button"
+              className="post-draft-btn post-draft-btn--ghost"
+              onClick={onCloseDraft}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="post-draft-btn post-draft-btn--primary"
+              onClick={onConfirmPost}
+            >
+              Post Update
+            </button>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="post-upload-error-row">

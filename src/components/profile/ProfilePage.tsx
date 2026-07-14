@@ -15,9 +15,9 @@ import {
   formatGoalDetail,
   resolveGoalProgress
 } from "@/lib/profile-format";
-import { categoryLabel, type PostCategory, type PostKind } from "@/lib/posts";
+import { categoryLabel, CAPTION_MAX_LENGTH, type PostCategory, type PostKind } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
-import { createPost, listUserPosts } from "@/lib/posts-api";
+import { createPost, deletePost, listUserPosts, updatePostCaption } from "@/lib/posts-api";
 import type { DbPost } from "@/lib/types/post";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
@@ -134,20 +134,250 @@ function seedProfileComments(post: SelfPost): ProfileComment[] {
   ].slice(0, count);
 }
 
+function ProfilePostCard({
+  post,
+  onOpen,
+  onEdit,
+  onDelete
+}: {
+  post: SelfPost;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isMotivation = post.category === "motivation";
+  const cover = isMotivation
+    ? undefined
+    : post.kind === "transform"
+      ? post.afterImage ?? post.beforeImage
+      : post.image;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  return (
+    <article className="profile-post-card">
+      <button
+        type="button"
+        className="profile-post-card-main"
+        onClick={onOpen}
+      >
+        {cover ? (
+          <div
+            className={`profile-post-media${
+              post.kind === "transform" ? " profile-post-media--transform" : ""
+            }`}
+          >
+            {post.kind === "transform" &&
+            post.beforeImage &&
+            post.afterImage ? (
+              <BeforeAfterSlider
+                afterSrc={post.afterImage}
+                beforeSrc={post.beforeImage}
+                className="before-after-slider--thumb"
+              />
+            ) : (
+              <Image
+                alt=""
+                className="profile-post-image"
+                fill
+                sizes="160px"
+                src={cover}
+                unoptimized={cover.startsWith("blob:")}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="profile-post-media profile-post-media--quote">
+            <span className="profile-post-quote-mark" aria-hidden>
+              “
+            </span>
+            <p>{post.caption}</p>
+          </div>
+        )}
+        <div className="profile-post-body">
+          <p className="profile-post-category">
+            {categoryLabel(post.category)}
+          </p>
+          {!isMotivation ? (
+            <p className="profile-post-caption">{post.caption}</p>
+          ) : null}
+          {post.location || (post.tags && post.tags.length > 0) ? (
+            <p className="profile-post-extras">
+              {post.location ? <span>📍 {post.location}</span> : null}
+              {post.tags?.slice(0, 2).map((tag) => (
+                <span key={tag}>#{tag}</span>
+              ))}
+            </p>
+          ) : null}
+        </div>
+      </button>
+
+      <div className="profile-post-footer">
+        <button
+          type="button"
+          className="profile-post-meta"
+          onClick={onOpen}
+        >
+          <span>{post.createdAt}</span>
+          <span>♥ {post.likes}</span>
+          <span>💬 {post.comments}</span>
+        </button>
+
+        <div className="profile-post-menu" ref={menuRef}>
+          <button
+            type="button"
+            className="profile-post-menu-trigger"
+            aria-label="Post options"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOpen((open) => !open);
+            }}
+          >
+            <span aria-hidden>⋮</span>
+          </button>
+          {menuOpen ? (
+            <div className="profile-post-menu-dropdown" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className="profile-post-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEdit();
+                }}
+              >
+                Edit caption
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="profile-post-menu-item profile-post-menu-item--danger"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDelete();
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ConfirmDeleteModal({
+  busy,
+  error,
+  onCancel,
+  onConfirm
+}: {
+  busy: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onCancel();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [busy, onCancel]);
+
+  return (
+    <div
+      className="confirm-delete-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (!busy) onCancel();
+      }}
+    >
+      <div
+        className="confirm-delete-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-delete-title"
+        aria-describedby="confirm-delete-desc"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3 id="confirm-delete-title">Delete this post?</h3>
+        <p id="confirm-delete-desc">
+          This cannot be undone. The post and its photos will be removed from
+          your profile.
+        </p>
+        {error ? <p className="confirm-delete-error">{error}</p> : null}
+        <div className="confirm-delete-actions">
+          <button
+            type="button"
+            className="confirm-delete-btn confirm-delete-btn--ghost"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="confirm-delete-btn confirm-delete-btn--danger"
+            disabled={busy}
+            onClick={onConfirm}
+          >
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProfilePostModal({
   post,
   onClose,
   onCommentCountChange,
+  onCaptionUpdated,
+  onRequestDelete,
   displayName,
   handle,
-  avatarSrc
+  avatarSrc,
+  initialEditing = false,
+  blockClose = false
 }: {
   post: SelfPost;
   onClose: () => void;
   onCommentCountChange: (postId: string, count: number) => void;
+  onCaptionUpdated: (postId: string, caption: string) => void;
+  onRequestDelete: () => void;
   displayName: string;
   handle: string;
   avatarSrc: string;
+  initialEditing?: boolean;
+  blockClose?: boolean;
 }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.likes);
@@ -155,10 +385,26 @@ function ProfilePostModal({
   const [comments, setComments] = useState<ProfileComment[]>(() =>
     seedProfileComments(post)
   );
+  const [editing, setEditing] = useState(initialEditing);
+  const [captionDraft, setCaptionDraft] = useState(post.caption);
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const commentCount = Math.max(post.comments, comments.length);
+  const displayCaption = editing ? captionDraft : post.caption;
 
   useEffect(() => {
+    setCaptionDraft(post.caption);
+    setEditing(initialEditing);
+    setActionError(null);
+  }, [post.id, initialEditing]);
+
+  useEffect(() => {
+    if (!editing) setCaptionDraft(post.caption);
+  }, [post.caption, editing]);
+
+  useEffect(() => {
+    if (blockClose) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
@@ -169,7 +415,7 @@ function ProfilePostModal({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, blockClose]);
 
   const sendComment = () => {
     const text = draft.trim();
@@ -189,10 +435,35 @@ function ProfilePostModal({
     onCommentCountChange(post.id, Math.max(post.comments, next.length));
   };
 
+  const saveCaption = async () => {
+    const next = captionDraft.trim();
+    if (!next || next === post.caption) {
+      setEditing(false);
+      setCaptionDraft(post.caption);
+      return;
+    }
+    setSaving(true);
+    setActionError(null);
+    try {
+      const supabase = createClient();
+      await updatePostCaption(supabase, post.id, next);
+      onCaptionUpdated(post.id, next);
+      setEditing(false);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not save caption."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div
       className="feed-post-modal-backdrop"
-      onClick={onClose}
+      onClick={() => {
+        if (!blockClose) onClose();
+      }}
       role="presentation"
     >
       <div
@@ -206,7 +477,10 @@ function ProfilePostModal({
           type="button"
           className="feed-post-modal-close"
           aria-label="Close post"
-          onClick={onClose}
+          disabled={blockClose}
+          onClick={() => {
+            if (!blockClose) onClose();
+          }}
         >
           ×
         </button>
@@ -221,7 +495,7 @@ function ProfilePostModal({
               className="before-after-slider--modal"
             />
           ) : post.category === "motivation" ? (
-            <MotivationQuoteCard text={post.caption} />
+            <MotivationQuoteCard text={displayCaption} />
           ) : post.image ? (
             <div className="feed-post-media feed-post-media--portrait">
               <Image
@@ -235,7 +509,7 @@ function ProfilePostModal({
               />
             </div>
           ) : (
-            <MotivationQuoteCard text={post.caption} />
+            <MotivationQuoteCard text={displayCaption} />
           )}
         </div>
 
@@ -263,9 +537,48 @@ function ProfilePostModal({
             <p className="feed-post-category-pill">
               {categoryLabel(post.category)}
             </p>
-            {post.category !== "motivation" ? (
+
+            {editing ? (
+              <div className="feed-post-edit">
+                <textarea
+                  className="feed-post-edit-input"
+                  value={captionDraft}
+                  maxLength={CAPTION_MAX_LENGTH}
+                  rows={4}
+                  onChange={(event) => setCaptionDraft(event.target.value)}
+                />
+                <div className="feed-post-edit-meta">
+                  <span>
+                    {captionDraft.length}/{CAPTION_MAX_LENGTH}
+                  </span>
+                  <div className="feed-post-edit-actions">
+                    <button
+                      type="button"
+                      className="feed-post-manage-btn"
+                      disabled={saving}
+                      onClick={() => {
+                        setEditing(false);
+                        setCaptionDraft(post.caption);
+                        setActionError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="feed-post-manage-btn feed-post-manage-btn--primary"
+                      disabled={saving || !captionDraft.trim()}
+                      onClick={() => void saveCaption()}
+                    >
+                      {saving ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : post.category !== "motivation" ? (
               <p className="feed-post-caption">{post.caption}</p>
             ) : null}
+
             {post.location || (post.tags && post.tags.length > 0) ? (
               <div className="feed-post-extras">
                 {post.location ? (
@@ -283,6 +596,29 @@ function ProfilePostModal({
                   </div>
                 ) : null}
               </div>
+            ) : null}
+
+            <div className="feed-post-manage">
+              {!editing ? (
+                <button
+                  type="button"
+                  className="feed-post-manage-btn"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit caption
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="feed-post-manage-btn feed-post-manage-btn--danger"
+                onClick={onRequestDelete}
+              >
+                Delete post
+              </button>
+            </div>
+
+            {actionError ? (
+              <p className="feed-post-manage-error">{actionError}</p>
             ) : null}
 
             <div className="feed-post-actions">
@@ -402,6 +738,10 @@ export function ProfilePage({
   const [visiblePostCount, setVisiblePostCount] = useState(POSTS_PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [activePostId, setActivePostId] = useState<string | null>(null);
+  const [editOnOpen, setEditOnOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [uploadPreview, setUploadPreview] =
     useState<ComposerPublishPayload | null>(null);
@@ -565,6 +905,46 @@ export function ProfilePage({
   );
   const hasMorePosts = visiblePostCount < posts.length;
   const activePost = posts.find((post) => post.id === activePostId) ?? null;
+
+  const openPost = (postId: string, edit = false) => {
+    setEditOnOpen(edit);
+    setActivePostId(postId);
+  };
+
+  const closePost = () => {
+    setActivePostId(null);
+    setEditOnOpen(false);
+  };
+
+  const requestDeletePost = (postId: string) => {
+    setDeleteError(null);
+    setPendingDeleteId(postId);
+  };
+
+  const cancelDeletePost = () => {
+    if (deleteBusy) return;
+    setPendingDeleteId(null);
+    setDeleteError(null);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!pendingDeleteId) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const supabase = createClient();
+      await deletePost(supabase, pendingDeleteId);
+      setPosts((prev) => prev.filter((item) => item.id !== pendingDeleteId));
+      if (activePostId === pendingDeleteId) closePost();
+      setPendingDeleteId(null);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : "Could not delete post."
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const loadMorePosts = () => {
     if (!hasMorePosts || isLoadingMore) return;
@@ -868,7 +1248,12 @@ export function ProfilePage({
         </aside>
       </section>
 
-      <ProfileComposer onPublish={publish} />
+      <ProfileComposer
+        onPublish={publish}
+        author={displayName}
+        handle={handle}
+        avatarSrc={avatarSrc}
+      />
 
       <section className="profile-section">
         <div className="profile-section-head">
@@ -885,80 +1270,15 @@ export function ProfilePage({
               No posts yet. Share your first update above.
             </p>
           ) : null}
-          {visiblePosts.map((post) => {
-            const isMotivation = post.category === "motivation";
-            const cover = isMotivation
-              ? undefined
-              : post.kind === "transform"
-                ? post.afterImage ?? post.beforeImage
-                : post.image;
-
-            return (
-              <button
-                type="button"
-                className="profile-post-card"
-                key={post.id}
-                onClick={() => setActivePostId(post.id)}
-              >
-                {cover ? (
-                  <div
-                    className={`profile-post-media${
-                      post.kind === "transform"
-                        ? " profile-post-media--transform"
-                        : ""
-                    }`}
-                  >
-                    {post.kind === "transform" &&
-                    post.beforeImage &&
-                    post.afterImage ? (
-                      <BeforeAfterSlider
-                        afterSrc={post.afterImage}
-                        beforeSrc={post.beforeImage}
-                        className="before-after-slider--thumb"
-                      />
-                    ) : (
-                      <Image
-                        alt=""
-                        className="profile-post-image"
-                        fill
-                        sizes="160px"
-                        src={cover}
-                        unoptimized={cover.startsWith("blob:")}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <div className="profile-post-media profile-post-media--quote">
-                    <span className="profile-post-quote-mark" aria-hidden>
-                      “
-                    </span>
-                    <p>{post.caption}</p>
-                  </div>
-                )}
-                <div className="profile-post-body">
-                  <p className="profile-post-category">
-                    {categoryLabel(post.category)}
-                  </p>
-                  {!isMotivation ? (
-                    <p className="profile-post-caption">{post.caption}</p>
-                  ) : null}
-                  {post.location || (post.tags && post.tags.length > 0) ? (
-                    <p className="profile-post-extras">
-                      {post.location ? <span>📍 {post.location}</span> : null}
-                      {post.tags?.slice(0, 2).map((tag) => (
-                        <span key={tag}>#{tag}</span>
-                      ))}
-                    </p>
-                  ) : null}
-                  <div className="profile-post-meta">
-                    <span>{post.createdAt}</span>
-                    <span>♥ {post.likes}</span>
-                    <span>💬 {post.comments}</span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {visiblePosts.map((post) => (
+            <ProfilePostCard
+              key={post.id}
+              post={post}
+              onOpen={() => openPost(post.id)}
+              onEdit={() => openPost(post.id, true)}
+              onDelete={() => requestDeletePost(post.id)}
+            />
+          ))}
         </div>
 
         <div className="feed-load-more">
@@ -995,7 +1315,9 @@ export function ProfilePage({
           displayName={displayName}
           handle={handle}
           avatarSrc={avatarSrc}
-          onClose={() => setActivePostId(null)}
+          initialEditing={editOnOpen}
+          blockClose={Boolean(pendingDeleteId)}
+          onClose={closePost}
           onCommentCountChange={(postId, count) => {
             setPosts((prev) =>
               prev.map((item) =>
@@ -1003,6 +1325,23 @@ export function ProfilePage({
               )
             );
           }}
+          onCaptionUpdated={(postId, caption) => {
+            setPosts((prev) =>
+              prev.map((item) =>
+                item.id === postId ? { ...item, caption } : item
+              )
+            );
+          }}
+          onRequestDelete={() => requestDeletePost(activePost.id)}
+        />
+      ) : null}
+
+      {pendingDeleteId ? (
+        <ConfirmDeleteModal
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={cancelDeletePost}
+          onConfirm={() => void confirmDeletePost()}
         />
       ) : null}
 

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
+import { PostUploadPreview } from "@/components/profile/PostUploadPreview";
 import {
   CAPTION_MAX_LENGTH,
   COMPOSER_TYPE_OPTIONS,
@@ -54,9 +55,15 @@ function ComposerTypeIcon({ id }: { id: ComposerTypeId }) {
 }
 
 export function ProfileComposer({
-  onPublish
+  onPublish,
+  author,
+  handle,
+  avatarSrc
 }: {
   onPublish: (payload: ComposerPublishPayload) => void;
+  author: string;
+  handle: string;
+  avatarSrc: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const beforeInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +80,8 @@ export function ProfileComposer({
   const [tagDraft, setTagDraft] = useState("");
   const [showLocation, setShowLocation] = useState(false);
   const [showTags, setShowTags] = useState(false);
+  const [draftPreview, setDraftPreview] =
+    useState<ComposerPublishPayload | null>(null);
 
   const selectedType = resolveComposerType(composerType);
   const isTransform = selectedType?.kind === "transform";
@@ -177,10 +186,9 @@ export function ProfileComposer({
     setTagDraft("");
   };
 
-  const publish = () => {
-    if (!canPost || !selectedType?.kind || !selectedType.category) return;
-
-    onPublish({
+  const buildPayload = (): ComposerPublishPayload | null => {
+    if (!canPost || !selectedType?.kind || !selectedType.category) return null;
+    return {
       kind: selectedType.kind,
       category: selectedType.category,
       caption: draft.trim(),
@@ -193,8 +201,28 @@ export function ProfileComposer({
       afterFile: isTransform ? afterFile ?? undefined : undefined,
       location: location.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined
-    });
+    };
+  };
+
+  const publish = () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    onPublish(payload);
     // Keep blob URLs alive for the upload preview UI.
+    clearComposer(false);
+  };
+
+  const preview = () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    setDraftPreview(payload);
+  };
+
+  const confirmDraftPost = () => {
+    if (!draftPreview) return;
+    const payload = draftPreview;
+    setDraftPreview(null);
+    onPublish(payload);
     clearComposer(false);
   };
 
@@ -599,15 +627,36 @@ export function ProfileComposer({
           </button>
         </div>
 
-        <button
-          type="button"
-          className="profile-compose-post"
-          disabled={!canPost}
-          onClick={publish}
-        >
-          Post Update
-        </button>
+        <div className="profile-compose-toolbar-actions">
+          <button
+            type="button"
+            className="profile-compose-preview"
+            disabled={!canPost}
+            onClick={preview}
+          >
+            Preview
+          </button>
+          <button
+            type="button"
+            className="profile-compose-post"
+            disabled={!canPost}
+            onClick={publish}
+          >
+            Post Update
+          </button>
+        </div>
       </div>
+
+      {draftPreview ? (
+        <PostUploadPreview
+          payload={draftPreview}
+          author={author}
+          handle={handle}
+          avatarSrc={avatarSrc}
+          onCloseDraft={() => setDraftPreview(null)}
+          onConfirmPost={confirmDraftPost}
+        />
+      ) : null}
     </div>
   );
 }

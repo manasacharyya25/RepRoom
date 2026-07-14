@@ -788,6 +788,36 @@
   color: var(--accent);
 }
 
+.profile-compose-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.profile-compose-preview {
+  flex-shrink: 0;
+  min-width: 96px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.profile-compose-preview:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+}
+
+.profile-compose-preview:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .profile-compose-post {
   flex-shrink: 0;
   min-width: 120px;
@@ -934,23 +964,39 @@
 }
 
 .profile-post-card {
+  position: relative;
   display: grid;
   width: 100%;
   max-width: 160px;
   justify-self: start;
-  padding: 0;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--surface);
   color: inherit;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,
     box-shadow 0.18s ease;
+}
+
+.profile-post-card:has(.profile-post-menu-dropdown) {
+  overflow: visible;
+  z-index: 4;
+}
+
+.profile-post-card-main {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 
 .profile-post-card:hover {
@@ -963,9 +1009,74 @@
   transform: scale(1.02);
 }
 
-.profile-post-card:focus-visible {
+.profile-post-card-main:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.profile-post-menu {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 3;
+}
+
+.profile-post-menu-trigger {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.profile-post-menu-trigger:hover,
+.profile-post-menu-trigger[aria-expanded="true"] {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-post-menu-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  min-width: 132px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.profile-post-menu-item {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-post-menu-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.profile-post-menu-item--danger:hover {
+  background: rgba(255, 80, 80, 0.12);
+  color: #ff8f8f;
 }
 
 .profile-post-media {
@@ -1032,7 +1143,7 @@
 .profile-post-body {
   display: grid;
   gap: 3px;
-  padding: 6px 7px 7px;
+  padding: 6px 7px 2px;
 }
 
 .profile-post-category {
@@ -1064,13 +1175,29 @@
   font-weight: 600;
 }
 
+.profile-post-footer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px 5px 7px;
+}
+
 .profile-post-meta {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--text-muted);
+  font: inherit;
   font-size: 0.58rem;
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
 
 .profile-section .feed-load-more {
@@ -1144,6 +1271,32 @@
 
 .post-upload-card .feed-post-actions {
   pointer-events: none;
+}
+
+.post-draft-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.post-draft-btn {
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.post-draft-btn--ghost {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+.post-draft-btn--primary {
+  border: none;
+  background: var(--accent);
+  color: #fff;
 }
 
 .post-upload-error-row {
@@ -1247,8 +1400,14 @@
     padding: 12px 14px;
   }
 
-  .profile-compose-post {
+  .profile-compose-toolbar-actions {
     width: 100%;
+  }
+
+  .profile-compose-preview,
+  .profile-compose-post {
+    flex: 1;
+    width: auto;
   }
 
   .profile-compose-transform-grid {
@@ -1273,4 +1432,82 @@
     max-width: none;
     justify-self: stretch;
   }
+}
+
+.confirm-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 6, 8, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: feed-modal-fade 0.18s ease;
+}
+
+.confirm-delete-modal {
+  width: min(400px, calc(100vw - 40px));
+  padding: 22px 22px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  animation: feed-modal-pop 0.22s ease;
+}
+
+.confirm-delete-modal h3 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.confirm-delete-modal p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.confirm-delete-error {
+  margin-top: 10px !important;
+  color: #ff8f8f !important;
+  font-weight: 600;
+}
+
+.confirm-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.confirm-delete-btn {
+  padding: 10px 16px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.confirm-delete-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.confirm-delete-btn--ghost {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+.confirm-delete-btn--danger {
+  border: none;
+  background: #d64545;
+  color: #fff;
+}
+
+.confirm-delete-btn--danger:hover:not(:disabled) {
+  background: #c03939;
 }

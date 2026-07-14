@@ -112,3 +112,31 @@ export async function createPost(
   report(100);
   return data as DbPost;
 }
+
+export async function updatePostCaption(
+  supabase: SupabaseClient,
+  postId: string,
+  caption: string
+): Promise<DbPost> {
+  const trimmed = caption.trim();
+  if (!trimmed) throw new Error("Caption cannot be empty.");
+  if (trimmed.length > 500) throw new Error("Caption is too long.");
+
+  const { data, error } = await supabase
+    .from("posts")
+    .update({ caption: trimmed })
+    .eq("id", postId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as DbPost;
+}
+
+export async function deletePost(
+  supabase: SupabaseClient,
+  postId: string
+): Promise<void> {
+  const { error } = await supabase.from("posts").delete().eq("id", postId);
+  if (error) throw error;
+}
