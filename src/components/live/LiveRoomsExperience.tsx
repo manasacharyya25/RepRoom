@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
-import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+import { AppNav } from "@/components/nav/AppNav";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
@@ -435,23 +435,7 @@ export function LiveRoomsExperience() {
 
   return (
     <div className="room-select-page">
-      <header className="room-select-nav">
-        <Link className="landing-logo" href="/">
-          <span className="landing-logo-mark" aria-hidden>
-            S
-          </span>
-          Satara
-        </Link>
-        <div className="room-select-nav-actions">
-          <ThemeSwitch />
-          <Link className="btn-secondary" href="/feed">
-            Feed
-          </Link>
-          <Link className="btn-primary" href="/profile">
-            Profile
-          </Link>
-        </div>
-      </header>
+      <AppNav variant="rooms" />
 
       <div className="room-select-shell">
         <div className="room-select-main">

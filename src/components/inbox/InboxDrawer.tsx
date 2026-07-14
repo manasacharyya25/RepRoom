@@ -5,11 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
 import {
+  blockUser,
+  deleteConversation,
   getOrCreateDm,
   listConversations,
   listMessages,
   mapDbMessageToView,
   markConversationRead,
+  markConversationUnread,
   sendMessage as sendMessageApi
 } from "@/lib/social-api";
 import type {
@@ -17,6 +20,7 @@ import type {
   InboxMessageView,
   InboxThreadView
 } from "@/lib/types/messaging";
+import { InboxThreadMenu } from "@/components/inbox/InboxThreadMenu";
 
 type InboxDrawerProps = {
   open: boolean;
@@ -26,6 +30,8 @@ type InboxDrawerProps = {
   /** Resolve/create a DM with this user, then open it. */
   initialUserId?: string | null;
   onOpenedTarget?: () => void;
+  /** Report unread conversation count to the nav badge. */
+  onUnreadCountChange?: (count: number) => void;
 };
 
 function formatMessageTime(iso: string) {
@@ -50,7 +56,8 @@ export function InboxDrawer({
   onClose,
   initialConversationId = null,
   initialUserId = null,
-  onOpenedTarget
+  onOpenedTarget,
+  onUnreadCountChange
 }: InboxDrawerProps) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -62,6 +69,7 @@ export function InboxDrawer({
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [viewerAvatar, setViewerAvatar] = useState(LIVE_IMAGES.participant4);
+  const [menuBusyId, setMenuBusyId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const handledTargetRef = useRef<string | null>(null);
 
@@ -76,6 +84,13 @@ export function InboxDrawer({
     setThreads(page);
     return page;
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    onUnreadCountChange?.(
+      threads.reduce((total, thread) => total + (thread.unread ? 1 : 0), 0)
+    );
+  }, [threads, open, onUnreadCountChange]);
 
   useEffect(() => {
     if (!open) {
@@ -289,6 +304,55 @@ export function InboxDrawer({
     };
   }, [open, onClose, activeThreadId]);
 
+  const runThreadAction = async (
+    thread: InboxThreadView,
+    action: "read" | "unread" | "block" | "delete"
+  ) => {
+    if (menuBusyId) return;
+    setMenuBusyId(thread.id);
+    setError(null);
+    try {
+      const supabase = createClient();
+      if (action === "read") {
+        await markConversationRead(supabase, thread.id);
+        setThreads((prev) =>
+          prev.map((item) =>
+            item.id === thread.id ? { ...item, unread: false } : item
+          )
+        );
+      } else if (action === "unread") {
+        await markConversationUnread(supabase, thread.id);
+        setThreads((prev) =>
+          prev.map((item) =>
+            item.id === thread.id ? { ...item, unread: true } : item
+          )
+        );
+      } else if (action === "block") {
+        await blockUser(supabase, thread.otherUserId);
+        setThreads((prev) => prev.filter((item) => item.id !== thread.id));
+        if (activeThreadId === thread.id) {
+          setActiveThreadId(null);
+          setMessages([]);
+        }
+      } else {
+        await deleteConversation(supabase, thread.id);
+        setThreads((prev) => prev.filter((item) => item.id !== thread.id));
+        if (activeThreadId === thread.id) {
+          setActiveThreadId(null);
+          setMessages([]);
+        }
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not update conversation."
+      );
+    } finally {
+      setMenuBusyId(null);
+    }
+  };
+
   const sendMessage = async (thread: InboxThreadView) => {
     const text = draft.trim();
     if (!text || sending) return;
@@ -477,7 +541,7 @@ export function InboxDrawer({
 
             <ul className="inbox-message-list">
               {threads.map((thread) => (
-                <li key={thread.id}>
+                <li key={thread.id} className="inbox-message-item">
                   <button
                     type="button"
                     className={`inbox-message-row${
@@ -498,13 +562,31 @@ export function InboxDrawer({
                     <span className="inbox-message-copy">
                       <span className="inbox-message-top">
                         <strong>{thread.name}</strong>
-                        <time>{thread.time}</time>
                       </span>
                       <span className="inbox-message-preview">
                         {thread.preview}
                       </span>
                     </span>
+                    <span className="inbox-message-meta">
+                      <time>{thread.time}</time>
+                    </span>
                   </button>
+                  <InboxThreadMenu
+                    thread={thread}
+                    busy={menuBusyId === thread.id}
+                    onMarkRead={() => {
+                      void runThreadAction(thread, "read");
+                    }}
+                    onMarkUnread={() => {
+                      void runThreadAction(thread, "unread");
+                    }}
+                    onBlock={() => {
+                      void runThreadAction(thread, "block");
+                    }}
+                    onDelete={() => {
+                      void runThreadAction(thread, "delete");
+                    }}
+                  />
                 </li>
               ))}
             </ul>

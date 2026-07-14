@@ -222,7 +222,35 @@ export async function listConversations(
     });
   }
 
-  return threads;
+  // Hide threads with users you've blocked (or who blocked you).
+  const { data: blocks, error: blockError } = await supabase
+    .from("user_blocks")
+    .select("blocked_id, blocker_id")
+    .or(`blocker_id.eq.${me.id},blocked_id.eq.${me.id}`);
+
+  if (blockError) {
+    // Table may not exist yet before migration — keep threads visible.
+    if (blockError.code !== "42P01" && !/user_blocks/i.test(blockError.message)) {
+      throw blockError;
+    }
+    return threads;
+  }
+
+  const blocked = new Set<string>();
+  for (const row of blocks ?? []) {
+    if (row.blocker_id === me.id) blocked.add(row.blocked_id as string);
+    if (row.blocked_id === me.id) blocked.add(row.blocker_id as string);
+  }
+
+  if (blocked.size === 0) return threads;
+  return threads.filter((thread) => !blocked.has(thread.otherUserId));
+}
+
+export async function countUnreadConversations(
+  supabase: SupabaseClient
+): Promise<number> {
+  const threads = await listConversations(supabase);
+  return threads.reduce((total, thread) => total + (thread.unread ? 1 : 0), 0);
 }
 
 export async function listMessages(
@@ -312,6 +340,55 @@ export async function markConversationRead(
     .eq("conversation_id", conversationId)
     .eq("user_id", me.id);
 
+  if (error) throw error;
+}
+
+export async function markConversationUnread(
+  supabase: SupabaseClient,
+  conversationId: string
+): Promise<void> {
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const me = requireUser(user);
+
+  const { error } = await supabase
+    .from("conversation_members")
+    .update({ last_read_at: null })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", me.id);
+
+  if (error) throw error;
+}
+
+export async function blockUser(
+  supabase: SupabaseClient,
+  blockedUserId: string
+): Promise<void> {
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const me = requireUser(user);
+  if (me.id === blockedUserId) throw new Error("You cannot block yourself.");
+
+  const { error } = await supabase.from("user_blocks").insert({
+    blocker_id: me.id,
+    blocked_id: blockedUserId
+  });
+  if (error) throw error;
+}
+
+export async function deleteConversation(
+  supabase: SupabaseClient,
+  conversationId: string
+): Promise<void> {
+  const { error } = await supabase.rpc("delete_dm", {
+    conversation_id: conversationId
+  });
   if (error) throw error;
 }
 

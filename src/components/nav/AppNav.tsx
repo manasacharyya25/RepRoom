@@ -4,9 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { InboxDrawer } from "@/components/inbox/InboxDrawer";
+import { NotificationsDrawer } from "@/components/notifications/NotificationsDrawer";
+import {
+  NotificationsProvider,
+  useNotifications
+} from "@/components/notifications/NotificationsProvider";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import { createClient } from "@/lib/supabase/client";
 import "@/app/inbox.css";
+import "@/app/notifications.css";
 
 async function signOutAndRedirect(router: ReturnType<typeof useRouter>) {
   const supabase = createClient();
@@ -16,8 +22,8 @@ async function signOutAndRedirect(router: ReturnType<typeof useRouter>) {
 }
 
 type AppNavProps = {
-  /** feed: Rooms + Inbox + Profile. profile: Rooms/Feed/Inbox + Log out. */
-  variant?: "default" | "feed" | "profile";
+  /** feed/rooms: icon Inbox + Notifications. profile: Rooms/Feed + icons + Log out. */
+  variant?: "default" | "feed" | "profile" | "rooms";
   /** Open the inbox drawer on mount (used by /inbox). */
   defaultInboxOpen?: boolean;
   /** Called when the inbox drawer is closed. */
@@ -35,6 +41,138 @@ function Logo() {
   );
 }
 
+function InboxIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M4.75 7.75A2 2 0 0 1 6.75 5.75h10.5a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2v-8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="m5 8.5 5.8 4.2a2 2 0 0 0 2.4 0L19 8.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M12 4.75a5.25 5.25 0 0 0-5.25 5.25v1.7c0 .7-.22 1.38-.62 1.95L5 15.75h14l-1.13-2.1a3.5 3.5 0 0 1-.62-1.95v-1.7A5.25 5.25 0 0 0 12 4.75Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.75 17.25a2.25 2.25 0 0 0 4.5 0"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function InboxNavButton({
+  open,
+  onOpen
+}: {
+  open: boolean;
+  onOpen: () => void;
+}) {
+  const { inboxUnreadCount } = useNotifications();
+  const pathname = usePathname();
+
+  return (
+    <button
+      type="button"
+      className={`nav-icon-btn notif-nav-btn${
+        open || pathname === "/inbox" ? " is-active" : ""
+      }`}
+      aria-expanded={open}
+      aria-label={
+        inboxUnreadCount > 0
+          ? `Inbox, ${inboxUnreadCount} unread`
+          : "Inbox"
+      }
+      title="Inbox"
+      onClick={onOpen}
+    >
+      <InboxIcon />
+      {inboxUnreadCount > 0 ? (
+        <span className="notif-nav-badge" aria-hidden>
+          {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function NotificationsNavButton({
+  open,
+  onOpen
+}: {
+  open: boolean;
+  onOpen: () => void;
+}) {
+  const { unreadCount } = useNotifications();
+
+  return (
+    <button
+      type="button"
+      className={`nav-icon-btn notif-nav-btn${open ? " is-active" : ""}`}
+      aria-expanded={open}
+      aria-label={
+        unreadCount > 0
+          ? `Notifications, ${unreadCount} unread`
+          : "Notifications"
+      }
+      title="Notifications"
+      onClick={onOpen}
+    >
+      <BellIcon />
+      {unreadCount > 0 ? (
+        <span className="notif-nav-badge" aria-hidden>
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function ConnectedInboxDrawer({
+  open,
+  onClose,
+  initialUserId,
+  onOpenedTarget
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialUserId: string | null;
+  onOpenedTarget: () => void;
+}) {
+  const { setInboxUnreadCount, refreshInboxUnread } = useNotifications();
+
+  return (
+    <InboxDrawer
+      open={open}
+      onClose={() => {
+        onClose();
+        void refreshInboxUnread();
+      }}
+      initialUserId={initialUserId}
+      onOpenedTarget={onOpenedTarget}
+      onUnreadCountChange={setInboxUnreadCount}
+    />
+  );
+}
+
 function AppNavInner({
   variant = "default",
   defaultInboxOpen = false,
@@ -45,6 +183,7 @@ function AppNavInner({
   const searchParams = useSearchParams();
   const dmUserId = searchParams.get("dm");
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeDmUserId, setActiveDmUserId] = useState<string | null>(null);
 
   const clearDmQuery = useCallback(() => {
@@ -75,36 +214,44 @@ function AppNavInner({
   };
 
   const openInbox = () => {
+    setNotificationsOpen(false);
     setInboxOpen(true);
   };
 
-  const inboxButton = (
-    <button
-      type="button"
-      className={
-        inboxOpen || pathname === "/inbox"
-          ? "btn-secondary is-active"
-          : "btn-secondary"
-      }
-      aria-expanded={inboxOpen}
-      onClick={openInbox}
-    >
-      Inbox
-    </button>
+  const openNotifications = () => {
+    setInboxOpen(false);
+    setNotificationsOpen(true);
+  };
+
+  const inboxButtonIcon = (
+    <InboxNavButton open={inboxOpen} onOpen={openInbox} />
   );
 
-  const drawer = (
-    <InboxDrawer
-      open={inboxOpen}
-      onClose={closeInbox}
-      initialUserId={activeDmUserId}
-      onOpenedTarget={clearDmQuery}
+  const notificationButton = (
+    <NotificationsNavButton
+      open={notificationsOpen}
+      onOpen={openNotifications}
     />
+  );
+
+  const drawers = (
+    <>
+      <ConnectedInboxDrawer
+        open={inboxOpen}
+        onClose={closeInbox}
+        initialUserId={activeDmUserId}
+        onOpenedTarget={clearDmQuery}
+      />
+      <NotificationsDrawer
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+      />
+    </>
   );
 
   if (variant === "feed") {
     return (
-      <>
+      <NotificationsProvider>
         <header className="landing-nav">
           <Logo />
           <div className="landing-nav-actions">
@@ -112,14 +259,42 @@ function AppNavInner({
             <Link className="btn-secondary" href="/rooms">
               Rooms
             </Link>
-            {inboxButton}
+            {inboxButtonIcon}
+            {notificationButton}
             <Link className="btn-primary" href="/profile">
               Profile
             </Link>
           </div>
         </header>
-        {drawer}
-      </>
+        {drawers}
+      </NotificationsProvider>
+    );
+  }
+
+  if (variant === "rooms") {
+    return (
+      <NotificationsProvider>
+        <header className="landing-nav room-select-nav">
+          <Logo />
+          <div className="landing-nav-actions room-select-nav-actions">
+            <ThemeSwitch />
+            <Link
+              className={
+                pathname === "/feed" ? "btn-secondary is-active" : "btn-secondary"
+              }
+              href="/feed"
+            >
+              Feed
+            </Link>
+            {inboxButtonIcon}
+            {notificationButton}
+            <Link className="btn-primary" href="/profile">
+              Profile
+            </Link>
+          </div>
+        </header>
+        {drawers}
+      </NotificationsProvider>
     );
   }
 
@@ -130,7 +305,7 @@ function AppNavInner({
     ] as const;
 
     return (
-      <>
+      <NotificationsProvider>
         <header className="landing-nav">
           <Logo />
           <nav className="landing-nav-actions profile-nav-pills" aria-label="Main">
@@ -148,7 +323,8 @@ function AppNavInner({
                 </Link>
               );
             })}
-            {inboxButton}
+            {inboxButtonIcon}
+            {notificationButton}
             <button
               type="button"
               className="btn-primary"
@@ -160,8 +336,8 @@ function AppNavInner({
             </button>
           </nav>
         </header>
-        {drawer}
-      </>
+        {drawers}
+      </NotificationsProvider>
     );
   }
 
