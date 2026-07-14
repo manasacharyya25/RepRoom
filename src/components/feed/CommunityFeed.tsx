@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { FEED_POSTS, type FeedPost } from "@/lib/feed-posts";
 import { LIVE_IMAGES } from "@/lib/live-images";
 
@@ -63,31 +64,17 @@ function PostMedia({
 
   if (post.kind === "transform") {
     return (
-      <div className="feed-post-transform">
-        <div className="feed-post-transform-half">
-          <Image
-            alt=""
-            className="feed-post-image"
-            fill
-            priority={priority}
-            sizes={sizes}
-            src={post.beforeImage}
-          />
-          <span className="feed-post-transform-label">Day 1</span>
-        </div>
-        <div className="feed-post-transform-half">
-          <Image
-            alt=""
-            className="feed-post-image"
-            fill
-            sizes={sizes}
-            src={post.afterImage}
-          />
-          <span className="feed-post-transform-label">Day 60</span>
-        </div>
-        <span className="feed-post-transform-handle" aria-hidden>
-          ⇔
-        </span>
+      <div
+        className="feed-post-transform"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <BeforeAfterSlider
+          afterLabel="Day 60"
+          afterSrc={post.afterImage}
+          beforeLabel="Day 1"
+          beforeSrc={post.beforeImage}
+        />
       </div>
     );
   }

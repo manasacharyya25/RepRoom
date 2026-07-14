@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import type { ComposerPublishPayload } from "@/components/profile/ProfileComposer";
 
 type PostUploadPreviewProps = {
@@ -129,26 +130,12 @@ export function PostUploadPreview({
           </div>
         </div>
 
-        {isTransform ? (
-          <div className="feed-post-transform post-upload-media">
-            <div className="feed-post-transform-half">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt=""
-                className="post-upload-image"
-                src={payload.beforeImage}
-              />
-              <span className="feed-post-transform-label">Before</span>
-            </div>
-            <div className="feed-post-transform-half">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt=""
-                className="post-upload-image"
-                src={payload.afterImage}
-              />
-              <span className="feed-post-transform-label">After</span>
-            </div>
+        {isTransform && payload.beforeImage && payload.afterImage ? (
+          <div className="post-upload-media">
+            <BeforeAfterSlider
+              afterSrc={payload.afterImage}
+              beforeSrc={payload.beforeImage}
+            />
           </div>
         ) : cover ? (
           <div className="post-upload-media">

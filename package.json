@@ -17,6 +17,7 @@
     "livekit-server-sdk": "^2.13.4",
     "next": "^15.4.2",
     "react": "^19.1.0",
+    "react-compare-slider": "^4.0.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {

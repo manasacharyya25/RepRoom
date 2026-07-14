@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import {
   ProfileComposer,
   type ComposerPublishPayload
@@ -326,32 +327,11 @@ function ProfilePostModal({
           {post.kind === "transform" &&
           post.beforeImage &&
           post.afterImage ? (
-            <div className="feed-post-transform">
-              <div className="feed-post-transform-half">
-                <Image
-                  alt="Before"
-                  className="feed-post-image"
-                  fill
-                  priority
-                  sizes="(max-width: 900px) 50vw, 320px"
-                  src={post.beforeImage}
-                  unoptimized={post.beforeImage.startsWith("blob:")}
-                />
-                <span className="feed-post-transform-label">Before</span>
-              </div>
-              <div className="feed-post-transform-half">
-                <Image
-                  alt="After"
-                  className="feed-post-image"
-                  fill
-                  priority
-                  sizes="(max-width: 900px) 50vw, 320px"
-                  src={post.afterImage}
-                  unoptimized={post.afterImage.startsWith("blob:")}
-                />
-                <span className="feed-post-transform-label">After</span>
-              </div>
-            </div>
+            <BeforeAfterSlider
+              afterSrc={post.afterImage}
+              beforeSrc={post.beforeImage}
+              className="before-after-slider--modal"
+            />
           ) : post.image ? (
             <div className="feed-post-media feed-post-media--portrait">
               <Image
@@ -947,28 +927,11 @@ export function ProfilePage({
                     {post.kind === "transform" &&
                     post.beforeImage &&
                     post.afterImage ? (
-                      <div className="profile-post-transform">
-                        <div className="profile-post-transform-half">
-                          <Image
-                            alt=""
-                            className="profile-post-image"
-                            fill
-                            sizes="80px"
-                            src={post.beforeImage}
-                            unoptimized={post.beforeImage.startsWith("blob:")}
-                          />
-                        </div>
-                        <div className="profile-post-transform-half">
-                          <Image
-                            alt=""
-                            className="profile-post-image"
-                            fill
-                            sizes="80px"
-                            src={post.afterImage}
-                            unoptimized={post.afterImage.startsWith("blob:")}
-                          />
-                        </div>
-                      </div>
+                      <BeforeAfterSlider
+                        afterSrc={post.afterImage}
+                        beforeSrc={post.beforeImage}
+                        className="before-after-slider--thumb"
+                      />
                     ) : (
                       <Image
                         alt=""
