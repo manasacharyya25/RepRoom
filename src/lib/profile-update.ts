@@ -18,6 +18,11 @@ export type UpdateProfileInput = {
   bio: string;
   avatarUrl: string | null;
   avatarFile: File | null;
+  instagramUrl: string | null;
+  tiktokUrl: string | null;
+  youtubeUrl: string | null;
+  xUrl: string | null;
+  websiteUrl: string | null;
   goals: EditableGoalInput[];
 };
 
@@ -79,7 +84,12 @@ export async function updateProfileAndGoals(
       display_name: displayName,
       username: handle,
       bio: input.bio.trim() || null,
-      avatar_url: avatarUrl
+      avatar_url: avatarUrl,
+      instagram_url: input.instagramUrl,
+      tiktok_url: input.tiktokUrl,
+      youtube_url: input.youtubeUrl,
+      x_url: input.xUrl,
+      website_url: input.websiteUrl
     })
     .eq("id", user.id)
     .select("*")

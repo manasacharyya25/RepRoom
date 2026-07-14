@@ -9,6 +9,10 @@ import {
   resolveGoalProgress
 } from "@/lib/profile-format";
 import { updateProfileAndGoals } from "@/lib/profile-update";
+import {
+  normalizeSocialLinks,
+  socialLinkInputValue
+} from "@/lib/social-links";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
 import type { Goal, Profile, ProfileViewModel } from "@/lib/types/profile";
@@ -72,6 +76,17 @@ export function ProfileEditDrawer({
   const [displayName, setDisplayName] = useState(profile.display_name ?? "");
   const [username, setUsername] = useState(profile.username ?? "");
   const [bio, setBio] = useState(profile.bio ?? "");
+  const [instagram, setInstagram] = useState(
+    socialLinkInputValue(profile.instagram_url)
+  );
+  const [tiktok, setTiktok] = useState(socialLinkInputValue(profile.tiktok_url));
+  const [youtube, setYoutube] = useState(
+    socialLinkInputValue(profile.youtube_url)
+  );
+  const [xLink, setXLink] = useState(socialLinkInputValue(profile.x_url));
+  const [website, setWebsite] = useState(
+    socialLinkInputValue(profile.website_url)
+  );
   const [avatarUrl, setAvatarUrl] = useState(
     profile.avatar_url || DEFAULT_AVATARS[3]
   );
@@ -87,6 +102,11 @@ export function ProfileEditDrawer({
     setDisplayName(profile.display_name ?? "");
     setUsername(profile.username ?? "");
     setBio(profile.bio ?? "");
+    setInstagram(socialLinkInputValue(profile.instagram_url));
+    setTiktok(socialLinkInputValue(profile.tiktok_url));
+    setYoutube(socialLinkInputValue(profile.youtube_url));
+    setXLink(socialLinkInputValue(profile.x_url));
+    setWebsite(socialLinkInputValue(profile.website_url));
     setAvatarUrl(profile.avatar_url || DEFAULT_AVATARS[3]);
     setPreviewUrl(null);
     setAvatarFile(null);
@@ -191,6 +211,14 @@ export function ProfileEditDrawer({
         };
       });
 
+      const social = normalizeSocialLinks({
+        instagram,
+        tiktok,
+        youtube,
+        x: xLink,
+        website
+      });
+
       const result = await updateProfileAndGoals(supabase, {
         displayName: displayName.trim(),
         username: handle,
@@ -200,6 +228,11 @@ export function ProfileEditDrawer({
             ? previewUrl
             : avatarUrl,
         avatarFile,
+        instagramUrl: social.instagram_url,
+        tiktokUrl: social.tiktok_url,
+        youtubeUrl: social.youtube_url,
+        xUrl: social.x_url,
+        websiteUrl: social.website_url,
         goals: parsedGoals
       });
 
@@ -384,6 +417,64 @@ export function ProfileEditDrawer({
                 rows={3}
                 disabled={saving}
                 onChange={(event) => setBio(event.target.value)}
+              />
+            </label>
+          </section>
+
+          <section className="profile-edit-section">
+            <h3>Social links</h3>
+            <p className="profile-edit-section-hint">
+              Optional. Add handles or full URLs — plus one personal website.
+            </p>
+            <label className="profile-edit-field">
+              <span>Instagram</span>
+              <input
+                value={instagram}
+                maxLength={120}
+                disabled={saving}
+                placeholder="@you or instagram.com/you"
+                onChange={(event) => setInstagram(event.target.value)}
+              />
+            </label>
+            <label className="profile-edit-field">
+              <span>TikTok</span>
+              <input
+                value={tiktok}
+                maxLength={120}
+                disabled={saving}
+                placeholder="@you or tiktok.com/@you"
+                onChange={(event) => setTiktok(event.target.value)}
+              />
+            </label>
+            <label className="profile-edit-field">
+              <span>YouTube</span>
+              <input
+                value={youtube}
+                maxLength={160}
+                disabled={saving}
+                placeholder="@channel or youtube.com/@you"
+                onChange={(event) => setYoutube(event.target.value)}
+              />
+            </label>
+            <label className="profile-edit-field">
+              <span>X</span>
+              <input
+                value={xLink}
+                maxLength={120}
+                disabled={saving}
+                placeholder="@you or x.com/you"
+                onChange={(event) => setXLink(event.target.value)}
+              />
+            </label>
+            <label className="profile-edit-field">
+              <span>Website</span>
+              <input
+                value={website}
+                maxLength={200}
+                disabled={saving}
+                placeholder="https://yoursite.com"
+                inputMode="url"
+                onChange={(event) => setWebsite(event.target.value)}
               />
             </label>
           </section>

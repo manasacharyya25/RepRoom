@@ -10,6 +10,7 @@ import {
 } from "@/components/profile/ProfileComposer";
 import { PostUploadPreview } from "@/components/profile/PostUploadPreview";
 import { ProfileEditDrawer } from "@/components/profile/ProfileEditDrawer";
+import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   formatGoalDetail,
@@ -1136,8 +1137,11 @@ export function ProfilePage({
           </div>
           <div className="profile-identity-copy">
             <div className="profile-identity-copy-head">
-              <div>
-                <h1>{displayName}</h1>
+              <div className="profile-identity-copy-main">
+                <div className="profile-identity-name-row">
+                  <h1>{displayName}</h1>
+                  <ProfileSocialLinks links={profileData?.profile} />
+                </div>
                 <p className="profile-handle">{handle}</p>
               </div>
               <button

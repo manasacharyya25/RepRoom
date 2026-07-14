@@ -22,6 +22,11 @@ export type Profile = {
   height_cm: number | null;
   current_weight_kg: number | null;
   weight_unit: WeightUnit;
+  instagram_url: string | null;
+  tiktok_url: string | null;
+  youtube_url: string | null;
+  x_url: string | null;
+  website_url: string | null;
   onboarding_completed_at: string | null;
   created_at: string;
   updated_at: string;
