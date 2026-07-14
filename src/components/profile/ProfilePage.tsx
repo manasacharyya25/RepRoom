@@ -1,13 +1,19 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ProfileComposer,
+  type ComposerPublishPayload
+} from "@/components/profile/ProfileComposer";
+import { PostUploadPreview } from "@/components/profile/PostUploadPreview";
 import { ProfileEditDrawer } from "@/components/profile/ProfileEditDrawer";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   formatGoalDetail,
   resolveGoalProgress
 } from "@/lib/profile-format";
+import { categoryLabel, type PostCategory, type PostKind } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
@@ -21,8 +27,14 @@ type ProfileGoalCard = {
 
 type SelfPost = {
   id: string;
+  kind: PostKind;
+  category: PostCategory;
   caption: string;
   image?: string;
+  beforeImage?: string;
+  afterImage?: string;
+  location?: string;
+  tags?: string[];
   createdAt: string;
   likes: number;
   comments: number;
@@ -52,6 +64,8 @@ const INITIAL_GOALS: ProfileGoalCard[] = [
 const INITIAL_POSTS: SelfPost[] = [
   {
     id: "p1",
+    kind: "standard",
+    category: "achievement",
     caption: "Heavy day done. Showing up matters more than perfect form every time.",
     image: LIVE_IMAGES.participant4,
     createdAt: "2h ago",
@@ -60,6 +74,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p2",
+    kind: "standard",
+    category: "meal_prep",
     caption: "Meal prep locked for the week. Consistency over perfection.",
     image: LIVE_IMAGES.participant8,
     createdAt: "Yesterday",
@@ -68,6 +84,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p3",
+    kind: "standard",
+    category: "motivation",
     caption: "Morning flow with the yoga room. Feeling reset.",
     image: LIVE_IMAGES.participant1,
     createdAt: "3 days ago",
@@ -76,6 +94,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p4",
+    kind: "standard",
+    category: "pump_check",
     caption: "Cardio finishers hit different when the room is hyped.",
     image: LIVE_IMAGES.participant6,
     createdAt: "4 days ago",
@@ -84,6 +104,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p5",
+    kind: "standard",
+    category: "achievement",
     caption: "New PR on deadlift. Slow progress still counts.",
     image: LIVE_IMAGES.participant3,
     createdAt: "5 days ago",
@@ -92,13 +114,19 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p6",
+    kind: "transform",
+    category: "transformation",
     caption: "Recovery walk + stretch. Rest is part of the plan.",
+    beforeImage: LIVE_IMAGES.participant2,
+    afterImage: LIVE_IMAGES.participant4,
     createdAt: "1 week ago",
     likes: 14,
     comments: 1
   },
   {
     id: "p7",
+    kind: "standard",
+    category: "fit_check",
     caption: "Zumba night was chaotic in the best way.",
     image: LIVE_IMAGES.sidebar1,
     createdAt: "1 week ago",
@@ -107,6 +135,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p8",
+    kind: "standard",
+    category: "meal_prep",
     caption: "Tracking protein for the next 14 days. Accountability unlocked.",
     image: LIVE_IMAGES.participant7,
     createdAt: "8 days ago",
@@ -115,6 +145,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p9",
+    kind: "standard",
+    category: "motivation",
     caption: "First private room session with my buddies. We showed up.",
     image: LIVE_IMAGES.sidebar2,
     createdAt: "2 weeks ago",
@@ -123,6 +155,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p10",
+    kind: "standard",
+    category: "pump_check",
     caption: "Early gym, empty racks, perfect playlist.",
     image: LIVE_IMAGES.participant2,
     createdAt: "2 weeks ago",
@@ -131,6 +165,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p11",
+    kind: "standard",
+    category: "motivation",
     caption: "Meditation room helped me reset after a long week.",
     image: LIVE_IMAGES.participant5,
     createdAt: "3 weeks ago",
@@ -139,6 +175,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p12",
+    kind: "standard",
+    category: "fit_check",
     caption: "Shared a form check. Got great feedback from the room.",
     image: LIVE_IMAGES.sidebar3,
     createdAt: "3 weeks ago",
@@ -147,13 +185,18 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p13",
+    kind: "standard",
+    category: "achievement",
     caption: "Hit my weekly goal streak. Small wins add up.",
+    image: LIVE_IMAGES.participant4,
     createdAt: "1 month ago",
     likes: 26,
     comments: 3
   },
   {
     id: "p14",
+    kind: "standard",
+    category: "weight_check",
     caption: "Leg day leftovers. Walking downstairs is a sport.",
     image: LIVE_IMAGES.participant8,
     createdAt: "1 month ago",
@@ -162,6 +205,8 @@ const INITIAL_POSTS: SelfPost[] = [
   },
   {
     id: "p15",
+    kind: "standard",
+    category: "pump_check",
     caption: "Joined a live cardio room at midnight. Worth it.",
     image: LIVE_IMAGES.participant6,
     createdAt: "1 month ago",
@@ -278,7 +323,36 @@ function ProfilePostModal({
         </button>
 
         <div className="feed-post-modal-media">
-          {post.image ? (
+          {post.kind === "transform" &&
+          post.beforeImage &&
+          post.afterImage ? (
+            <div className="feed-post-transform">
+              <div className="feed-post-transform-half">
+                <Image
+                  alt="Before"
+                  className="feed-post-image"
+                  fill
+                  priority
+                  sizes="(max-width: 900px) 50vw, 320px"
+                  src={post.beforeImage}
+                  unoptimized={post.beforeImage.startsWith("blob:")}
+                />
+                <span className="feed-post-transform-label">Before</span>
+              </div>
+              <div className="feed-post-transform-half">
+                <Image
+                  alt="After"
+                  className="feed-post-image"
+                  fill
+                  priority
+                  sizes="(max-width: 900px) 50vw, 320px"
+                  src={post.afterImage}
+                  unoptimized={post.afterImage.startsWith("blob:")}
+                />
+                <span className="feed-post-transform-label">After</span>
+              </div>
+            </div>
+          ) : post.image ? (
             <div className="feed-post-media feed-post-media--portrait">
               <Image
                 alt=""
@@ -321,7 +395,28 @@ function ProfilePostModal({
               </div>
             </div>
 
+            <p className="feed-post-category-pill">
+              {categoryLabel(post.category)}
+            </p>
             <p className="feed-post-caption">{post.caption}</p>
+            {post.location || (post.tags && post.tags.length > 0) ? (
+              <div className="feed-post-extras">
+                {post.location ? (
+                  <p className="feed-post-location">
+                    <span aria-hidden>📍</span> {post.location}
+                  </p>
+                ) : null}
+                {post.tags && post.tags.length > 0 ? (
+                  <div className="feed-post-tags">
+                    {post.tags.map((tag) => (
+                      <span className="feed-post-tag" key={tag}>
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="feed-post-actions">
               <button
@@ -426,14 +521,9 @@ export function ProfilePage({
 }: {
   initialData?: ProfileViewModel | null;
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const gifInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const identityRef = useRef<HTMLElement>(null);
   const identityBodyRef = useRef<HTMLDivElement>(null);
-  const composerRef = useRef<HTMLDivElement>(null);
-  const [draft, setDraft] = useState("");
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const goalsPanelRef = useRef<HTMLElement>(null);
   const [posts, setPosts] = useState<SelfPost[]>(INITIAL_POSTS);
   const [profileData, setProfileData] = useState<ProfileViewModel | null>(
     initialData
@@ -441,12 +531,14 @@ export function ProfilePage({
   const [goals, setGoals] = useState<ProfileGoalCard[]>(() =>
     initialData ? mapGoalsToCards(initialData.goals) : INITIAL_GOALS
   );
-  const [showEmojis, setShowEmojis] = useState(false);
-  const [showGoals, setShowGoals] = useState(false);
   const [visiblePostCount, setVisiblePostCount] = useState(POSTS_PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [uploadPreview, setUploadPreview] =
+    useState<ComposerPublishPayload | null>(null);
+  const uploadPreviewRef = useRef<ComposerPublishPayload | null>(null);
+  uploadPreviewRef.current = uploadPreview;
 
   useEffect(() => {
     setProfileData(initialData);
@@ -534,21 +626,22 @@ export function ProfilePage({
   useEffect(() => {
     const identity = identityRef.current;
     const identityBody = identityBodyRef.current;
-    const composer = composerRef.current;
-    if (!identity || !identityBody || !composer) return;
+    const goalsPanel = goalsPanelRef.current;
+    if (!identity || !identityBody) return;
 
     const syncHeight = () => {
       if (window.matchMedia("(max-width: 960px)").matches) {
         identity.style.height = "";
-        composer.style.height = "";
+        if (goalsPanel) goalsPanel.style.height = "";
         return;
       }
 
       identity.style.height = "auto";
+      if (goalsPanel) goalsPanel.style.height = "auto";
       const bodyHeight = identityBody.getBoundingClientRect().height;
       const totalHeight = bodyHeight / 0.9;
       identity.style.height = `${totalHeight}px`;
-      composer.style.height = `${totalHeight}px`;
+      if (goalsPanel) goalsPanel.style.height = `${totalHeight}px`;
     };
 
     syncHeight();
@@ -560,12 +653,7 @@ export function ProfilePage({
       observer.disconnect();
       window.removeEventListener("resize", syncHeight);
     };
-  }, [displayName, bio, handle, avatarSrc, hoursWorked, hoursGoal, dayStreak]);
-
-  const canPost = useMemo(
-    () => draft.trim().length > 0 || Boolean(previewUrl),
-    [draft, previewUrl]
-  );
+  }, [displayName, bio, handle, avatarSrc, hoursWorked, hoursGoal, dayStreak, goals]);
 
   const visiblePosts = useMemo(
     () => posts.slice(0, visiblePostCount),
@@ -585,46 +673,18 @@ export function ProfilePage({
     }, 350);
   };
 
-  const clearComposer = () => {
-    setDraft("");
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
-    setShowEmojis(false);
-    setShowGoals(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    if (gifInputRef.current) gifInputRef.current.value = "";
+  const publish = (payload: ComposerPublishPayload) => {
+    setUploadPreview(payload);
   };
 
-  const onSelectImage = (file: File | null) => {
-    if (!file) return;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(file));
-  };
-
-  const insertAtCursor = (snippet: string) => {
-    const el = textareaRef.current;
-    if (!el) {
-      setDraft((prev) => `${prev}${snippet}`);
-      return;
-    }
-    const start = el.selectionStart ?? draft.length;
-    const end = el.selectionEnd ?? draft.length;
-    const next = `${draft.slice(0, start)}${snippet}${draft.slice(end)}`;
-    setDraft(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const cursor = start + snippet.length;
-      el.setSelectionRange(cursor, cursor);
-    });
-  };
-
-  const publish = () => {
-    if (!canPost) return;
+  const finishUpload = useCallback(() => {
+    const current = uploadPreviewRef.current;
+    if (!current) return;
+    setUploadPreview(null);
     setPosts((prev) => [
       {
         id: `local-${Date.now()}`,
-        caption: draft.trim() || "New update",
-        image: previewUrl ?? undefined,
+        ...current,
         createdAt: "Just now",
         likes: 0,
         comments: 0
@@ -632,8 +692,7 @@ export function ProfilePage({
       ...prev
     ]);
     setVisiblePostCount((count) => Math.max(count, POSTS_PAGE_SIZE));
-    clearComposer();
-  };
+  }, []);
 
   return (
     <div className="profile-page">
@@ -829,262 +888,34 @@ export function ProfilePage({
             </div>
         </aside>
 
-        <div className="profile-composer" ref={composerRef}>
-          <div className="profile-compose-main">
-            <h2>Share an update</h2>
-            <textarea
-              ref={textareaRef}
-              className="profile-composer-input"
-              placeholder="What's happening?"
-              rows={3}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-            />
-
-            {previewUrl ? (
-              <div className="profile-composer-preview">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  alt=""
-                  src={previewUrl}
-                  className="profile-composer-preview-image"
-                />
-                <button
-                  type="button"
-                  className="profile-composer-remove"
-                  onClick={() => {
-                    if (previewUrl) URL.revokeObjectURL(previewUrl);
-                    setPreviewUrl(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                    if (gifInputRef.current) gifInputRef.current.value = "";
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="profile-compose-toolbar">
-            <div className="profile-compose-tools">
-              <input
-                ref={fileInputRef}
-                className="sr-only"
-                type="file"
-                accept="image/*"
-                onChange={(event) => onSelectImage(event.target.files?.[0] ?? null)}
-              />
-              <input
-                ref={gifInputRef}
-                className="sr-only"
-                type="file"
-                accept="image/gif"
-                onChange={(event) => onSelectImage(event.target.files?.[0] ?? null)}
-              />
-
-              <button
-                type="button"
-                className="profile-compose-tool"
-                aria-label="Add image"
-                title="Image"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden>
-                  <path d="M3 6.75A2.75 2.75 0 0 1 5.75 4h12.5A2.75 2.75 0 0 1 21 6.75v10.5A2.75 2.75 0 0 1 18.25 20H5.75A2.75 2.75 0 0 1 3 17.25V6.75Zm2.75-.25a.25.25 0 0 0-.25.25v7.19l2.72-2.72a1.75 1.75 0 0 1 2.47 0l1.53 1.53 3.22-3.22a1.75 1.75 0 0 1 2.47 0L20.5 12.7V6.75a.25.25 0 0 0-.25-.25H5.75Zm0 10.75h12.5a.25.25 0 0 0 .25-.25v-2.19l-3.47-3.47a.25.25 0 0 0-.35 0l-3.4 3.4a.75.75 0 0 1-1.06 0l-1.53-1.53a.25.25 0 0 0-.35 0L5.5 16.81v.44c0 .138.112.25.25.25ZM15 9.25a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Z" />
-                </svg>
-              </button>
-
-              <button
-                type="button"
-                className="profile-compose-tool"
-                aria-label="Add GIF"
-                title="GIF"
-                onClick={() => gifInputRef.current?.click()}
-              >
-                <span className="profile-compose-gif">GIF</span>
-              </button>
-
-              <button
-                type="button"
-                className="profile-compose-tool"
-                aria-label="Add poll"
-                title="Poll"
-                onClick={() =>
-                  insertAtCursor("\n📊 Poll\n• Option 1\n• Option 2\n")
-                }
-              >
-                <svg viewBox="0 0 24 24" aria-hidden>
-                  <path d="M5 4.75A.75.75 0 0 1 5.75 4h2.5a.75.75 0 0 1 .75.75v14.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1-.75-.75V4.75Zm5.5 5A.75.75 0 0 1 11.25 9h2.5a.75.75 0 0 1 .75.75v9.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1-.75-.75v-9.5Zm5.5-3A.75.75 0 0 1 16.75 6h2.5a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1-.75-.75V6.75Z" />
-                </svg>
-              </button>
-
-              <button
-                type="button"
-                className="profile-compose-tool"
-                aria-label="Add bullets"
-                title="Bullets"
-                onClick={() => insertAtCursor("\n• ")}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden>
-                  <path d="M7.5 6.5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0ZM10 6.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75ZM7.5 12a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2.5-.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75ZM7.5 17.5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2.5-.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Z" />
-                </svg>
-              </button>
-
-              <div className="profile-compose-tool-wrap">
-                <button
-                  type="button"
-                  className="profile-compose-tool"
-                  aria-label="Add emoji"
-                  title="Emoji"
-                  aria-expanded={showEmojis}
-                  onClick={() => {
-                    setShowGoals(false);
-                    setShowEmojis((open) => !open);
-                  }}
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden>
-                    <path d="M12 3.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Zm0 1.5a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm-3.25 5.25a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2Zm6.5 0a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2ZM8.8 14.2a.75.75 0 0 1 1.05.1 3.25 3.25 0 0 0 5.3 0 .75.75 0 1 1 1.15.96 4.75 4.75 0 0 1-7.6 0 .75.75 0 0 1 .1-1.06Z" />
-                  </svg>
-                </button>
-                {showEmojis ? (
-                  <div className="profile-compose-popover" role="listbox" aria-label="Emojis">
-                    {["💪", "🔥", "😊", "🏃", "🧘", "✅", "🎯", "❤️"].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        className="profile-compose-emoji"
-                        onClick={() => {
-                          insertAtCursor(emoji);
-                          setShowEmojis(false);
-                        }}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
+        <aside className="profile-goals-panel" ref={goalsPanelRef}>
+          <div className="profile-goals">
+            {goals.length > 0 ? (
+              goals.map((goal) => (
+                <article className="profile-goal-card" key={goal.id}>
+                  <div className="profile-goal-top">
+                    <strong>{goal.title}</strong>
+                    <span className="profile-goal-detail">{goal.detail}</span>
+                    <span className="profile-goal-pct">{goal.progress}%</span>
                   </div>
-                ) : null}
-              </div>
-
-              <button
-                type="button"
-                className="profile-compose-tool"
-                aria-label="Schedule"
-                title="Schedule"
-                onClick={() => insertAtCursor(" 🗓️ ")}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden>
-                  <path d="M7.75 3a.75.75 0 0 1 .75.75V5h7V3.75a.75.75 0 0 1 1.5 0V5h.75A2.75 2.75 0 0 1 20.5 7.75v10.5A2.75 2.75 0 0 1 17.75 21H6.25A2.75 2.75 0 0 1 3.5 18.25V7.75A2.75 2.75 0 0 1 6.25 5H7V3.75A.75.75 0 0 1 7.75 3ZM5 9.5h14v8.75c0 .69-.56 1.25-1.25 1.25H6.25c-.69 0-1.25-.56-1.25-1.25V9.5Z" />
-                </svg>
-              </button>
-
-              <div className="profile-compose-tool-wrap">
-                <button
-                  type="button"
-                  className="profile-compose-tool"
-                  aria-label="Set a goal"
-                  title="Goal"
-                  aria-expanded={showGoals}
-                  onClick={() => {
-                    setShowEmojis(false);
-                    setShowGoals((open) => !open);
-                  }}
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden>
-                    <path d="M5.5 3.75A.75.75 0 0 1 6.25 3h9.5a.75.75 0 0 1 .53.22l3.5 3.5a.75.75 0 0 1-.53 1.28H16.5v11.25a.75.75 0 0 1-1.2.6l-3.3-2.48-3.3 2.48a.75.75 0 0 1-1.2-.6V8H6.25a.75.75 0 0 1-.75-.75v-3.5ZM9 8v9.05l2.55-1.92a.75.75 0 0 1 .9 0L15 17.05V8H9Zm7.5-1.5h1.94L16.5 4.56V6.5ZM7.5 4.5v2H15V4.5H7.5Z" />
-                  </svg>
-                </button>
-                {showGoals ? (
-                  <div className="profile-compose-popover profile-compose-popover--goals">
-                    {goals.map((goal) => (
-                      <button
-                        key={goal.id}
-                        type="button"
-                        className="profile-compose-goal-option"
-                        onClick={() => {
-                          insertAtCursor(`🎯 Goal: ${goal.title} (${goal.progress}%) `);
-                          setShowGoals(false);
-                        }}
-                      >
-                        <strong>{goal.title}</strong>
-                        <span>{goal.progress}%</span>
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="profile-compose-goal-option is-create"
-                      onClick={() => {
-                        const title = "New weekly goal";
-                        setGoals((prev) => [
-                          {
-                            id: `g-${Date.now()}`,
-                            title,
-                            progress: 0,
-                            detail: "Just set"
-                          },
-                          ...prev
-                        ]);
-                        insertAtCursor(`🎯 Goal set: ${title} `);
-                        setShowGoals(false);
-                      }}
-                    >
-                      + Create new goal
-                    </button>
+                  <div className="profile-goal-track" aria-hidden>
+                    <span
+                      className="profile-goal-fill"
+                      style={{ width: `${goal.progress}%` }}
+                    />
                   </div>
-                ) : null}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="profile-compose-post"
-              disabled={!canPost}
-              onClick={publish}
-            >
-              Post
-            </button>
+                </article>
+              ))
+            ) : (
+              <p className="profile-goals-empty">
+                No goals yet. Add some from Edit on your profile.
+              </p>
+            )}
           </div>
-        </div>
+        </aside>
       </section>
 
-      <section className="profile-section">
-        <div className="profile-section-head">
-          <h2>Goals</h2>
-          <div className="profile-section-head-actions">
-            <span>Stay accountable</span>
-            <button
-              type="button"
-              className="btn-ghost profile-section-edit"
-              onClick={() => setEditOpen(true)}
-              disabled={!profileData}
-            >
-              Edit
-            </button>
-          </div>
-        </div>
-        <div className="profile-goals">
-          {goals.length > 0 ? (
-            goals.map((goal) => (
-              <article className="profile-goal-card" key={goal.id}>
-                <div className="profile-goal-top">
-                  <strong>{goal.title}</strong>
-                  <span>{goal.progress}%</span>
-                </div>
-                <div className="profile-goal-track" aria-hidden>
-                  <span
-                    className="profile-goal-fill"
-                    style={{ width: `${goal.progress}%` }}
-                  />
-                </div>
-                <p>{goal.detail}</p>
-              </article>
-            ))
-          ) : (
-            <p className="profile-goals-empty">
-              No goals yet. Finish onboarding or add one from the composer.
-            </p>
-          )}
-        </div>
-      </section>
+      <ProfileComposer onPublish={publish} />
 
       <section className="profile-section">
         <div className="profile-section-head">
@@ -1092,39 +923,90 @@ export function ProfilePage({
           <span>{posts.length} updates</span>
         </div>
         <div className="profile-posts">
-          {visiblePosts.map((post) => (
-            <button
-              type="button"
-              className="profile-post-card"
-              key={post.id}
-              onClick={() => setActivePostId(post.id)}
-            >
-              {post.image ? (
-                <div className="profile-post-media">
-                  <Image
-                    alt=""
-                    className="profile-post-image"
-                    fill
-                    sizes="160px"
-                    src={post.image}
-                    unoptimized={post.image.startsWith("blob:")}
-                  />
+          {visiblePosts.map((post) => {
+            const cover =
+              post.kind === "transform"
+                ? post.afterImage ?? post.beforeImage
+                : post.image;
+
+            return (
+              <button
+                type="button"
+                className="profile-post-card"
+                key={post.id}
+                onClick={() => setActivePostId(post.id)}
+              >
+                {cover ? (
+                  <div
+                    className={`profile-post-media${
+                      post.kind === "transform"
+                        ? " profile-post-media--transform"
+                        : ""
+                    }`}
+                  >
+                    {post.kind === "transform" &&
+                    post.beforeImage &&
+                    post.afterImage ? (
+                      <div className="profile-post-transform">
+                        <div className="profile-post-transform-half">
+                          <Image
+                            alt=""
+                            className="profile-post-image"
+                            fill
+                            sizes="80px"
+                            src={post.beforeImage}
+                            unoptimized={post.beforeImage.startsWith("blob:")}
+                          />
+                        </div>
+                        <div className="profile-post-transform-half">
+                          <Image
+                            alt=""
+                            className="profile-post-image"
+                            fill
+                            sizes="80px"
+                            src={post.afterImage}
+                            unoptimized={post.afterImage.startsWith("blob:")}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <Image
+                        alt=""
+                        className="profile-post-image"
+                        fill
+                        sizes="160px"
+                        src={cover}
+                        unoptimized={cover.startsWith("blob:")}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="profile-post-media profile-post-media--quote">
+                    <p>{post.caption}</p>
+                  </div>
+                )}
+                <div className="profile-post-body">
+                  <p className="profile-post-category">
+                    {categoryLabel(post.category)}
+                  </p>
+                  <p className="profile-post-caption">{post.caption}</p>
+                  {post.location || (post.tags && post.tags.length > 0) ? (
+                    <p className="profile-post-extras">
+                      {post.location ? <span>📍 {post.location}</span> : null}
+                      {post.tags?.slice(0, 2).map((tag) => (
+                        <span key={tag}>#{tag}</span>
+                      ))}
+                    </p>
+                  ) : null}
+                  <div className="profile-post-meta">
+                    <span>{post.createdAt}</span>
+                    <span>♥ {post.likes}</span>
+                    <span>💬 {post.comments}</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="profile-post-media profile-post-media--quote">
-                  <p>{post.caption}</p>
-                </div>
-              )}
-              <div className="profile-post-body">
-                <p className="profile-post-caption">{post.caption}</p>
-                <div className="profile-post-meta">
-                  <span>{post.createdAt}</span>
-                  <span>♥ {post.likes}</span>
-                  <span>💬 {post.comments}</span>
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
 
         <div className="feed-load-more">
@@ -1142,6 +1024,16 @@ export function ProfilePage({
           )}
         </div>
       </section>
+
+      {uploadPreview ? (
+        <PostUploadPreview
+          payload={uploadPreview}
+          author={displayName}
+          handle={handle}
+          avatarSrc={avatarSrc}
+          onComplete={finishUpload}
+        />
+      ) : null}
 
       {activePost ? (
         <ProfilePostModal
