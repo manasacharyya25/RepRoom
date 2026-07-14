@@ -976,22 +976,34 @@
 }
 
 .profile-post-media--quote {
+  position: relative;
   display: grid;
   place-items: center;
   height: 64px;
-  padding: 8px;
+  padding: 14px 8px 8px;
   background:
-    radial-gradient(circle at 20% 20%, var(--accent-soft), transparent 55%),
-    var(--bg-elevated);
+    radial-gradient(circle at 18% 0%, rgba(255, 92, 43, 0.28), transparent 52%),
+    linear-gradient(160deg, #1c1c22, #121216);
+}
+
+.profile-post-quote-mark {
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  color: var(--accent);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.95;
 }
 
 .profile-post-media--quote p {
   margin: 0;
   color: var(--text);
-  font-size: 0.65rem;
-  font-weight: 600;
+  font-size: 0.62rem;
+  font-weight: 700;
   line-height: 1.3;
-  text-align: center;
+  text-align: left;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;

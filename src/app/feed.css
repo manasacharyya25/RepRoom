@@ -298,8 +298,7 @@ html:has(.feed-page) body::-webkit-scrollbar {
 }
 
 .feed-post-modal-media .feed-post-media,
-.feed-post-modal-media .feed-post-transform,
-.feed-post-modal-media .feed-post-quote {
+.feed-post-modal-media .feed-post-transform {
   height: 100%;
   min-height: 0;
   max-height: none;
@@ -324,9 +323,21 @@ html:has(.feed-page) body::-webkit-scrollbar {
   height: 100%;
 }
 
-.feed-post-modal-media .feed-post-quote {
+.feed-post-modal-media .feed-post-quote,
+.feed-post-modal-media .motivation-quote-card {
+  height: 100%;
   min-height: 100%;
+  width: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: 0;
   align-content: center;
+  justify-items: start;
+  box-sizing: border-box;
+  padding: 48px 40px 40px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 92, 43, 0.28), transparent 52%),
+    linear-gradient(160deg, #1c1c22, #121216);
 }
 
 .feed-post-modal-side {
@@ -474,7 +485,8 @@ html:has(.feed-page) body::-webkit-scrollbar {
 
   .feed-post-modal-media .feed-post-media,
   .feed-post-modal-media .feed-post-transform,
-  .feed-post-modal-media .feed-post-quote {
+  .feed-post-modal-media .feed-post-quote,
+  .feed-post-modal-media .motivation-quote-card {
     min-height: 0;
     height: 100%;
   }

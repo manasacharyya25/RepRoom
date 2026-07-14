@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
 import {
   ProfileComposer,
   type ComposerPublishPayload
@@ -87,8 +88,7 @@ const INITIAL_POSTS: SelfPost[] = [
     id: "p3",
     kind: "standard",
     category: "motivation",
-    caption: "Morning flow with the yoga room. Feeling reset.",
-    image: LIVE_IMAGES.participant1,
+    caption: "There is no finish line — only the community that keeps you going.",
     createdAt: "3 days ago",
     likes: 18,
     comments: 2
@@ -148,8 +148,7 @@ const INITIAL_POSTS: SelfPost[] = [
     id: "p9",
     kind: "standard",
     category: "motivation",
-    caption: "First private room session with my buddies. We showed up.",
-    image: LIVE_IMAGES.sidebar2,
+    caption: "Show up for yourself — the feed will celebrate with you.",
     createdAt: "2 weeks ago",
     likes: 47,
     comments: 9
@@ -168,8 +167,7 @@ const INITIAL_POSTS: SelfPost[] = [
     id: "p11",
     kind: "standard",
     category: "motivation",
-    caption: "Meditation room helped me reset after a long week.",
-    image: LIVE_IMAGES.participant5,
+    caption: "Rest is part of the plan. Tomorrow you train again.",
     createdAt: "3 weeks ago",
     likes: 19,
     comments: 2
@@ -332,6 +330,8 @@ function ProfilePostModal({
               beforeSrc={post.beforeImage}
               className="before-after-slider--modal"
             />
+          ) : post.category === "motivation" ? (
+            <MotivationQuoteCard text={post.caption} />
           ) : post.image ? (
             <div className="feed-post-media feed-post-media--portrait">
               <Image
@@ -345,12 +345,7 @@ function ProfilePostModal({
               />
             </div>
           ) : (
-            <div className="feed-post-quote">
-              <span className="feed-post-quote-mark" aria-hidden>
-                “
-              </span>
-              <p>{post.caption}</p>
-            </div>
+            <MotivationQuoteCard text={post.caption} />
           )}
         </div>
 
@@ -378,7 +373,9 @@ function ProfilePostModal({
             <p className="feed-post-category-pill">
               {categoryLabel(post.category)}
             </p>
-            <p className="feed-post-caption">{post.caption}</p>
+            {post.category !== "motivation" ? (
+              <p className="feed-post-caption">{post.caption}</p>
+            ) : null}
             {post.location || (post.tags && post.tags.length > 0) ? (
               <div className="feed-post-extras">
                 {post.location ? (
@@ -904,8 +901,10 @@ export function ProfilePage({
         </div>
         <div className="profile-posts">
           {visiblePosts.map((post) => {
-            const cover =
-              post.kind === "transform"
+            const isMotivation = post.category === "motivation";
+            const cover = isMotivation
+              ? undefined
+              : post.kind === "transform"
                 ? post.afterImage ?? post.beforeImage
                 : post.image;
 
@@ -945,6 +944,9 @@ export function ProfilePage({
                   </div>
                 ) : (
                   <div className="profile-post-media profile-post-media--quote">
+                    <span className="profile-post-quote-mark" aria-hidden>
+                      “
+                    </span>
                     <p>{post.caption}</p>
                   </div>
                 )}
@@ -952,7 +954,9 @@ export function ProfilePage({
                   <p className="profile-post-category">
                     {categoryLabel(post.category)}
                   </p>
-                  <p className="profile-post-caption">{post.caption}</p>
+                  {!isMotivation ? (
+                    <p className="profile-post-caption">{post.caption}</p>
+                  ) : null}
                   {post.location || (post.tags && post.tags.length > 0) ? (
                     <p className="profile-post-extras">
                       {post.location ? <span>📍 {post.location}</span> : null}

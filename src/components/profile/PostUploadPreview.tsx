@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
 import type { ComposerPublishPayload } from "@/components/profile/ProfileComposer";
 
 type PostUploadPreviewProps = {
@@ -50,6 +51,7 @@ export function PostUploadPreview({
   const isTransform =
     payload.kind === "transform" &&
     Boolean(payload.beforeImage && payload.afterImage);
+  const isMotivation = payload.category === "motivation";
   const cover = isTransform
     ? payload.afterImage
     : payload.image ?? payload.afterImage ?? payload.beforeImage;
@@ -130,7 +132,9 @@ export function PostUploadPreview({
           </div>
         </div>
 
-        {isTransform && payload.beforeImage && payload.afterImage ? (
+        {isMotivation ? (
+          <MotivationQuoteCard text={payload.caption} />
+        ) : isTransform && payload.beforeImage && payload.afterImage ? (
           <div className="post-upload-media">
             <BeforeAfterSlider
               afterSrc={payload.afterImage}
@@ -144,23 +148,33 @@ export function PostUploadPreview({
           </div>
         ) : null}
 
-        <p className="feed-post-caption">
-          {parts.map((part, index) =>
-            part.tag ? (
-              <span className="feed-post-hashtag" key={`t-${index}`}>
-                {part.text}
+        {!isMotivation ? (
+          <p className="feed-post-caption">
+            {parts.map((part, index) =>
+              part.tag ? (
+                <span className="feed-post-hashtag" key={`t-${index}`}>
+                  {part.text}
+                </span>
+              ) : (
+                <span key={`c-${index}`}>{part.text}</span>
+              )
+            )}
+            {extras.map((tag) => (
+              <span className="feed-post-hashtag" key={tag}>
+                {" "}
+                #{tag}
               </span>
-            ) : (
-              <span key={`c-${index}`}>{part.text}</span>
-            )
-          )}
-          {extras.map((tag) => (
-            <span className="feed-post-hashtag" key={tag}>
-              {" "}
-              #{tag}
-            </span>
-          ))}
-        </p>
+            ))}
+          </p>
+        ) : extras.length > 0 ? (
+          <p className="feed-post-caption">
+            {extras.map((tag) => (
+              <span className="feed-post-hashtag" key={tag}>
+                #{tag}{" "}
+              </span>
+            ))}
+          </p>
+        ) : null}
 
         <div className="feed-post-actions">
           <span className="feed-post-action">

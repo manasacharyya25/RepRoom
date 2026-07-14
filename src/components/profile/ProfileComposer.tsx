@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
 import {
   CAPTION_MAX_LENGTH,
   COMPOSER_TYPE_OPTIONS,
@@ -67,11 +68,16 @@ export function ProfileComposer({
 
   const selectedType = resolveComposerType(composerType);
   const isTransform = selectedType?.kind === "transform";
+  const isMotivation = selectedType?.category === "motivation";
 
   const canPost =
     Boolean(selectedType?.kind && selectedType.category) &&
     draft.trim().length > 0 &&
-    (isTransform ? Boolean(previewUrl && afterPreviewUrl) : Boolean(previewUrl));
+    (isMotivation
+      ? true
+      : isTransform
+        ? Boolean(previewUrl && afterPreviewUrl)
+        : Boolean(previewUrl));
 
   const clearMedia = (revoke = true) => {
     if (revoke) {
@@ -114,10 +120,20 @@ export function ProfileComposer({
     const option = resolveComposerType(id);
     if (!option || option.auto) return;
 
-    if (option.kind !== "transform" && afterPreviewUrl) {
-      URL.revokeObjectURL(afterPreviewUrl);
-      setAfterPreviewUrl(null);
-      if (afterInputRef.current) afterInputRef.current.value = "";
+    if (option.category === "motivation" || option.kind !== "transform") {
+      if (afterPreviewUrl) {
+        URL.revokeObjectURL(afterPreviewUrl);
+        setAfterPreviewUrl(null);
+        if (afterInputRef.current) afterInputRef.current.value = "";
+      }
+    }
+    if (option.category === "motivation") {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (beforeInputRef.current) beforeInputRef.current.value = "";
+      }
     }
     setComposerType(id);
   };
@@ -141,7 +157,8 @@ export function ProfileComposer({
       kind: selectedType.kind,
       category: selectedType.category,
       caption: draft.trim(),
-      image: isTransform ? undefined : previewUrl ?? undefined,
+      image:
+        isTransform || isMotivation ? undefined : previewUrl ?? undefined,
       beforeImage: isTransform ? previewUrl ?? undefined : undefined,
       afterImage: isTransform ? afterPreviewUrl ?? undefined : undefined,
       location: location.trim() || undefined,
@@ -205,218 +222,251 @@ export function ProfileComposer({
           </p>
         </section>
 
-        <section className="profile-compose-step">
-          <h3>
-            <span className="profile-compose-step-num">2</span>
-            {isTransform ? "Add your photos" : "Add your photo"}
-          </h3>
+        {isMotivation ? (
+          <section className="profile-compose-step">
+            <h3>
+              <span className="profile-compose-step-num">2</span>
+              Write your quote
+            </h3>
 
-          <input
-            ref={fileInputRef}
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) =>
-              onSelectImage(event.target.files?.[0] ?? null, "main")
-            }
-          />
-          <input
-            ref={beforeInputRef}
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) =>
-              onSelectImage(event.target.files?.[0] ?? null, "before")
-            }
-          />
-          <input
-            ref={afterInputRef}
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) =>
-              onSelectImage(event.target.files?.[0] ?? null, "after")
-            }
-          />
+            <MotivationQuoteCard text={draft} />
 
-          {isTransform ? (
-            <div className="profile-compose-transform-grid">
-              <div className="profile-compose-transform-slot">
-                <span className="profile-compose-transform-label">Before</span>
-                {previewUrl ? (
-                  <div className="profile-composer-preview">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt=""
-                      src={previewUrl}
-                      className="profile-composer-preview-image"
-                    />
-                    <button
-                      type="button"
-                      className="profile-composer-remove"
-                      onClick={() => {
-                        if (previewUrl) URL.revokeObjectURL(previewUrl);
-                        setPreviewUrl(null);
-                        if (beforeInputRef.current) beforeInputRef.current.value = "";
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="profile-compose-dropzone"
-                    onClick={() => beforeInputRef.current?.click()}
-                  >
-                    <span className="profile-compose-dropzone-icon" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                        />
-                        <path
-                          d="M12 9v6M9 12h6"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </span>
-                    <strong>Before photo</strong>
-                    <span>JPG, PNG, WEBP · Max 10MB</span>
-                  </button>
-                )}
-              </div>
-              <div className="profile-compose-transform-slot">
-                <span className="profile-compose-transform-label">After</span>
-                {afterPreviewUrl ? (
-                  <div className="profile-composer-preview">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt=""
-                      src={afterPreviewUrl}
-                      className="profile-composer-preview-image"
-                    />
-                    <button
-                      type="button"
-                      className="profile-composer-remove"
-                      onClick={() => {
-                        if (afterPreviewUrl) URL.revokeObjectURL(afterPreviewUrl);
-                        setAfterPreviewUrl(null);
-                        if (afterInputRef.current) afterInputRef.current.value = "";
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="profile-compose-dropzone"
-                    onClick={() => afterInputRef.current?.click()}
-                  >
-                    <span className="profile-compose-dropzone-icon" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                        />
-                        <path
-                          d="M12 9v6M9 12h6"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </span>
-                    <strong>After photo</strong>
-                    <span>JPG, PNG, WEBP · Max 10MB</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : previewUrl ? (
-            <div className="profile-composer-preview">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt=""
-                src={previewUrl}
-                className="profile-composer-preview-image"
+            <div className="profile-compose-caption-wrap">
+              <textarea
+                className="profile-composer-input"
+                placeholder="There is no finish line — only the community that keeps you going."
+                rows={4}
+                maxLength={CAPTION_MAX_LENGTH}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
               />
-              <button
-                type="button"
-                className="profile-composer-remove"
-                onClick={() => {
-                  if (previewUrl) URL.revokeObjectURL(previewUrl);
-                  setPreviewUrl(null);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
-              >
-                Remove
-              </button>
+              <span className="profile-compose-char-count">
+                {draft.length}/{CAPTION_MAX_LENGTH}
+              </span>
             </div>
-          ) : (
-            <button
-              type="button"
-              className="profile-compose-dropzone profile-compose-dropzone--lg"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <span className="profile-compose-dropzone-icon" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                  <path
-                    d="M12 9v6M9 12h6"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>
-              <strong>Add a photo</strong>
-              <span>JPG, PNG, WEBP · Max 10MB</span>
-              <span className="profile-compose-dropzone-tip">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path
-                    d="M9.5 18.5h5M10.2 21h3.6M12 3.5a5.5 5.5 0 0 1 3.3 9.9c-.7.5-1.1 1.3-1.1 2.1v.5h-4.4v-.5c0-.8-.4-1.6-1.1-2.1A5.5 5.5 0 0 1 12 3.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Use good lighting and clear photos for more engagement.
-              </span>
-            </button>
-          )}
-        </section>
+          </section>
+        ) : (
+          <>
+            <section className="profile-compose-step">
+              <h3>
+                <span className="profile-compose-step-num">2</span>
+                {isTransform ? "Add your photos" : "Add your photo"}
+              </h3>
 
-        <section className="profile-compose-step">
-          <h3>
-            <span className="profile-compose-step-num">3</span>
-            Write your caption
-          </h3>
+              <input
+                ref={fileInputRef}
+                className="sr-only"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) =>
+                  onSelectImage(event.target.files?.[0] ?? null, "main")
+                }
+              />
+              <input
+                ref={beforeInputRef}
+                className="sr-only"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) =>
+                  onSelectImage(event.target.files?.[0] ?? null, "before")
+                }
+              />
+              <input
+                ref={afterInputRef}
+                className="sr-only"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) =>
+                  onSelectImage(event.target.files?.[0] ?? null, "after")
+                }
+              />
 
-          <div className="profile-compose-caption-wrap">
-            <textarea
-              className="profile-composer-input"
-              placeholder="Write something about your update..."
-              rows={4}
-              maxLength={CAPTION_MAX_LENGTH}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-            />
-            <span className="profile-compose-char-count">
-              {draft.length}/{CAPTION_MAX_LENGTH}
-            </span>
-          </div>
-        </section>
+              {isTransform ? (
+                <div className="profile-compose-transform-grid">
+                  <div className="profile-compose-transform-slot">
+                    <span className="profile-compose-transform-label">Before</span>
+                    {previewUrl ? (
+                      <div className="profile-composer-preview">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          alt=""
+                          src={previewUrl}
+                          className="profile-composer-preview-image"
+                        />
+                        <button
+                          type="button"
+                          className="profile-composer-remove"
+                          onClick={() => {
+                            if (previewUrl) URL.revokeObjectURL(previewUrl);
+                            setPreviewUrl(null);
+                            if (beforeInputRef.current) {
+                              beforeInputRef.current.value = "";
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="profile-compose-dropzone"
+                        onClick={() => beforeInputRef.current?.click()}
+                      >
+                        <span className="profile-compose-dropzone-icon" aria-hidden>
+                          <svg viewBox="0 0 24 24" fill="none">
+                            <path
+                              d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                            />
+                            <path
+                              d="M12 9v6M9 12h6"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </span>
+                        <strong>Before photo</strong>
+                        <span>JPG, PNG, WEBP · Max 10MB</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="profile-compose-transform-slot">
+                    <span className="profile-compose-transform-label">After</span>
+                    {afterPreviewUrl ? (
+                      <div className="profile-composer-preview">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          alt=""
+                          src={afterPreviewUrl}
+                          className="profile-composer-preview-image"
+                        />
+                        <button
+                          type="button"
+                          className="profile-composer-remove"
+                          onClick={() => {
+                            if (afterPreviewUrl) {
+                              URL.revokeObjectURL(afterPreviewUrl);
+                            }
+                            setAfterPreviewUrl(null);
+                            if (afterInputRef.current) {
+                              afterInputRef.current.value = "";
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="profile-compose-dropzone"
+                        onClick={() => afterInputRef.current?.click()}
+                      >
+                        <span className="profile-compose-dropzone-icon" aria-hidden>
+                          <svg viewBox="0 0 24 24" fill="none">
+                            <path
+                              d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                            />
+                            <path
+                              d="M12 9v6M9 12h6"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </span>
+                        <strong>After photo</strong>
+                        <span>JPG, PNG, WEBP · Max 10MB</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : previewUrl ? (
+                <div className="profile-composer-preview">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    alt=""
+                    src={previewUrl}
+                    className="profile-composer-preview-image"
+                  />
+                  <button
+                    type="button"
+                    className="profile-composer-remove"
+                    onClick={() => {
+                      if (previewUrl) URL.revokeObjectURL(previewUrl);
+                      setPreviewUrl(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="profile-compose-dropzone profile-compose-dropzone--lg"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <span className="profile-compose-dropzone-icon" aria-hidden>
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                      />
+                      <path
+                        d="M12 9v6M9 12h6"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+                  <strong>Add a photo</strong>
+                  <span>JPG, PNG, WEBP · Max 10MB</span>
+                  <span className="profile-compose-dropzone-tip">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path
+                        d="M9.5 18.5h5M10.2 21h3.6M12 3.5a5.5 5.5 0 0 1 3.3 9.9c-.7.5-1.1 1.3-1.1 2.1v.5h-4.4v-.5c0-.8-.4-1.6-1.1-2.1A5.5 5.5 0 0 1 12 3.5Z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Use good lighting and clear photos for more engagement.
+                  </span>
+                </button>
+              )}
+            </section>
+
+            <section className="profile-compose-step">
+              <h3>
+                <span className="profile-compose-step-num">3</span>
+                Write your caption
+              </h3>
+
+              <div className="profile-compose-caption-wrap">
+                <textarea
+                  className="profile-composer-input"
+                  placeholder="Write something about your update..."
+                  rows={4}
+                  maxLength={CAPTION_MAX_LENGTH}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                />
+                <span className="profile-compose-char-count">
+                  {draft.length}/{CAPTION_MAX_LENGTH}
+                </span>
+              </div>
+            </section>
+          </>
+        )}
 
         {(showLocation || location) && (
           <div className="profile-compose-meta-field">

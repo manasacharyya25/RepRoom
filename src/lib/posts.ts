@@ -71,7 +71,7 @@ export const COMPOSER_TYPE_OPTIONS: ComposerTypeOption[] = [
   {
     id: "motivation",
     label: "Motivation",
-    description: "Inspire the community.",
+    description: "Share a quote on a ready background.",
     kind: "standard",
     category: "motivation"
   },
