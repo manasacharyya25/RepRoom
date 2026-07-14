@@ -342,6 +342,23 @@
   cursor: not-allowed;
 }
 
+.inbox-empty-copy,
+.inbox-error {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.inbox-empty-copy {
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+}
+
+.inbox-error {
+  color: #e26b6b;
+  font-weight: 600;
+}
+
 @media (max-width: 560px) {
   .inbox-drawer {
     width: 100vw;

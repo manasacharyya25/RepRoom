@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
@@ -23,6 +24,7 @@ import {
 import { categoryLabel, CAPTION_MAX_LENGTH, type PostCategory, type PostKind } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
 import { createPost, createPostComment, deletePost, listPostComments, listUserPosts, POSTS_PAGE_SIZE, togglePostLike, updatePostCaption } from "@/lib/posts-api";
+import { followUser, isFollowing, unfollowUser } from "@/lib/social-api";
 import type { DbPost } from "@/lib/types/post";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
@@ -815,6 +817,8 @@ export function ProfilePage({
   /** When true, viewing another member — hide edit/composer/manage. */
   readOnly?: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const identityRef = useRef<HTMLElement>(null);
   const identityBodyRef = useRef<HTMLDivElement>(null);
   const goalsPanelRef = useRef<HTMLElement>(null);
@@ -838,6 +842,9 @@ export function ProfilePage({
     useState<ComposerPublishPayload | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [following, setFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [socialError, setSocialError] = useState<string | null>(null);
 
   useEffect(() => {
     setProfileData(initialData);
@@ -845,6 +852,24 @@ export function ProfilePage({
       setGoals(mapGoalsToCards(initialData.goals));
     }
   }, [initialData]);
+
+  useEffect(() => {
+    if (!readOnly || !profileData?.profile.id) return;
+    let cancelled = false;
+    const loadFollow = async () => {
+      try {
+        const supabase = createClient();
+        const value = await isFollowing(supabase, profileData.profile.id);
+        if (!cancelled) setFollowing(value);
+      } catch {
+        if (!cancelled) setFollowing(false);
+      }
+    };
+    void loadFollow();
+    return () => {
+      cancelled = true;
+    };
+  }, [readOnly, profileData?.profile.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1284,8 +1309,69 @@ export function ProfilePage({
                 >
                   Edit
                 </button>
-              ) : null}
+              ) : (
+                <div className="profile-social-actions">
+                  <button
+                    type="button"
+                    className={
+                      following
+                        ? "btn-secondary profile-edit-trigger is-following"
+                        : "btn-primary profile-edit-trigger"
+                    }
+                    disabled={!profileData || followBusy}
+                    onClick={() => {
+                      const targetId = profileData?.profile.id;
+                      if (!targetId || followBusy) return;
+                      setFollowBusy(true);
+                      setSocialError(null);
+                      void (async () => {
+                        try {
+                          const supabase = createClient();
+                          if (following) {
+                            await unfollowUser(supabase, targetId);
+                            setFollowing(false);
+                          } else {
+                            await followUser(supabase, targetId);
+                            setFollowing(true);
+                          }
+                        } catch (caught) {
+                          setSocialError(
+                            caught instanceof Error
+                              ? caught.message
+                              : "Could not update follow."
+                          );
+                        } finally {
+                          setFollowBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {followBusy
+                      ? "…"
+                      : following
+                        ? "Following"
+                        : "Follow"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary profile-edit-trigger"
+                    disabled={!profileData}
+                    onClick={() => {
+                      const targetId = profileData?.profile.id;
+                      if (!targetId) return;
+                      router.push(
+                        `${pathname}?dm=${encodeURIComponent(targetId)}`
+                      );
+                    }}
+                  >
+                    Message
+                  </button>
+                </div>
+              )}
             </div>
+            {socialError ? (
+              <p className="profile-social-error">{socialError}</p>
+            ) : null}
             <p className="profile-bio">{bio}</p>
           </div>
           </div>

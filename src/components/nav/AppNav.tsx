@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { InboxDrawer } from "@/components/inbox/InboxDrawer";
 import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import { createClient } from "@/lib/supabase/client";
@@ -16,7 +16,7 @@ async function signOutAndRedirect(router: ReturnType<typeof useRouter>) {
 }
 
 type AppNavProps = {
-  /** feed: Rooms (white) + Profile (orange). profile: Rooms/Feed/Inbox + Log out. */
+  /** feed: Rooms + Inbox + Profile. profile: Rooms/Feed/Inbox + Log out. */
   variant?: "default" | "feed" | "profile";
   /** Open the inbox drawer on mount (used by /inbox). */
   defaultInboxOpen?: boolean;
@@ -35,43 +35,91 @@ function Logo() {
   );
 }
 
-export function AppNav({
+function AppNavInner({
   variant = "default",
   defaultInboxOpen = false,
   onInboxClose
 }: AppNavProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const dmUserId = searchParams.get("dm");
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [activeDmUserId, setActiveDmUserId] = useState<string | null>(null);
+
+  const clearDmQuery = useCallback(() => {
+    if (!searchParams.has("dm")) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("dm");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
-    if (!defaultInboxOpen) {
-      setInboxOpen(false);
-      return;
-    }
+    if (!dmUserId) return;
+    setActiveDmUserId(dmUserId);
+    setInboxOpen(true);
+  }, [dmUserId]);
+
+  useEffect(() => {
+    if (!defaultInboxOpen) return;
     const frame = window.requestAnimationFrame(() => setInboxOpen(true));
     return () => window.cancelAnimationFrame(frame);
   }, [defaultInboxOpen]);
 
   const closeInbox = () => {
     setInboxOpen(false);
+    setActiveDmUserId(null);
+    clearDmQuery();
     onInboxClose?.();
   };
 
+  const openInbox = () => {
+    setInboxOpen(true);
+  };
+
+  const inboxButton = (
+    <button
+      type="button"
+      className={
+        inboxOpen || pathname === "/inbox"
+          ? "btn-secondary is-active"
+          : "btn-secondary"
+      }
+      aria-expanded={inboxOpen}
+      onClick={openInbox}
+    >
+      Inbox
+    </button>
+  );
+
+  const drawer = (
+    <InboxDrawer
+      open={inboxOpen}
+      onClose={closeInbox}
+      initialUserId={activeDmUserId}
+      onOpenedTarget={clearDmQuery}
+    />
+  );
+
   if (variant === "feed") {
     return (
-      <header className="landing-nav">
-        <Logo />
-        <div className="landing-nav-actions">
-          <ThemeSwitch />
-          <Link className="btn-secondary" href="/rooms">
-            Rooms
-          </Link>
-          <Link className="btn-primary" href="/profile">
-            Profile
-          </Link>
-        </div>
-      </header>
+      <>
+        <header className="landing-nav">
+          <Logo />
+          <div className="landing-nav-actions">
+            <ThemeSwitch />
+            <Link className="btn-secondary" href="/rooms">
+              Rooms
+            </Link>
+            {inboxButton}
+            <Link className="btn-primary" href="/profile">
+              Profile
+            </Link>
+          </div>
+        </header>
+        {drawer}
+      </>
     );
   }
 
@@ -100,24 +148,7 @@ export function AppNav({
                 </Link>
               );
             })}
-            <button
-              type="button"
-              className={
-                inboxOpen || pathname === "/inbox"
-                  ? "btn-secondary is-active"
-                  : "btn-secondary"
-              }
-              aria-expanded={inboxOpen}
-              onClick={() => {
-                if (pathname === "/profile" || pathname === "/inbox") {
-                  setInboxOpen(true);
-                  return;
-                }
-                router.push("/inbox");
-              }}
-            >
-              Inbox
-            </button>
+            {inboxButton}
             <button
               type="button"
               className="btn-primary"
@@ -129,7 +160,7 @@ export function AppNav({
             </button>
           </nav>
         </header>
-        <InboxDrawer open={inboxOpen} onClose={closeInbox} />
+        {drawer}
       </>
     );
   }
@@ -153,5 +184,13 @@ export function AppNav({
         </button>
       </div>
     </header>
+  );
+}
+
+export function AppNav(props: AppNavProps) {
+  return (
+    <Suspense fallback={<header className="landing-nav" aria-hidden />}>
+      <AppNavInner {...props} />
+    </Suspense>
   );
 }

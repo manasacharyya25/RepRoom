@@ -334,6 +334,26 @@
   font-size: 0.82rem;
 }
 
+.profile-social-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.profile-social-actions .profile-edit-trigger.is-following {
+  color: var(--text-muted);
+}
+
+.profile-social-error {
+  margin: 8px 0 0;
+  color: #e26b6b;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .profile-section-head-actions {
   display: inline-flex;
   align-items: center;
