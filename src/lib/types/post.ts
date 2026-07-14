@@ -32,3 +32,35 @@ export type CreatePostInput = {
   beforeFile?: File;
   afterFile?: File;
 };
+
+export type DbPostComment = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PostCommentAuthor = {
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+};
+
+export type PostCommentRow = DbPostComment & {
+  profiles: PostCommentAuthor | PostCommentAuthor[] | null;
+};
+
+export type PostCommentView = {
+  id: string;
+  postId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  author: string;
+  handle: string;
+  avatar: string;
+};
+
+export const COMMENT_MAX_LENGTH = 500;

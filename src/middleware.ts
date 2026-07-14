@@ -8,7 +8,8 @@ const PROTECTED_PREFIXES = [
   "/inbox",
   "/preview",
   "/room",
-  "/onboarding"
+  "/onboarding",
+  "/u"
 ];
 
 export async function middleware(request: NextRequest) {

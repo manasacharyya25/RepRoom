@@ -16,9 +16,13 @@ import {
   formatGoalDetail,
   resolveGoalProgress
 } from "@/lib/profile-format";
+import {
+  formatAgeRange,
+  formatCountry
+} from "@/lib/profile-labels";
 import { categoryLabel, CAPTION_MAX_LENGTH, type PostCategory, type PostKind } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
-import { createPost, deletePost, listUserPosts, POSTS_PAGE_SIZE, updatePostCaption } from "@/lib/posts-api";
+import { createPost, createPostComment, deletePost, listPostComments, listUserPosts, POSTS_PAGE_SIZE, togglePostLike, updatePostCaption } from "@/lib/posts-api";
 import type { DbPost } from "@/lib/types/post";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
@@ -46,6 +50,7 @@ type SelfPost = {
   createdAtIso: string;
   likes: number;
   comments: number;
+  likedByMe: boolean;
 };
 
 function formatRelativeTime(iso: string) {
@@ -64,7 +69,7 @@ function formatRelativeTime(iso: string) {
   });
 }
 
-function mapDbPost(post: DbPost): SelfPost {
+function mapDbPost(post: DbPost, likedByMe = false): SelfPost {
   return {
     id: post.id,
     kind: post.kind,
@@ -78,7 +83,8 @@ function mapDbPost(post: DbPost): SelfPost {
     createdAt: formatRelativeTime(post.created_at),
     createdAtIso: post.created_at,
     likes: post.likes_count,
-    comments: post.comments_count
+    comments: post.comments_count,
+    likedByMe
   };
 }
 
@@ -117,38 +123,18 @@ type ProfileComment = {
   text: string;
 };
 
-function seedProfileComments(post: SelfPost): ProfileComment[] {
-  const count = Math.min(post.comments, 2);
-  if (count === 0) return [];
-
-  return [
-    {
-      id: `${post.id}-c1`,
-      author: "Maya",
-      handle: "@maya_moves",
-      avatar: LIVE_IMAGES.sidebar2,
-      text: "This is motivating — keep going!"
-    },
-    {
-      id: `${post.id}-c2`,
-      author: "Alex",
-      handle: "@alex_runs",
-      avatar: LIVE_IMAGES.participant1,
-      text: "Love the consistency here."
-    }
-  ].slice(0, count);
-}
-
 function ProfilePostCard({
   post,
   onOpen,
   onEdit,
-  onDelete
+  onDelete,
+  canManage = true
 }: {
   post: SelfPost;
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  canManage?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -246,47 +232,49 @@ function ProfilePostCard({
           <span>💬 {post.comments}</span>
         </button>
 
-        <div className="profile-post-menu" ref={menuRef}>
-          <button
-            type="button"
-            className="profile-post-menu-trigger"
-            aria-label="Post options"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            onClick={(event) => {
-              event.stopPropagation();
-              setMenuOpen((open) => !open);
-            }}
-          >
-            <span aria-hidden>⋮</span>
-          </button>
-          {menuOpen ? (
-            <div className="profile-post-menu-dropdown" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                className="profile-post-menu-item"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onEdit();
-                }}
-              >
-                Edit caption
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="profile-post-menu-item profile-post-menu-item--danger"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onDelete();
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          ) : null}
-        </div>
+        {canManage ? (
+          <div className="profile-post-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="profile-post-menu-trigger"
+              aria-label="Post options"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((open) => !open);
+              }}
+            >
+              <span aria-hidden>⋮</span>
+            </button>
+            {menuOpen ? (
+              <div className="profile-post-menu-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="profile-post-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onEdit();
+                  }}
+                >
+                  Edit caption
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="profile-post-menu-item profile-post-menu-item--danger"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete();
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -364,9 +352,10 @@ function ConfirmDeleteModal({
 function ProfilePostModal({
   post,
   onClose,
-  onCommentCountChange,
+  onStatsChange,
   onCaptionUpdated,
   onRequestDelete,
+  canManage = true,
   displayName,
   handle,
   avatarSrc,
@@ -375,38 +364,81 @@ function ProfilePostModal({
 }: {
   post: SelfPost;
   onClose: () => void;
-  onCommentCountChange: (postId: string, count: number) => void;
+  onStatsChange: (
+    postId: string,
+    stats: { likes: number; comments: number; likedByMe: boolean }
+  ) => void;
   onCaptionUpdated: (postId: string, caption: string) => void;
   onRequestDelete: () => void;
+  canManage?: boolean;
   displayName: string;
   handle: string;
   avatarSrc: string;
   initialEditing?: boolean;
   blockClose?: boolean;
 }) {
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(post.likedByMe);
   const [likeCount, setLikeCount] = useState(post.likes);
+  const [commentCount, setCommentCount] = useState(post.comments);
+  const [likeBusy, setLikeBusy] = useState(false);
   const [draft, setDraft] = useState("");
-  const [comments, setComments] = useState<ProfileComment[]>(() =>
-    seedProfileComments(post)
-  );
+  const [comments, setComments] = useState<ProfileComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentBusy, setCommentBusy] = useState(false);
   const [editing, setEditing] = useState(initialEditing);
   const [captionDraft, setCaptionDraft] = useState(post.caption);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const commentCount = Math.max(post.comments, comments.length);
   const displayCaption = editing ? captionDraft : post.caption;
 
   useEffect(() => {
+    setLiked(post.likedByMe);
+    setLikeCount(post.likes);
+    setCommentCount(post.comments);
     setCaptionDraft(post.caption);
     setEditing(initialEditing);
     setActionError(null);
-  }, [post.id, initialEditing]);
+  }, [post.id, post.likedByMe, post.likes, post.comments, post.caption, initialEditing]);
 
   useEffect(() => {
     if (!editing) setCaptionDraft(post.caption);
   }, [post.caption, editing]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setCommentsLoading(true);
+      try {
+        const supabase = createClient();
+        const rows = await listPostComments(supabase, post.id);
+        if (cancelled) return;
+        setComments(
+          rows.map((row) => ({
+            id: row.id,
+            author: row.author,
+            handle: row.handle,
+            avatar: row.avatar,
+            text: row.body
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setActionError(
+            error instanceof Error
+              ? error.message
+              : "Could not load comments."
+          );
+        }
+      } finally {
+        if (!cancelled) setCommentsLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [post.id]);
 
   useEffect(() => {
     if (blockClose) return;
@@ -422,22 +454,68 @@ function ProfilePostModal({
     };
   }, [onClose, blockClose]);
 
-  const sendComment = () => {
+  const onLike = async () => {
+    if (likeBusy) return;
+    const previousLiked = liked;
+    const previousCount = likeCount;
+    const nextLiked = !previousLiked;
+    setLiked(nextLiked);
+    setLikeCount((count) => Math.max(0, count + (nextLiked ? 1 : -1)));
+    setLikeBusy(true);
+    setActionError(null);
+    try {
+      const supabase = createClient();
+      const result = await togglePostLike(supabase, post.id, previousLiked);
+      setLiked(result.liked);
+      setLikeCount(result.likesCount);
+      onStatsChange(post.id, {
+        likes: result.likesCount,
+        comments: commentCount,
+        likedByMe: result.liked
+      });
+    } catch (error) {
+      setLiked(previousLiked);
+      setLikeCount(previousCount);
+      setActionError(
+        error instanceof Error ? error.message : "Could not update like."
+      );
+    } finally {
+      setLikeBusy(false);
+    }
+  };
+
+  const sendComment = async () => {
     const text = draft.trim();
-    if (!text) return;
-    const next = [
-      ...comments,
-      {
-        id: `local-${Date.now()}`,
-        author: displayName,
-        handle,
-        avatar: avatarSrc,
-        text
-      }
-    ];
-    setComments(next);
-    setDraft("");
-    onCommentCountChange(post.id, Math.max(post.comments, next.length));
+    if (!text || commentBusy) return;
+    setCommentBusy(true);
+    setActionError(null);
+    try {
+      const supabase = createClient();
+      const result = await createPostComment(supabase, post.id, text);
+      setComments((prev) => [
+        ...prev,
+        {
+          id: result.comment.id,
+          author: result.comment.author,
+          handle: result.comment.handle,
+          avatar: result.comment.avatar,
+          text: result.comment.body
+        }
+      ]);
+      setCommentCount(result.commentsCount);
+      setDraft("");
+      onStatsChange(post.id, {
+        likes: likeCount,
+        comments: result.commentsCount,
+        likedByMe: liked
+      });
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not post comment."
+      );
+    } finally {
+      setCommentBusy(false);
+    }
   };
 
   const saveCaption = async () => {
@@ -603,24 +681,26 @@ function ProfilePostModal({
               </div>
             ) : null}
 
-            <div className="feed-post-manage">
-              {!editing ? (
+            {canManage ? (
+              <div className="feed-post-manage">
+                {!editing ? (
+                  <button
+                    type="button"
+                    className="feed-post-manage-btn"
+                    onClick={() => setEditing(true)}
+                  >
+                    Edit caption
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="feed-post-manage-btn"
-                  onClick={() => setEditing(true)}
+                  className="feed-post-manage-btn feed-post-manage-btn--danger"
+                  onClick={onRequestDelete}
                 >
-                  Edit caption
+                  Delete post
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="feed-post-manage-btn feed-post-manage-btn--danger"
-                onClick={onRequestDelete}
-              >
-                Delete post
-              </button>
-            </div>
+              </div>
+            ) : null}
 
             {actionError ? (
               <p className="feed-post-manage-error">{actionError}</p>
@@ -632,10 +712,8 @@ function ProfilePostModal({
                 className={`feed-post-action feed-post-like${liked ? " is-liked" : ""}`}
                 aria-label={liked ? "Unlike" : "Like"}
                 aria-pressed={liked}
-                onClick={() => {
-                  setLiked((value) => !value);
-                  setLikeCount((count) => count + (liked ? -1 : 1));
-                }}
+                disabled={likeBusy}
+                onClick={() => void onLike()}
               >
                 <span aria-hidden>{liked ? "♥" : "♡"}</span> {likeCount}
               </button>
@@ -647,7 +725,9 @@ function ProfilePostModal({
 
           <div className="feed-post-comments feed-post-comments--modal">
             <div className="feed-post-comments-scroll">
-              {comments.length > 0 ? (
+              {commentsLoading ? (
+                <p className="feed-post-comments-empty">Loading comments…</p>
+              ) : comments.length > 0 ? (
                 <ul className="feed-post-comment-list">
                   {comments.map((comment) => (
                     <li className="feed-post-comment" key={comment.id}>
@@ -658,6 +738,10 @@ function ProfilePostModal({
                           fill
                           sizes="32px"
                           src={comment.avatar}
+                          unoptimized={
+                            comment.avatar.startsWith("http") ||
+                            comment.avatar.startsWith("blob:")
+                          }
                         />
                       </span>
                       <div className="feed-post-comment-body">
@@ -678,7 +762,7 @@ function ProfilePostModal({
               className="feed-post-comment-composer"
               onSubmit={(event) => {
                 event.preventDefault();
-                sendComment();
+                void sendComment();
               }}
             >
               <label className="sr-only" htmlFor={`profile-comment-${post.id}`}>
@@ -690,13 +774,14 @@ function ProfilePostModal({
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="Write a comment…"
+                disabled={commentBusy}
               />
               <button
                 type="submit"
                 className="feed-post-comment-send"
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || commentBusy}
               >
-                Send
+                {commentBusy ? "…" : "Send"}
               </button>
             </form>
           </div>
@@ -723,9 +808,12 @@ function formatHours(value: number) {
 }
 
 export function ProfilePage({
-  initialData = null
+  initialData = null,
+  readOnly = false
 }: {
   initialData?: ProfileViewModel | null;
+  /** When true, viewing another member — hide edit/composer/manage. */
+  readOnly?: boolean;
 }) {
   const identityRef = useRef<HTMLElement>(null);
   const identityBodyRef = useRef<HTMLDivElement>(null);
@@ -768,7 +856,8 @@ export function ProfilePage({
         const {
           data: { user }
         } = await supabase.auth.getUser();
-        if (!user) {
+        const ownerId = initialData?.profile.id ?? user?.id;
+        if (!ownerId) {
           if (!cancelled) {
             setPosts([]);
             setHasMorePosts(false);
@@ -777,11 +866,14 @@ export function ProfilePage({
           return;
         }
 
-        const page = await listUserPosts(supabase, user.id, {
+        const page = await listUserPosts(supabase, ownerId, {
           limit: POSTS_PAGE_SIZE
         });
         if (cancelled) return;
-        setPosts(page.posts.map(mapDbPost));
+        const liked = new Set(page.likedPostIds);
+        setPosts(
+          page.posts.map((row) => mapDbPost(row, liked.has(row.id)))
+        );
         setHasMorePosts(page.hasMore);
       } catch (error) {
         console.error(error);
@@ -801,7 +893,7 @@ export function ProfilePage({
   }, [initialData?.profile.id]);
 
   useEffect(() => {
-    if (initialData) return;
+    if (initialData || readOnly) return;
 
     let cancelled = false;
     const load = async () => {
@@ -862,15 +954,21 @@ export function ProfilePage({
     };
   }, [initialData]);
 
-  const displayName = profileData?.profile.display_name?.trim() || "You";
+  const displayName =
+    profileData?.profile.display_name?.trim() ||
+    (readOnly ? "Athlete" : "You");
   const handle = profileData?.profile.username
     ? `@${profileData.profile.username}`
     : "@you";
   const bio =
     profileData?.profile.bio?.trim() ||
-    "Building strength one session at a time. Yoga · Cardio · Accountability.";
+    (readOnly
+      ? "No bio yet."
+      : "Building strength one session at a time. Yoga · Cardio · Accountability.");
   const avatarSrc =
     profileData?.profile.avatar_url?.trim() || LIVE_IMAGES.participant4;
+  const ageLabel = formatAgeRange(profileData?.profile.age_range);
+  const countryLabel = formatCountry(profileData?.profile.country_code);
   const hoursWorked = profileData?.hoursWorked ?? 0;
   const hoursGoal = profileData?.hoursGoal ?? 50;
   const hoursProgress = profileData?.hoursProgress ?? 0;
@@ -958,18 +1056,20 @@ export function ProfilePage({
       const {
         data: { user }
       } = await supabase.auth.getUser();
-      if (!user) return;
+      const ownerId = profileData?.profile.id ?? user?.id;
+      if (!ownerId) return;
 
       const oldest = posts[posts.length - 1];
-      const page = await listUserPosts(supabase, user.id, {
+      const page = await listUserPosts(supabase, ownerId, {
         limit: POSTS_PAGE_SIZE,
         before: oldest.createdAtIso
       });
 
       setPosts((prev) => {
         const seen = new Set(prev.map((post) => post.id));
+        const liked = new Set(page.likedPostIds);
         const next = page.posts
-          .map(mapDbPost)
+          .map((row) => mapDbPost(row, liked.has(row.id)))
           .filter((post) => !seen.has(post.id));
         return [...prev, ...next];
       });
@@ -1165,15 +1265,26 @@ export function ProfilePage({
                   <ProfileSocialLinks links={profileData?.profile} />
                 </div>
                 <p className="profile-handle">{handle}</p>
+                {ageLabel || countryLabel ? (
+                  <p className="profile-identity-meta">
+                    {ageLabel ? <span>{ageLabel}</span> : null}
+                    {ageLabel && countryLabel ? (
+                      <span aria-hidden>·</span>
+                    ) : null}
+                    {countryLabel ? <span>{countryLabel}</span> : null}
+                  </p>
+                ) : null}
               </div>
-              <button
-                type="button"
-                className="btn-secondary profile-edit-trigger"
-                onClick={() => setEditOpen(true)}
-                disabled={!profileData}
-              >
-                Edit
-              </button>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="btn-secondary profile-edit-trigger"
+                  onClick={() => setEditOpen(true)}
+                  disabled={!profileData}
+                >
+                  Edit
+                </button>
+              ) : null}
             </div>
             <p className="profile-bio">{bio}</p>
           </div>
@@ -1249,6 +1360,11 @@ export function ProfilePage({
 
         <aside className="profile-goals-panel" ref={goalsPanelRef}>
           <div className="profile-goals">
+            {readOnly ? (
+              <div className="profile-goals-head">
+                <h2>Goals</h2>
+              </div>
+            ) : null}
             {goals.length > 0 ? (
               goals.map((goal) => (
                 <article className="profile-goal-card" key={goal.id}>
@@ -1267,23 +1383,27 @@ export function ProfilePage({
               ))
             ) : (
               <p className="profile-goals-empty">
-                No goals yet. Add some from Edit on your profile.
+                {readOnly
+                  ? "No goals shared yet."
+                  : "No goals yet. Add some from Edit on your profile."}
               </p>
             )}
           </div>
         </aside>
       </section>
 
-      <ProfileComposer
-        onPublish={publish}
-        author={displayName}
-        handle={handle}
-        avatarSrc={avatarSrc}
-      />
+      {!readOnly ? (
+        <ProfileComposer
+          onPublish={publish}
+          author={displayName}
+          handle={handle}
+          avatarSrc={avatarSrc}
+        />
+      ) : null}
 
       <section className="profile-section">
         <div className="profile-section-head">
-          <h2>Your posts</h2>
+          <h2>{readOnly ? "Posts" : "Your posts"}</h2>
           <span>
             {postsLoading
               ? "Loading…"
@@ -1293,13 +1413,16 @@ export function ProfilePage({
         <div className="profile-posts">
           {!postsLoading && posts.length === 0 ? (
             <p className="profile-posts-empty">
-              No posts yet. Share your first update above.
+              {readOnly
+                ? "No posts yet."
+                : "No posts yet. Share your first update above."}
             </p>
           ) : null}
           {posts.map((post) => (
             <ProfilePostCard
               key={post.id}
               post={post}
+              canManage={!readOnly}
               onOpen={() => openPost(post.id)}
               onEdit={() => openPost(post.id, true)}
               onDelete={() => requestDeletePost(post.id)}
@@ -1344,10 +1467,17 @@ export function ProfilePage({
           initialEditing={editOnOpen}
           blockClose={Boolean(pendingDeleteId)}
           onClose={closePost}
-          onCommentCountChange={(postId, count) => {
+          onStatsChange={(postId, stats) => {
             setPosts((prev) =>
               prev.map((item) =>
-                item.id === postId ? { ...item, comments: count } : item
+                item.id === postId
+                  ? {
+                      ...item,
+                      likes: stats.likes,
+                      comments: stats.comments,
+                      likedByMe: stats.likedByMe
+                    }
+                  : item
               )
             );
           }}
@@ -1359,6 +1489,7 @@ export function ProfilePage({
             );
           }}
           onRequestDelete={() => requestDeletePost(activePost.id)}
+          canManage={!readOnly}
         />
       ) : null}
 
@@ -1371,7 +1502,7 @@ export function ProfilePage({
         />
       ) : null}
 
-      {profileData ? (
+      {!readOnly && profileData ? (
         <ProfileEditDrawer
           open={editOpen}
           profile={profileData.profile}

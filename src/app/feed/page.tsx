@@ -8,7 +8,12 @@ export default function FeedPage() {
     <div className="feed-page">
       <AppNav variant="feed" />
       <main className="feed-page-main">
-        <CommunityFeed allowComments enableLoadMore className="feed-page-panel" />
+        <CommunityFeed
+          allowComments
+          enableLoadMore
+          hideHeader
+          className="feed-page-panel"
+        />
       </main>
     </div>
   );

@@ -1,41 +1,30 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
-import { FEED_POSTS, type FeedPost } from "@/lib/feed-posts";
-import { LIVE_IMAGES } from "@/lib/live-images";
+import { FeedAuthorHoverCard } from "@/components/feed/FeedAuthorHoverCard";
+import {
+  usePostInteractions,
+  type LocalComment
+} from "@/components/feed/usePostInteractions";
+import {
+  FEED_POSTS,
+  mapFeedRowToPost,
+  type FeedPost
+} from "@/lib/feed-posts";
+import { createClient } from "@/lib/supabase/client";
+import {
+  FEED_PAGE_SIZE,
+  listFeedPosts
+} from "@/lib/posts-api";
 
-type LocalComment = {
-  id: string;
-  author: string;
-  handle: string;
-  avatar: string;
-  text: string;
-};
-
-function seedComments(post: FeedPost): LocalComment[] {
-  const count = Math.min(post.comments, 2);
-  if (count === 0) return [];
-
-  const seeds: LocalComment[] = [
-    {
-      id: `${post.id}-c1`,
-      author: "Maya",
-      handle: "@maya_moves",
-      avatar: LIVE_IMAGES.sidebar2,
-      text: "This is motivating — keep going!"
-    },
-    {
-      id: `${post.id}-c2`,
-      author: "Alex",
-      handle: "@alex_runs",
-      avatar: LIVE_IMAGES.participant1,
-      text: "Love the consistency here."
-    }
-  ];
-
-  return seeds.slice(0, count);
+function isRemoteSrc(src: string) {
+  return (
+    src.startsWith("http://") ||
+    src.startsWith("https://") ||
+    src.startsWith("blob:")
+  );
 }
 
 function PostMedia({
@@ -57,6 +46,7 @@ function PostMedia({
           priority={priority}
           sizes={sizes}
           src={post.image}
+          unoptimized={isRemoteSrc(post.image)}
         />
       </div>
     );
@@ -102,57 +92,10 @@ function PostCaption({ post }: { post: FeedPost }) {
   );
 }
 
-function usePostInteractions(post: FeedPost) {
-  const [liked, setLiked] = useState(false);
-  const [likeBurst, setLikeBurst] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [comments, setComments] = useState<LocalComment[]>(() => seedComments(post));
-
-  const likeCount = post.likes + (liked ? 1 : 0);
-  const commentCount = useMemo(
-    () => Math.max(post.comments, comments.length),
-    [post.comments, comments.length]
-  );
-
-  const onLike = () => {
-    setLiked((prev) => !prev);
-    setLikeBurst(true);
-    window.setTimeout(() => setLikeBurst(false), 320);
-  };
-
-  const sendComment = () => {
-    const text = draft.trim();
-    if (!text) return;
-
-    setComments((prev) => [
-      ...prev,
-      {
-        id: `${post.id}-${Date.now()}`,
-        author: "You",
-        handle: "@you",
-        avatar: LIVE_IMAGES.participant4,
-        text
-      }
-    ]);
-    setDraft("");
-    setCommentsOpen(true);
-  };
-
-  return {
-    liked,
-    likeBurst,
-    commentsOpen,
-    setCommentsOpen,
-    draft,
-    setDraft,
-    comments,
-    likeCount,
-    commentCount,
-    onLike,
-    sendComment
-  };
-}
+type PostStatsChange = (
+  postId: string,
+  stats: { likes: number; comments: number; likedByMe: boolean }
+) => void;
 
 function CommentPanel({
   postId,
@@ -160,6 +103,9 @@ function CommentPanel({
   draft,
   setDraft,
   sendComment,
+  commentsLoading = false,
+  commentBusy = false,
+  actionError = null,
   emptyLabel = "Be the first to comment.",
   layout = "inline"
 }: {
@@ -168,6 +114,9 @@ function CommentPanel({
   draft: string;
   setDraft: (value: string) => void;
   sendComment: () => void;
+  commentsLoading?: boolean;
+  commentBusy?: boolean;
+  actionError?: string | null;
   emptyLabel?: string;
   layout?: "inline" | "modal";
 }) {
@@ -195,49 +144,55 @@ function CommentPanel({
         placeholder="Write a comment…"
         rows={2}
         value={draft}
+        disabled={commentBusy}
       />
       <button
         className="feed-post-comment-send"
         type="submit"
-        disabled={!draft.trim()}
+        disabled={!draft.trim() || commentBusy}
       >
-        Post
+        {commentBusy ? "…" : "Post"}
       </button>
     </form>
   );
 
-  const list =
-    comments.length > 0 ? (
-      <ul className="feed-post-comment-list">
-        {comments.map((comment) => (
-          <li className="feed-post-comment" key={comment.id}>
-            <span className="feed-post-comment-avatar">
-              <Image
-                alt=""
-                className="feed-post-avatar-image"
-                fill
-                sizes="28px"
-                src={comment.avatar}
-              />
-            </span>
-            <div className="feed-post-comment-body">
-              <p className="feed-post-comment-meta">
-                <strong>{comment.author}</strong>
-                <span>{comment.handle}</span>
-              </p>
-              <p className="feed-post-comment-text">{comment.text}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p className="feed-post-comments-empty">{emptyLabel}</p>
-    );
+  const list = commentsLoading ? (
+    <p className="feed-post-comments-empty">Loading comments…</p>
+  ) : comments.length > 0 ? (
+    <ul className="feed-post-comment-list">
+      {comments.map((comment) => (
+        <li className="feed-post-comment" key={comment.id}>
+          <span className="feed-post-comment-avatar">
+            <Image
+              alt=""
+              className="feed-post-avatar-image"
+              fill
+              sizes="28px"
+              src={comment.avatar}
+              unoptimized={isRemoteSrc(comment.avatar)}
+            />
+          </span>
+          <div className="feed-post-comment-body">
+            <p className="feed-post-comment-meta">
+              <strong>{comment.author}</strong>
+              <span>{comment.handle}</span>
+            </p>
+            <p className="feed-post-comment-text">{comment.text}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="feed-post-comments-empty">{emptyLabel}</p>
+  );
 
   if (layout === "modal") {
     return (
       <div className="feed-post-comments feed-post-comments--modal">
         <div className="feed-post-comments-scroll">{list}</div>
+        {actionError ? (
+          <p className="feed-post-manage-error">{actionError}</p>
+        ) : null}
         {composer}
       </div>
     );
@@ -246,6 +201,9 @@ function CommentPanel({
   return (
     <div className="feed-post-comments">
       {list}
+      {actionError ? (
+        <p className="feed-post-manage-error">{actionError}</p>
+      ) : null}
       {composer}
     </div>
   );
@@ -254,25 +212,33 @@ function CommentPanel({
 function FeedPostCard({
   post,
   allowComments,
-  onOpen
+  persist,
+  onOpen,
+  onStatsChange
 }: {
   post: FeedPost;
   allowComments: boolean;
+  persist: boolean;
   onOpen?: () => void;
+  onStatsChange?: PostStatsChange;
 }) {
   const {
     liked,
     likeBurst,
+    likeBusy,
     commentsOpen,
     setCommentsOpen,
     draft,
     setDraft,
     comments,
+    commentsLoading,
+    commentBusy,
+    actionError,
     likeCount,
     commentCount,
     onLike,
     sendComment
-  } = usePostInteractions(post);
+  } = usePostInteractions(post, { persist, onStatsChange });
 
   return (
     <article
@@ -291,18 +257,10 @@ function FeedPostCard({
       tabIndex={onOpen ? 0 : undefined}
     >
       <div className="feed-post-top">
-        <div className="feed-post-avatar">
-          <Image
-            alt=""
-            className="feed-post-avatar-image"
-            fill
-            sizes="36px"
-            src={post.avatar}
-          />
-        </div>
+        <FeedAuthorHoverCard author={post.author} size={32} />
         <div>
-          <p className="feed-post-author">{post.author}</p>
-          <p className="feed-post-handle">{post.handle}</p>
+          <p className="feed-post-author">{post.author.name}</p>
+          <p className="feed-post-handle">{post.author.handle}</p>
         </div>
       </div>
 
@@ -317,9 +275,10 @@ function FeedPostCard({
           }`}
           aria-label={liked ? "Unlike" : "Like"}
           aria-pressed={liked}
+          disabled={likeBusy}
           onClick={(event) => {
             event.stopPropagation();
-            onLike();
+            void onLike();
           }}
         >
           <span aria-hidden>{liked ? "♥" : "♡"}</span> {likeCount}
@@ -343,6 +302,10 @@ function FeedPostCard({
         </button>
       </div>
 
+      {actionError && !commentsOpen ? (
+        <p className="feed-post-manage-error">{actionError}</p>
+      ) : null}
+
       {allowComments && commentsOpen && !onOpen ? (
         <div
           onClick={(event) => event.stopPropagation()}
@@ -353,7 +316,10 @@ function FeedPostCard({
             comments={comments}
             draft={draft}
             setDraft={setDraft}
-            sendComment={sendComment}
+            sendComment={() => void sendComment()}
+            commentsLoading={commentsLoading}
+            commentBusy={commentBusy}
+            actionError={actionError}
           />
         </div>
       ) : null}
@@ -364,23 +330,35 @@ function FeedPostCard({
 function FeedPostModal({
   post,
   allowComments,
-  onClose
+  persist,
+  onClose,
+  onStatsChange
 }: {
   post: FeedPost;
   allowComments: boolean;
+  persist: boolean;
   onClose: () => void;
+  onStatsChange?: PostStatsChange;
 }) {
   const {
     liked,
     likeBurst,
+    likeBusy,
     draft,
     setDraft,
     comments,
+    commentsLoading,
+    commentBusy,
+    actionError,
     likeCount,
     commentCount,
     onLike,
     sendComment
-  } = usePostInteractions(post);
+  } = usePostInteractions(post, {
+    persist,
+    autoLoadComments: true,
+    onStatsChange
+  });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -407,7 +385,7 @@ function FeedPostModal({
         className="feed-post-modal"
         role="dialog"
         aria-modal="true"
-        aria-label={`Post by ${post.author}`}
+        aria-label={`Post by ${post.author.name}`}
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -430,18 +408,10 @@ function FeedPostModal({
         <div className="feed-post-modal-side">
           <div className="feed-post-modal-side-top">
             <div className="feed-post-top">
-              <div className="feed-post-avatar">
-                <Image
-                  alt=""
-                  className="feed-post-avatar-image"
-                  fill
-                  sizes="40px"
-                  src={post.avatar}
-                />
-              </div>
+              <FeedAuthorHoverCard author={post.author} size={40} />
               <div>
-                <p className="feed-post-author">{post.author}</p>
-                <p className="feed-post-handle">{post.handle}</p>
+                <p className="feed-post-author">{post.author.name}</p>
+                <p className="feed-post-handle">{post.author.handle}</p>
               </div>
             </div>
 
@@ -455,7 +425,8 @@ function FeedPostModal({
                 }`}
                 aria-label={liked ? "Unlike" : "Like"}
                 aria-pressed={liked}
-                onClick={onLike}
+                disabled={likeBusy}
+                onClick={() => void onLike()}
               >
                 <span aria-hidden>{liked ? "♥" : "♡"}</span> {likeCount}
               </button>
@@ -472,7 +443,10 @@ function FeedPostModal({
               comments={comments}
               draft={draft}
               setDraft={setDraft}
-              sendComment={sendComment}
+              sendComment={() => void sendComment()}
+              commentsLoading={commentsLoading}
+              commentBusy={commentBusy}
+              actionError={actionError}
             />
           ) : null}
         </div>
@@ -486,7 +460,8 @@ export function CommunityFeed({
   decorative: _decorative = false,
   allowComments = false,
   enableLoadMore = false,
-  posts = FEED_POSTS,
+  hideHeader = false,
+  posts: initialPosts = FEED_POSTS,
   subtitle = "For you",
   title = "Community Feed"
 }: {
@@ -494,47 +469,144 @@ export function CommunityFeed({
   decorative?: boolean;
   allowComments?: boolean;
   enableLoadMore?: boolean;
+  hideHeader?: boolean;
   posts?: FeedPost[];
   subtitle?: string;
   title?: string;
 }) {
-  const pageSize = 6;
-  const [visibleCount, setVisibleCount] = useState(
-    enableLoadMore ? Math.min(pageSize, posts.length) : posts.length
+  const live = enableLoadMore;
+  const [posts, setPosts] = useState<FeedPost[]>(() =>
+    live ? [] : initialPosts
   );
+  const [loading, setLoading] = useState(live);
+  const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activePostId, setActivePostId] = useState<string | null>(null);
 
-  const visiblePosts = useMemo(
-    () => posts.slice(0, visibleCount),
-    [posts, visibleCount]
-  );
-  const hasMore = enableLoadMore && visibleCount < posts.length;
-  const activePost = visiblePosts.find((post) => post.id === activePostId) ?? null;
+  useEffect(() => {
+    if (live) return;
+    setPosts(initialPosts);
+    setLoading(false);
+    setHasMore(false);
+    setLoadError(null);
+  }, [live, initialPosts]);
+
+  useEffect(() => {
+    if (!live) return;
+
+    let cancelled = false;
+
+    const loadInitial = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const supabase = createClient();
+        const page = await listFeedPosts(supabase, {
+          limit: FEED_PAGE_SIZE
+        });
+        if (cancelled) return;
+        const liked = new Set(page.likedPostIds);
+        setPosts(
+          page.posts.map((row) => mapFeedRowToPost(row, liked.has(row.id)))
+        );
+        setHasMore(page.hasMore);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setPosts([]);
+          setHasMore(false);
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Could not load the feed."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadInitial();
+    return () => {
+      cancelled = true;
+    };
+  }, [live]);
+
+  const activePost = posts.find((post) => post.id === activePostId) ?? null;
   const canOpenModal = allowComments;
 
-  const loadMore = () => {
-    if (!hasMore || isLoadingMore) return;
+  const updatePostStats: PostStatsChange = (postId, stats) => {
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              likes: stats.likes,
+              comments: stats.comments,
+              likedByMe: stats.likedByMe
+            }
+          : post
+      )
+    );
+  };
+
+  const loadMore = async () => {
+    if (!live || !hasMore || isLoadingMore || posts.length === 0) return;
     setIsLoadingMore(true);
-    window.setTimeout(() => {
-      setVisibleCount((count) => Math.min(count + pageSize, posts.length));
+    setLoadError(null);
+    try {
+      const supabase = createClient();
+      const oldest = posts[posts.length - 1];
+      const page = await listFeedPosts(supabase, {
+        limit: FEED_PAGE_SIZE,
+        before: oldest.createdAtIso ?? null
+      });
+
+      setPosts((prev) => {
+        const seen = new Set(prev.map((post) => post.id));
+        const liked = new Set(page.likedPostIds);
+        const next = page.posts
+          .map((row) => mapFeedRowToPost(row, liked.has(row.id)))
+          .filter((post) => !seen.has(post.id));
+        return [...prev, ...next];
+      });
+      setHasMore(page.hasMore);
+    } catch (error) {
+      console.error(error);
+      setLoadError(
+        error instanceof Error ? error.message : "Could not load more posts."
+      );
+    } finally {
       setIsLoadingMore(false);
-    }, 350);
+    }
   };
 
   return (
     <>
       <div className={`feed-mock${className ? ` ${className}` : ""}`}>
-        <div className="feed-mock-header">
-          <strong>{title}</strong>
-          <span>{subtitle}</span>
-        </div>
+        {hideHeader ? null : (
+          <div className="feed-mock-header">
+            <strong>{title}</strong>
+            <span>{subtitle}</span>
+          </div>
+        )}
         <div className="feed-mock-posts">
-          {visiblePosts.map((post) => (
+          {loading ? (
+            <p className="feed-posts-status">Loading posts…</p>
+          ) : null}
+          {!loading && posts.length === 0 ? (
+            <p className="feed-posts-status">
+              {loadError ?? "No posts yet. Be the first to share an update."}
+            </p>
+          ) : null}
+          {posts.map((post) => (
             <FeedPostCard
               key={post.id}
               post={post}
               allowComments={allowComments}
+              persist={live}
+              onStatsChange={live ? updatePostStats : undefined}
               onOpen={
                 canOpenModal ? () => setActivePostId(post.id) : undefined
               }
@@ -542,20 +614,23 @@ export function CommunityFeed({
           ))}
         </div>
 
-        {enableLoadMore ? (
+        {enableLoadMore && !loading ? (
           <div className="feed-load-more">
+            {loadError && posts.length > 0 ? (
+              <p className="feed-load-more-error">{loadError}</p>
+            ) : null}
             {hasMore ? (
               <button
                 type="button"
                 className="feed-load-more-btn"
-                onClick={loadMore}
+                onClick={() => void loadMore()}
                 disabled={isLoadingMore}
               >
                 {isLoadingMore ? "Loading…" : "Load more"}
               </button>
-            ) : (
+            ) : posts.length > 0 ? (
               <p className="feed-load-more-done">You’re all caught up</p>
-            )}
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -564,6 +639,8 @@ export function CommunityFeed({
         <FeedPostModal
           post={activePost}
           allowComments={allowComments}
+          persist={live}
+          onStatsChange={live ? updatePostStats : undefined}
           onClose={() => setActivePostId(null)}
         />
       ) : null}
