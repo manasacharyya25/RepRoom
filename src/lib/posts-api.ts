@@ -3,6 +3,7 @@ import { uploadImage } from "@/lib/media";
 import type { CreatePostInput, DbPost } from "@/lib/types/post";
 
 export const POSTS_BUCKET = "posts" as const;
+export const POSTS_PAGE_SIZE = 9;
 
 function clampProgress(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -29,20 +30,45 @@ async function uploadPostImage(
   return publicUrl;
 }
 
+export type ListUserPostsPage = {
+  posts: DbPost[];
+  hasMore: boolean;
+};
+
 export async function listUserPosts(
   supabase: SupabaseClient,
   userId: string,
-  limit = 40
-): Promise<DbPost[]> {
-  const { data, error } = await supabase
+  options?: {
+    /** Max posts per page (capped at POSTS_PAGE_SIZE). */
+    limit?: number;
+    /** Fetch posts older than this `created_at` timestamp (ISO). */
+    before?: string | null;
+  }
+): Promise<ListUserPostsPage> {
+  const limit = Math.min(
+    Math.max(1, options?.limit ?? POSTS_PAGE_SIZE),
+    POSTS_PAGE_SIZE
+  );
+
+  let query = supabase
     .from("posts")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
+  if (options?.before) {
+    query = query.lt("created_at", options.before);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as DbPost[];
+
+  const posts = (data ?? []) as DbPost[];
+  return {
+    posts,
+    hasMore: posts.length === limit
+  };
 }
 
 export async function createPost(

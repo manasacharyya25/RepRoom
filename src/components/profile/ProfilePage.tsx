@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
 import {
@@ -18,7 +18,7 @@ import {
 } from "@/lib/profile-format";
 import { categoryLabel, CAPTION_MAX_LENGTH, type PostCategory, type PostKind } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
-import { createPost, deletePost, listUserPosts, updatePostCaption } from "@/lib/posts-api";
+import { createPost, deletePost, listUserPosts, POSTS_PAGE_SIZE, updatePostCaption } from "@/lib/posts-api";
 import type { DbPost } from "@/lib/types/post";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
@@ -40,7 +40,10 @@ type SelfPost = {
   afterImage?: string;
   location?: string;
   tags?: string[];
+  /** Relative label for UI */
   createdAt: string;
+  /** Raw ISO timestamp for pagination cursor */
+  createdAtIso: string;
   likes: number;
   comments: number;
 };
@@ -73,6 +76,7 @@ function mapDbPost(post: DbPost): SelfPost {
     location: post.location ?? undefined,
     tags: post.tags?.length ? post.tags : undefined,
     createdAt: formatRelativeTime(post.created_at),
+    createdAtIso: post.created_at,
     likes: post.likes_count,
     comments: post.comments_count
   };
@@ -702,8 +706,6 @@ function ProfilePostModal({
   );
 }
 
-const POSTS_PAGE_SIZE = 9;
-
 function mapGoalsToCards(goals: DbGoal[]): ProfileGoalCard[] {
   return goals
     .filter((goal) => goal.template_id !== "hours_worked")
@@ -730,14 +732,14 @@ export function ProfilePage({
   const goalsPanelRef = useRef<HTMLElement>(null);
   const [posts, setPosts] = useState<SelfPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [profileData, setProfileData] = useState<ProfileViewModel | null>(
     initialData
   );
   const [goals, setGoals] = useState<ProfileGoalCard[]>(() =>
     initialData ? mapGoalsToCards(initialData.goals) : INITIAL_GOALS
   );
-  const [visiblePostCount, setVisiblePostCount] = useState(POSTS_PAGE_SIZE);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const [editOnOpen, setEditOnOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -769,18 +771,24 @@ export function ProfilePage({
         if (!user) {
           if (!cancelled) {
             setPosts([]);
+            setHasMorePosts(false);
             setPostsLoading(false);
           }
           return;
         }
 
-        const rows = await listUserPosts(supabase, user.id);
+        const page = await listUserPosts(supabase, user.id, {
+          limit: POSTS_PAGE_SIZE
+        });
         if (cancelled) return;
-        setPosts(rows.map(mapDbPost));
-        setVisiblePostCount(POSTS_PAGE_SIZE);
+        setPosts(page.posts.map(mapDbPost));
+        setHasMorePosts(page.hasMore);
       } catch (error) {
         console.error(error);
-        if (!cancelled) setPosts([]);
+        if (!cancelled) {
+          setPosts([]);
+          setHasMorePosts(false);
+        }
       } finally {
         if (!cancelled) setPostsLoading(false);
       }
@@ -900,11 +908,6 @@ export function ProfilePage({
     };
   }, [displayName, bio, handle, avatarSrc, hoursWorked, hoursGoal, dayStreak, goals]);
 
-  const visiblePosts = useMemo(
-    () => posts.slice(0, visiblePostCount),
-    [posts, visiblePostCount]
-  );
-  const hasMorePosts = visiblePostCount < posts.length;
   const activePost = posts.find((post) => post.id === activePostId) ?? null;
 
   const openPost = (postId: string, edit = false) => {
@@ -947,15 +950,35 @@ export function ProfilePage({
     }
   };
 
-  const loadMorePosts = () => {
-    if (!hasMorePosts || isLoadingMore) return;
+  const loadMorePosts = async () => {
+    if (!hasMorePosts || isLoadingMore || posts.length === 0) return;
     setIsLoadingMore(true);
-    window.setTimeout(() => {
-      setVisiblePostCount((count) =>
-        Math.min(count + POSTS_PAGE_SIZE, posts.length)
-      );
+    try {
+      const supabase = createClient();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const oldest = posts[posts.length - 1];
+      const page = await listUserPosts(supabase, user.id, {
+        limit: POSTS_PAGE_SIZE,
+        before: oldest.createdAtIso
+      });
+
+      setPosts((prev) => {
+        const seen = new Set(prev.map((post) => post.id));
+        const next = page.posts
+          .map(mapDbPost)
+          .filter((post) => !seen.has(post.id));
+        return [...prev, ...next];
+      });
+      setHasMorePosts(page.hasMore);
+    } catch (error) {
+      console.error(error);
+    } finally {
       setIsLoadingMore(false);
-    }, 350);
+    }
   };
 
   const publish = (payload: ComposerPublishPayload) => {
@@ -1003,7 +1026,6 @@ export function ProfilePage({
 
         revokePreviewUrls(uploadPreview);
         setPosts((prev) => [mapDbPost(created), ...prev]);
-        setVisiblePostCount((count) => Math.max(count, POSTS_PAGE_SIZE));
         setUploadPreview(null);
         setUploadProgress(0);
       } catch (error) {
@@ -1274,7 +1296,7 @@ export function ProfilePage({
               No posts yet. Share your first update above.
             </p>
           ) : null}
-          {visiblePosts.map((post) => (
+          {posts.map((post) => (
             <ProfilePostCard
               key={post.id}
               post={post}
@@ -1290,7 +1312,7 @@ export function ProfilePage({
             <button
               type="button"
               className="feed-load-more-btn"
-              onClick={loadMorePosts}
+              onClick={() => void loadMorePosts()}
               disabled={isLoadingMore}
             >
               {isLoadingMore ? "Loading…" : "Load more"}
