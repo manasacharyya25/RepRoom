@@ -1027,6 +1027,33 @@ html:has(.landing) body::-webkit-scrollbar {
   object-fit: cover;
 }
 
+.before-after-slider-fallback {
+  position: relative;
+  overflow: hidden;
+}
+
+.before-after-slider-fallback-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.before-after-slider-fallback-before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  overflow: hidden;
+}
+
+.before-after-slider-fallback-before img {
+  display: block;
+  height: 100%;
+  width: 100vw;
+  max-width: none;
+  object-fit: cover;
+  object-position: left center;
+}
+
 .before-after-slider-label {
   position: absolute;
   bottom: 8px;

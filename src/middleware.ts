@@ -6,8 +6,6 @@ const PROTECTED_PREFIXES = [
   "/profile",
   "/feed",
   "/inbox",
-  "/preview",
-  "/room",
   "/onboarding",
   "/u"
 ];
