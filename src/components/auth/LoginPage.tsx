@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import "@/app/landing.css";
 import "@/app/login.css";
-import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
@@ -128,7 +127,6 @@ export function LoginPage() {
           Satara
         </Link>
         <div className="landing-nav-actions">
-          <ThemeSwitch />
           <Link className="btn-secondary" href="/">
             Home
           </Link>

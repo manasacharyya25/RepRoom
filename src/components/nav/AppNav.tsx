@@ -9,7 +9,6 @@ import {
   NotificationsProvider,
   useNotifications
 } from "@/components/notifications/NotificationsProvider";
-import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import { createClient } from "@/lib/supabase/client";
 import "@/app/inbox.css";
 import "@/app/notifications.css";
@@ -255,7 +254,6 @@ function AppNavInner({
         <header className="landing-nav">
           <Logo />
           <div className="landing-nav-actions">
-            <ThemeSwitch />
             <Link className="btn-secondary" href="/rooms">
               Rooms
             </Link>
@@ -277,7 +275,6 @@ function AppNavInner({
         <header className="landing-nav room-select-nav">
           <Logo />
           <div className="landing-nav-actions room-select-nav-actions">
-            <ThemeSwitch />
             <Link
               className={
                 pathname === "/feed" ? "btn-secondary is-active" : "btn-secondary"
@@ -309,7 +306,6 @@ function AppNavInner({
         <header className="landing-nav">
           <Logo />
           <nav className="landing-nav-actions profile-nav-pills" aria-label="Main">
-            <ThemeSwitch />
             {links.map((link) => {
               const isActive = pathname === link.href;
               return (
@@ -345,7 +341,6 @@ function AppNavInner({
     <header className="landing-nav">
       <Logo />
       <div className="landing-nav-actions">
-        <ThemeSwitch />
         <Link className="btn-secondary" href="/profile">
           Profile
         </Link>

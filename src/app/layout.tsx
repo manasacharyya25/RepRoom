@@ -14,28 +14,13 @@ export const metadata: Metadata = {
     "Join live Yoga, Workout, Cardio, Zumba, and Meditation rooms. Motivate each other, share progress, and stay accountable."
 };
 
-const themeBootScript = `
-(() => {
-  try {
-    const stored = localStorage.getItem("satara-theme");
-    const theme = stored === "cobalt" || stored === "ember" ? stored : "ember";
-    document.documentElement.dataset.theme = theme;
-  } catch (_) {
-    document.documentElement.dataset.theme = "ember";
-  }
-})();
-`;
-
 export default function RootLayout({
   children
 }: Readonly<{
   children: ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
-      </head>
+    <html lang="en">
       <body className={outfit.className}>{children}</body>
     </html>
   );

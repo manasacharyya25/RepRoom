@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
-import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
 import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
 import { heightToCm, hoursGoalTarget, slugifyUsername, toKg } from "@/lib/goals";
 import { completeOnboarding } from "@/lib/onboarding";
@@ -381,7 +380,6 @@ export function OnboardingPage() {
           Satara
         </Link>
         <div className="landing-nav-actions">
-          <ThemeSwitch />
           <button
             type="button"
             className="btn-ghost onboarding-skip"
