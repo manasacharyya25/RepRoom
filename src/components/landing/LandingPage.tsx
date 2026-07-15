@@ -14,9 +14,9 @@ export function LandingPage() {
           Satara
         </Link>
         <div className="landing-nav-actions">
-          <a className="btn-primary" href="#feed">
+          <Link className="btn-primary" href="/login">
             Get Started
-          </a>
+          </Link>
         </div>
       </header>
 

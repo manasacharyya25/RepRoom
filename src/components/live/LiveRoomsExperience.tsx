@@ -7,6 +7,13 @@ import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
+import {
+  fetchLobbySenderProfile,
+  formatLobbyRelativeTime,
+  listLobbyMessages,
+  mapDbLobbyMessageToView,
+  sendLobbyMessage
+} from "@/lib/lobby-chat-api";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   getRoomLiveSets,
@@ -14,8 +21,18 @@ import {
   type RoomLiveSet,
   type WorkoutRoom
 } from "@/lib/rooms";
+import { createClient } from "@/lib/supabase/client";
+import type {
+  DbLobbyMessage,
+  LobbyMessageView
+} from "@/lib/types/lobby-chat";
+import { LOBBY_MESSAGE_MAX_LENGTH } from "@/lib/types/lobby-chat";
 
 type PreviewZone = "main" | "bottom" | "rail";
+
+function isRemoteSrc(src: string) {
+  return src.startsWith("http://") || src.startsWith("https://");
+}
 
 function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
   return {
@@ -24,33 +41,6 @@ function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
     rail: [set.rail[0], set.rail[1], set.rail[2], set.rail[3], set.rail[4]]
   };
 }
-
-const CHAT_MESSAGES = [
-  {
-    id: "1",
-    author: "Jordan",
-    handle: "@jordan_lifts",
-    avatar: LIVE_IMAGES.participant6,
-    text: "6 months of showing up. Same person, stronger habits.",
-    hashtag: "#Accountability"
-  },
-  {
-    id: "2",
-    author: "Maya",
-    handle: "@maya_moves",
-    avatar: LIVE_IMAGES.sidebar2,
-    text: "Who’s joining Sunrise Yoga Flow?",
-    hashtag: "#yoga"
-  },
-  {
-    id: "3",
-    author: "Alex",
-    handle: "@alex_runs",
-    avatar: LIVE_IMAGES.participant1,
-    text: "Just crushed HIIT Circuit. Legs are toast.",
-    hashtag: "#hiit"
-  }
-];
 
 function LiveTile({
   className,
@@ -399,10 +389,67 @@ export function ImmersiveRoom({
   );
 }
 
+function PrivateRoomComingSoonModal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="room-coming-soon-backdrop"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        className="room-coming-soon-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="room-coming-soon-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3 id="room-coming-soon-title">Coming Soon 🚀</h3>
+        <p>
+          Private Sessions will let trainers and gyms host invitation-only live
+          workouts, coaching sessions, and fitness classes.
+        </p>
+        <p className="room-coming-soon-stay">Stay tuned.</p>
+        <div className="room-coming-soon-actions">
+          <button
+            type="button"
+            className="room-coming-soon-btn"
+            onClick={onClose}
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LiveRoomsExperience() {
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState(CHAT_MESSAGES);
+  const [messages, setMessages] = useState<LobbyMessageView[]>([]);
+  const [chatMinimized, setChatMinimized] = useState(false);
+  const [privateRoomModalOpen, setPrivateRoomModalOpen] = useState(false);
+  const [chatLoading, setChatLoading] = useState(true);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const profileCacheRef = useRef(
+    new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
+  );
 
   const filteredRooms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -415,29 +462,129 @@ export function LiveRoomsExperience() {
     );
   }, [query]);
 
-  const sendMessage = () => {
-    const text = draft.trim();
-    if (!text) return;
+  useEffect(() => {
+    let cancelled = false;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `local-${Date.now()}`,
-        author: "You",
-        handle: "@you",
-        avatar: LIVE_IMAGES.participant4,
-        text,
-        hashtag: "#live"
+    const load = async () => {
+      setChatLoading(true);
+      setChatError(null);
+      try {
+        const rows = await listLobbyMessages(supabase);
+        if (cancelled) return;
+        setMessages(rows);
+        for (const row of rows) {
+          profileCacheRef.current.set(row.senderId, {
+            id: row.senderId,
+            display_name: row.author === "Athlete" ? null : row.author,
+            username: row.handle.startsWith("@")
+              ? row.handle.slice(1)
+              : row.handle,
+            avatar_url: row.avatar
+          });
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setChatError(
+            caught instanceof Error
+              ? caught.message
+              : "Could not load lobby chat."
+          );
+        }
+      } finally {
+        if (!cancelled) setChatLoading(false);
       }
-    ]);
+    };
+
+    void load();
+
+    const channel = supabase
+      .channel("lobby-chat")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "lobby_messages"
+        },
+        (payload) => {
+          const row = payload.new as DbLobbyMessage;
+          void (async () => {
+            let profile = profileCacheRef.current.get(row.sender_id) ?? null;
+            if (!profile) {
+              try {
+                profile = await fetchLobbySenderProfile(
+                  supabase,
+                  row.sender_id
+                );
+                if (profile) {
+                  profileCacheRef.current.set(row.sender_id, profile);
+                }
+              } catch {
+                profile = null;
+              }
+            }
+
+            const view = mapDbLobbyMessageToView(row, profile);
+            setMessages((prev) => {
+              if (prev.some((message) => message.id === view.id)) return prev;
+              return [...prev, view];
+            });
+          })();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (chatMinimized || chatLoading) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, chatMinimized, chatLoading]);
+
+  const sendMessage = async () => {
+    const text = draft.trim();
+    if (!text || chatSending) return;
+
+    setChatSending(true);
+    setChatError(null);
     setDraft("");
+    try {
+      const created = await sendLobbyMessage(supabase, text);
+      profileCacheRef.current.set(created.senderId, {
+        id: created.senderId,
+        display_name: created.author === "Athlete" ? null : created.author,
+        username: created.handle.startsWith("@")
+          ? created.handle.slice(1)
+          : created.handle,
+        avatar_url: created.avatar
+      });
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === created.id)) return prev;
+        return [...prev, created];
+      });
+    } catch (caught) {
+      setDraft(text);
+      setChatError(
+        caught instanceof Error ? caught.message : "Could not send message."
+      );
+    } finally {
+      setChatSending(false);
+    }
   };
 
   return (
     <div className="room-select-page">
       <AppNav variant="rooms" />
 
-      <div className="room-select-shell">
+      <div
+        className={`room-select-shell${
+          chatMinimized ? " is-chat-minimized" : ""
+        }`}
+      >
         <div className="room-select-main">
           <label className="room-select-search">
             <span className="sr-only">Filter rooms</span>
@@ -490,15 +637,19 @@ export function LiveRoomsExperience() {
             ))}
 
             {!query.trim() ? (
-              <button className="room-select-card room-select-card--create" type="button">
+              <button
+                className="room-select-card room-select-card--create"
+                type="button"
+                onClick={() => setPrivateRoomModalOpen(true)}
+              >
                 <div className="room-select-create-media">
                   <span className="room-select-create-plus" aria-hidden>
                     +
                   </span>
                 </div>
                 <div className="room-select-card-body">
-                  <strong>Create Private Room</strong>
-                  <span>Invite-only session</span>
+                  <strong>Create Private Session</strong>
+                  <span>Invite-Only</span>
                 </div>
               </button>
             ) : null}
@@ -509,64 +660,129 @@ export function LiveRoomsExperience() {
           ) : null}
         </div>
 
-        <aside className="room-select-chat">
-          <div className="room-select-chat-header">
-            <strong>Chat</strong>
-            <span aria-hidden>—</span>
-          </div>
-          <div className="room-select-chat-list">
-            {messages.map((message) => (
-              <article className="room-select-chat-item" key={message.id}>
-                <div className="room-select-chat-top">
-                  <span className="room-select-chat-avatar">
-                    <Image
-                      alt=""
-                      className="room-select-avatar-image"
-                      fill
-                      sizes="36px"
-                      src={message.avatar}
-                    />
-                  </span>
-                  <div>
-                    <p className="room-select-chat-author">{message.author}</p>
-                    <p className="room-select-chat-handle">{message.handle}</p>
-                  </div>
-                </div>
-                <p className="room-select-chat-text">{message.text}</p>
-                <span className="room-select-chat-tag">{message.hashtag}</span>
-              </article>
-            ))}
-          </div>
-          <form
-            className="room-select-chat-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              sendMessage();
-            }}
+        {chatMinimized ? (
+          <button
+            type="button"
+            className="room-select-chat-restore"
+            aria-label="Expand chat"
+            title="Expand chat"
+            onClick={() => setChatMinimized(false)}
           >
-            <label className="sr-only" htmlFor="room-chat-input">
-              Type a message
-            </label>
-            <textarea
-              id="room-chat-input"
-              className="room-select-chat-input"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  sendMessage();
-                }
+            <svg viewBox="0 0 24 24" aria-hidden fill="none">
+              <path
+                d="M5.75 6.75h12.5A2 2 0 0 1 20.25 8.75v6.5a2 2 0 0 1-2 2H11l-3.75 2.5V17.25h-1.5a2 2 0 0 1-2-2v-6.5a2 2 0 0 1 2-2Z"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>Chat</span>
+          </button>
+        ) : (
+          <aside className="room-select-chat">
+            <div className="room-select-chat-header">
+              <strong>Lobby Chat</strong>
+              <button
+                type="button"
+                className="room-select-chat-minimize"
+                aria-label="Minimize chat"
+                title="Minimize chat"
+                onClick={() => setChatMinimized(true)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden fill="none">
+                  <path
+                    d="M6 12h12"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="room-select-chat-list">
+              {chatLoading ? (
+                <p className="room-select-chat-status">Loading messages…</p>
+              ) : null}
+              {!chatLoading && messages.length === 0 ? (
+                <p className="room-select-chat-status">
+                  No messages yet. Say hello to the lobby.
+                </p>
+              ) : null}
+              {messages.map((message) => (
+                <article className="room-select-chat-item" key={message.id}>
+                  <div className="room-select-chat-top">
+                    <span className="room-select-chat-avatar">
+                      <Image
+                        alt=""
+                        className="room-select-avatar-image"
+                        fill
+                        sizes="36px"
+                        src={message.avatar}
+                        unoptimized={isRemoteSrc(message.avatar)}
+                      />
+                    </span>
+                    <div>
+                      <p className="room-select-chat-author">{message.author}</p>
+                      <p className="room-select-chat-handle">{message.handle}</p>
+                    </div>
+                  </div>
+                  <p className="room-select-chat-text">{message.text}</p>
+                  <time
+                    className="room-select-chat-tag"
+                    dateTime={message.createdAt}
+                  >
+                    {formatLobbyRelativeTime(message.createdAt)}
+                  </time>
+                </article>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+            {chatError ? (
+              <p className="room-select-chat-error">{chatError}</p>
+            ) : null}
+            <form
+              className="room-select-chat-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendMessage();
               }}
-              placeholder="Type a message…"
-              rows={2}
-              value={draft}
-            />
-            <button className="room-select-chat-send" type="submit" disabled={!draft.trim()}>
-              Send
-            </button>
-          </form>
-        </aside>
+            >
+              <label className="sr-only" htmlFor="room-chat-input">
+                Type a message
+              </label>
+              <textarea
+                id="room-chat-input"
+                className="room-select-chat-input"
+                maxLength={LOBBY_MESSAGE_MAX_LENGTH}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+                placeholder="Message the lobby…"
+                rows={2}
+                value={draft}
+                disabled={chatSending}
+              />
+              <button
+                className="room-select-chat-send"
+                type="submit"
+                disabled={!draft.trim() || chatSending}
+              >
+                {chatSending ? "…" : "Send"}
+              </button>
+            </form>
+          </aside>
+        )}
       </div>
+
+      {privateRoomModalOpen ? (
+        <PrivateRoomComingSoonModal
+          onClose={() => setPrivateRoomModalOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
