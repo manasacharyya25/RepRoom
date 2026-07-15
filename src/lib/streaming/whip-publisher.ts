@@ -1,4 +1,4 @@
-import { applyPublisherBitrate } from "@/lib/streaming/capture";
+import { applyPublisherEncodeLimits } from "@/lib/streaming/capture";
 
 export type WhipPublisher = {
   stop: () => Promise<void>;
@@ -123,9 +123,9 @@ export async function startWhipPublisher(options: {
     const sender = transceiver.sender;
     if (sender) {
       try {
-        await applyPublisherBitrate(sender);
+        await applyPublisherEncodeLimits(sender);
       } catch {
-        /* Bitrate hint is best-effort */
+        /* Encode limits are best-effort */
       }
     }
 
