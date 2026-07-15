@@ -1,0 +1,24 @@
+# Local MediaMTX for WHIP → LL-HLS + filesystem archive.
+# Run: docker compose up -d
+#
+# WHIP publish:  http://localhost:8889/live/{roomId}/{userId}/whip
+# HLS playback:  http://localhost:8888/live/{roomId}/{userId}/index.m3u8
+# Recordings:    ./archives/live/{roomId}/{userId}/*.mp4
+# Playback API:  http://localhost:9996
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: workout-mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
+      - "8888:8888" # HLS
+      - "8889:8889" # WebRTC / WHIP
+      - "9996:9996" # Recording playback
+      - "8189:8189/udp" # WebRTC ICE UDP
+      - "8189:8189/tcp" # WebRTC ICE TCP
+    volumes:
+      - ./docker/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - ./archives:/recordings

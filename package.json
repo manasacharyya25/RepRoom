@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.1",
     "@supabase/supabase-js": "^2.110.3",
+    "hls.js": "^1.6.16",
     "next": "^15.4.2",
     "react": "^19.1.0",
     "react-compare-slider": "^4.0.0",

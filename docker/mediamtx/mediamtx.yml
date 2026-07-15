@@ -1,0 +1,78 @@
+###############################################
+# Local MediaMTX — WHIP ingest + LL-HLS + archive
+# No transcoding. Publishers use WHIP; viewers use HLS.
+# Recordings land in /recordings (host: ./archives).
+###############################################
+
+logLevel: info
+
+###############################################
+# HLS (Low-Latency)
+###############################################
+
+hls: yes
+hlsAddress: :8888
+hlsEncryption: no
+hlsAllowOrigin: "*"
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 50M
+hlsDirectory: ""
+
+###############################################
+# WebRTC / WHIP
+###############################################
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcEncryption: no
+webrtcAllowOrigin: "*"
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+webrtcIPsFromInterfaces: yes
+webrtcAdditionalHosts: [127.0.0.1, localhost]
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+
+###############################################
+# Playback of recordings (fMP4 / HLS slices)
+###############################################
+
+playback: yes
+playbackAddress: :9996
+playbackEncryption: no
+playbackAllowOrigins: ["*"]
+
+###############################################
+# Other protocols (enabled for debugging)
+###############################################
+
+rtsp: yes
+rtspAddress: :8554
+
+rtmp: yes
+rtmpAddress: :1935
+
+###############################################
+# Paths — live/{roomId}/{userId}
+###############################################
+
+pathDefaults:
+  source: publisher
+  # Record every published live stream to disk (host ./archives).
+  record: yes
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 1h
+  # Keep local archives during development.
+  recordDeleteAfter: 0s
+
+paths:
+  # Matches live/<roomId>/<userId>
+  ~^live/.+/.+$:
+    source: publisher
+    record: yes

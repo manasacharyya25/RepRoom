@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
+import { LiveVideoPlayer } from "@/components/live/LiveVideoPlayer";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
@@ -21,6 +22,15 @@ import {
   type RoomLiveSet,
   type WorkoutRoom
 } from "@/lib/rooms";
+import {
+  captureLiveCamera,
+  stopMediaStream
+} from "@/lib/streaming/capture";
+import { hlsUrl, whipUrl } from "@/lib/streaming/config";
+import {
+  startWhipPublisher,
+  type WhipPublisher
+} from "@/lib/streaming/whip-publisher";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DbLobbyMessage,
@@ -100,8 +110,12 @@ export function ImmersiveRoom({
   const [isGoingLive, setIsGoingLive] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [playbackHlsUrl, setPlaybackHlsUrl] = useState<string | null>(null);
+  const [archiveReplayUrl, setArchiveReplayUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const whipRef = useRef<WhipPublisher | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
 
   useEffect(() => {
@@ -164,48 +178,125 @@ export function ImmersiveRoom({
   };
 
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    const sessionId = sessionIdRef.current;
+    sessionIdRef.current = null;
+
+    void whipRef.current?.stop();
+    whipRef.current = null;
+    stopMediaStream(streamRef.current);
     streamRef.current = null;
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setPlaybackHlsUrl(null);
     setIsLive(false);
     setIsGoingLive(false);
+
+    if (sessionId) {
+      void fetch(`/api/archives/${sessionId}`, { method: "PATCH" })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const data = (await response.json()) as {
+            session?: { fileUrl?: string | null };
+          };
+          if (data.session?.fileUrl) {
+            setArchiveReplayUrl(data.session.fileUrl);
+          }
+        })
+        .catch(() => {
+          /* Archive finalize is best-effort */
+        });
+    }
   }, []);
 
   const startCamera = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Camera is not supported in this browser.");
-      return;
-    }
-
     setIsGoingLive(true);
     setCameraError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user"
-        },
-        audio: false
-      });
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user) {
+        throw new Error("Sign in to go live.");
+      }
 
+      const sessionResponse = await fetch("/api/archives", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: room.id })
+      });
+      if (!sessionResponse.ok) {
+        const data = (await sessionResponse.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(data?.error || "Could not start archive session.");
+      }
+      const sessionData = (await sessionResponse.json()) as {
+        session: { id: string };
+      };
+      sessionIdRef.current = sessionData.session.id;
+
+      const stream = await captureLiveCamera();
       streamRef.current = stream;
-      setIsLive(true);
       attachStreamToVideo(videoRef.current);
+
+      const endpoint = whipUrl(room.id, user.id);
+      const publisher = await startWhipPublisher({
+        stream,
+        whipEndpoint: endpoint
+      });
+      whipRef.current = publisher;
+
+      setPlaybackHlsUrl(hlsUrl(room.id, user.id));
+      setArchiveReplayUrl(null);
+      setIsLive(true);
     } catch (error) {
+      const pendingSession = sessionIdRef.current;
+      sessionIdRef.current = null;
+      if (pendingSession) {
+        void fetch(`/api/archives/${pendingSession}`, { method: "PATCH" });
+      }
       stopCamera();
       setCameraError(
         error instanceof Error
           ? error.message
-          : "Could not access your camera. Check permissions and try again."
+          : "Could not go live. Check camera permissions and that MediaMTX is running."
       );
     } finally {
       setIsGoingLive(false);
     }
-  }, [attachStreamToVideo, stopCamera]);
+  }, [attachStreamToVideo, room.id, stopCamera]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLatestArchive = async () => {
+      try {
+        const response = await fetch(
+          `/api/archives?roomId=${encodeURIComponent(room.id)}&limit=1`
+        );
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as {
+          sessions?: { fileUrl?: string | null }[];
+        };
+        const fileUrl = data.sessions?.[0]?.fileUrl;
+        if (fileUrl && !cancelled) {
+          setArchiveReplayUrl(fileUrl);
+        }
+      } catch {
+        /* optional */
+      }
+    };
+
+    void loadLatestArchive();
+    return () => {
+      cancelled = true;
+    };
+  }, [room.id]);
 
   const toggleGoLive = () => {
     if (isLive || isGoingLive) {
@@ -315,10 +406,24 @@ export function ImmersiveRoom({
           <div className="live-rooms-immersive-pinned">
             {layout.main.map((feed, index) => {
               const showSelf = isLive && index === selfMainSlot;
+              const showHlsLoopback =
+                isLive &&
+                Boolean(playbackHlsUrl) &&
+                index !== selfMainSlot;
+              const showArchive =
+                !isLive && Boolean(archiveReplayUrl) && index === 1;
 
               return (
                 <button
-                  aria-label={showSelf ? "Move your live feed" : `Focus ${feed.name}`}
+                  aria-label={
+                    showSelf
+                      ? "Move your live feed"
+                      : showHlsLoopback
+                        ? "HLS loopback of your stream"
+                        : showArchive
+                          ? "Replay last archive"
+                          : `Focus ${feed.name}`
+                  }
                   className="live-rooms-preview-button live-rooms-immersive-pinned-tile"
                   key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
                   onClick={() => handlePreviewClick("main", index)}
@@ -332,6 +437,20 @@ export function ImmersiveRoom({
                       playsInline
                       ref={attachStreamToVideo}
                     />
+                  ) : showHlsLoopback && playbackHlsUrl ? (
+                    <LiveVideoPlayer
+                      className="live-rooms-featured-hls"
+                      hlsUrl={playbackHlsUrl}
+                      label="You · HLS"
+                      muted
+                    />
+                  ) : showArchive && archiveReplayUrl ? (
+                    <LiveVideoPlayer
+                      className="live-rooms-featured-hls"
+                      label="Archive"
+                      muted
+                      src={archiveReplayUrl}
+                    />
                   ) : (
                     <Image
                       alt=""
@@ -342,9 +461,11 @@ export function ImmersiveRoom({
                       src={feed.image}
                     />
                   )}
-                  <span className="live-rooms-featured-label">
-                    {showSelf ? "You" : feed.name}
-                  </span>
+                  {showHlsLoopback || showArchive ? null : (
+                    <span className="live-rooms-featured-label">
+                      {showSelf ? "You" : feed.name}
+                    </span>
+                  )}
                 </button>
               );
             })}
