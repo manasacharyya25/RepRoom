@@ -55,6 +55,7 @@ function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
 function LiveTile({
   className,
   image,
+  videoSrc,
   label,
   labelPosition = "left",
   priority = false,
@@ -63,6 +64,8 @@ function LiveTile({
 }: {
   className?: string;
   image: string;
+  /** Looping muted archive clip; falls back to image when missing. */
+  videoSrc?: string | null;
   label: string;
   labelPosition?: "left" | "center";
   priority?: boolean;
@@ -76,14 +79,23 @@ function LiveTile({
       onClick={onClick}
       type="button"
     >
-      <Image
-        alt=""
-        className="live-rooms-tile-image"
-        fill
-        priority={priority}
-        sizes={sizes}
-        src={image}
-      />
+      {videoSrc ? (
+        <LiveVideoPlayer
+          className="live-rooms-tile-video"
+          loop
+          muted
+          src={videoSrc}
+        />
+      ) : (
+        <Image
+          alt=""
+          className="live-rooms-tile-image"
+          fill
+          priority={priority}
+          sizes={sizes}
+          src={image}
+        />
+      )}
       <span
         className={`live-rooms-tile-label${labelPosition === "center" ? " live-rooms-tile-label--center" : ""}`}
       >
@@ -109,14 +121,30 @@ export function ImmersiveRoom({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGoingLive, setIsGoingLive] = useState(false);
   const [isLive, setIsLive] = useState(false);
+  const [hlsReady, setHlsReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [playbackHlsUrl, setPlaybackHlsUrl] = useState<string | null>(null);
-  const [archiveReplayUrl, setArchiveReplayUrl] = useState<string | null>(null);
+  const [archiveUrls, setArchiveUrls] = useState<string[]>([]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const whipRef = useRef<WhipPublisher | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const liveEpochRef = useRef(0);
+  const publishGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const hlsReadyRef = useRef(false);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
+
+  const PUBLISH_GRACE_MS = 2.5 * 60 * 1000;
+
+  const archiveForSlot = useCallback(
+    (slot: number) => {
+      if (archiveUrls.length === 0) return null;
+      return archiveUrls[slot % archiveUrls.length] ?? null;
+    },
+    [archiveUrls]
+  );
 
   useEffect(() => {
     setLayout(cloneLiveSet(activeSet));
@@ -158,6 +186,13 @@ export function ImmersiveRoom({
     [isLive, selfMainSlot]
   );
 
+  const clearPublishGraceTimer = useCallback(() => {
+    if (publishGraceTimerRef.current) {
+      clearTimeout(publishGraceTimerRef.current);
+      publishGraceTimerRef.current = null;
+    }
+  }, []);
+
   const attachStreamToVideo = useCallback((video: HTMLVideoElement | null) => {
     videoRef.current = video;
     if (!video || !streamRef.current) return;
@@ -178,6 +213,10 @@ export function ImmersiveRoom({
   };
 
   const stopCamera = useCallback(() => {
+    liveEpochRef.current += 1;
+    clearPublishGraceTimer();
+    hlsReadyRef.current = false;
+
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
 
@@ -189,6 +228,7 @@ export function ImmersiveRoom({
       videoRef.current.srcObject = null;
     }
     setPlaybackHlsUrl(null);
+    setHlsReady(false);
     setIsLive(false);
     setIsGoingLive(false);
 
@@ -199,19 +239,29 @@ export function ImmersiveRoom({
           const data = (await response.json()) as {
             session?: { fileUrl?: string | null };
           };
-          if (data.session?.fileUrl) {
-            setArchiveReplayUrl(data.session.fileUrl);
+          const fileUrl = data.session?.fileUrl;
+          if (fileUrl) {
+            setArchiveUrls((prev) =>
+              prev.includes(fileUrl) ? prev : [fileUrl, ...prev]
+            );
           }
         })
         .catch(() => {
           /* Archive finalize is best-effort */
         });
     }
-  }, []);
+  }, [clearPublishGraceTimer]);
 
   const startCamera = useCallback(async () => {
     setIsGoingLive(true);
     setCameraError(null);
+    setHlsReady(false);
+    hlsReadyRef.current = false;
+    setPlaybackHlsUrl(null);
+    clearPublishGraceTimer();
+
+    const epoch = liveEpochRef.current + 1;
+    liveEpochRef.current = epoch;
 
     try {
       const supabase = createClient();
@@ -224,75 +274,110 @@ export function ImmersiveRoom({
         throw new Error("Sign in to go live.");
       }
 
-      const sessionResponse = await fetch("/api/archives", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId: room.id })
-      });
-      if (!sessionResponse.ok) {
-        const data = (await sessionResponse.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(data?.error || "Could not start archive session.");
-      }
-      const sessionData = (await sessionResponse.json()) as {
-        session: { id: string };
-      };
-      sessionIdRef.current = sessionData.session.id;
-
       const stream = await captureLiveCamera();
+      if (liveEpochRef.current !== epoch) {
+        stopMediaStream(stream);
+        return;
+      }
+
       streamRef.current = stream;
+      setIsLive(true);
+      setIsGoingLive(false);
       attachStreamToVideo(videoRef.current);
 
-      const endpoint = whipUrl(room.id, user.id);
-      const publisher = await startWhipPublisher({
-        stream,
-        whipEndpoint: endpoint
-      });
-      whipRef.current = publisher;
+      // If WHIP/HLS never becomes ready, quietly end after a grace period.
+      publishGraceTimerRef.current = setTimeout(() => {
+        if (liveEpochRef.current !== epoch) return;
+        if (hlsReadyRef.current) return;
+        stopCamera();
+      }, PUBLISH_GRACE_MS);
 
-      setPlaybackHlsUrl(hlsUrl(room.id, user.id));
-      setArchiveReplayUrl(null);
-      setIsLive(true);
+      void (async () => {
+        try {
+          const sessionResponse = await fetch("/api/archives", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ roomId: room.id })
+          });
+          if (sessionResponse.ok && liveEpochRef.current === epoch) {
+            const sessionData = (await sessionResponse.json()) as {
+              session: { id: string };
+            };
+            sessionIdRef.current = sessionData.session.id;
+          }
+        } catch {
+          /* Archive session is best-effort */
+        }
+
+        if (liveEpochRef.current !== epoch || !streamRef.current) return;
+
+        try {
+          const publisher = await startWhipPublisher({
+            stream: streamRef.current,
+            whipEndpoint: whipUrl(room.id, user.id)
+          });
+          if (liveEpochRef.current !== epoch) {
+            await publisher.stop();
+            return;
+          }
+          whipRef.current = publisher;
+          setPlaybackHlsUrl(hlsUrl(room.id, user.id));
+        } catch {
+          /* Keep local preview; grace timer ends live if HLS never comes up */
+        }
+      })();
     } catch (error) {
-      const pendingSession = sessionIdRef.current;
-      sessionIdRef.current = null;
-      if (pendingSession) {
-        void fetch(`/api/archives/${pendingSession}`, { method: "PATCH" });
+      if (liveEpochRef.current === epoch) {
+        stopCamera();
+        setCameraError(
+          error instanceof Error
+            ? error.message
+            : "Could not access your camera."
+        );
       }
-      stopCamera();
-      setCameraError(
-        error instanceof Error
-          ? error.message
-          : "Could not go live. Check camera permissions and that MediaMTX is running."
-      );
     } finally {
-      setIsGoingLive(false);
+      if (liveEpochRef.current === epoch) {
+        setIsGoingLive(false);
+      }
     }
-  }, [attachStreamToVideo, room.id, stopCamera]);
+  }, [
+    PUBLISH_GRACE_MS,
+    attachStreamToVideo,
+    clearPublishGraceTimer,
+    room.id,
+    stopCamera
+  ]);
+
+  const handleHlsReady = useCallback(() => {
+    hlsReadyRef.current = true;
+    setHlsReady(true);
+    clearPublishGraceTimer();
+  }, [clearPublishGraceTimer]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadLatestArchive = async () => {
+    const loadArchives = async () => {
       try {
         const response = await fetch(
-          `/api/archives?roomId=${encodeURIComponent(room.id)}&limit=1`
+          `/api/archives?roomId=${encodeURIComponent(room.id)}&limit=20`
         );
         if (!response.ok || cancelled) return;
         const data = (await response.json()) as {
           sessions?: { fileUrl?: string | null }[];
         };
-        const fileUrl = data.sessions?.[0]?.fileUrl;
-        if (fileUrl && !cancelled) {
-          setArchiveReplayUrl(fileUrl);
+        const urls = (data.sessions ?? [])
+          .map((session) => session.fileUrl)
+          .filter((url): url is string => Boolean(url));
+        if (!cancelled) {
+          setArchiveUrls(urls);
         }
       } catch {
         /* optional */
       }
     };
 
-    void loadLatestArchive();
+    void loadArchives();
     return () => {
       cancelled = true;
     };
@@ -405,51 +490,56 @@ export function ImmersiveRoom({
         <div className="live-rooms-immersive-main-column">
           <div className="live-rooms-immersive-pinned">
             {layout.main.map((feed, index) => {
-              const showSelf = isLive && index === selfMainSlot;
-              const showHlsLoopback =
-                isLive &&
-                Boolean(playbackHlsUrl) &&
-                index !== selfMainSlot;
-              const showArchive =
-                !isLive && Boolean(archiveReplayUrl) && index === 1;
+              const isSelfSlot = isLive && index === selfMainSlot;
+              const showLocalPreview = isSelfSlot && !hlsReady;
+              const showLiveHls =
+                isSelfSlot && hlsReady && Boolean(playbackHlsUrl);
+              const archiveSlot = index === 0 ? 0 : 1;
+              const archiveSrc = isSelfSlot ? null : archiveForSlot(archiveSlot);
 
               return (
                 <button
                   aria-label={
-                    showSelf
-                      ? "Move your live feed"
-                      : showHlsLoopback
-                        ? "HLS loopback of your stream"
-                        : showArchive
-                          ? "Replay last archive"
-                          : `Focus ${feed.name}`
+                    isSelfSlot ? "Move your live feed" : `Focus ${feed.name}`
                   }
                   className="live-rooms-preview-button live-rooms-immersive-pinned-tile"
                   key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
                   onClick={() => handlePreviewClick("main", index)}
                   type="button"
                 >
-                  {showSelf ? (
-                    <video
-                      autoPlay
-                      className="live-rooms-featured-video"
-                      muted
-                      playsInline
-                      ref={attachStreamToVideo}
-                    />
-                  ) : showHlsLoopback && playbackHlsUrl ? (
+                  {isSelfSlot ? (
+                    <>
+                      {showLocalPreview ? (
+                        <video
+                          autoPlay
+                          className="live-rooms-featured-video"
+                          muted
+                          playsInline
+                          ref={attachStreamToVideo}
+                        />
+                      ) : null}
+                      {playbackHlsUrl ? (
+                        <LiveVideoPlayer
+                          className={`live-rooms-featured-hls${
+                            showLiveHls ? "" : " is-pending"
+                          }`}
+                          hlsUrl={playbackHlsUrl}
+                          label={showLiveHls ? "You" : undefined}
+                          muted
+                          onReady={handleHlsReady}
+                          suppressErrorDisplay
+                        />
+                      ) : null}
+                      {showLocalPreview ? (
+                        <span className="live-rooms-featured-label">You</span>
+                      ) : null}
+                    </>
+                  ) : archiveSrc ? (
                     <LiveVideoPlayer
                       className="live-rooms-featured-hls"
-                      hlsUrl={playbackHlsUrl}
-                      label="You · HLS"
+                      loop
                       muted
-                    />
-                  ) : showArchive && archiveReplayUrl ? (
-                    <LiveVideoPlayer
-                      className="live-rooms-featured-hls"
-                      label="Archive"
-                      muted
-                      src={archiveReplayUrl}
+                      src={archiveSrc}
                     />
                   ) : (
                     <Image
@@ -461,11 +551,11 @@ export function ImmersiveRoom({
                       src={feed.image}
                     />
                   )}
-                  {showHlsLoopback || showArchive ? null : (
+                  {!isSelfSlot ? (
                     <span className="live-rooms-featured-label">
-                      {showSelf ? "You" : feed.name}
+                      {feed.name}
                     </span>
-                  )}
+                  ) : null}
                 </button>
               );
             })}
@@ -487,6 +577,7 @@ export function ImmersiveRoom({
                   labelPosition="center"
                   onClick={() => handlePreviewClick("bottom", index)}
                   sizes="(max-width: 960px) 25vw, 180px"
+                  videoSrc={archiveForSlot(2 + index)}
                 />
               ))}
             </div>
@@ -502,6 +593,7 @@ export function ImmersiveRoom({
               label={participant.name}
               onClick={() => handlePreviewClick("rail", index)}
               sizes="200px"
+              videoSrc={archiveForSlot(6 + index)}
             />
           ))}
         </div>

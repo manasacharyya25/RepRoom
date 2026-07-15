@@ -4,18 +4,24 @@ export type WhipPublisher = {
   stop: () => Promise<void>;
 };
 
-function waitForIceGatheringComplete(pc: RTCPeerConnection) {
+function waitForIceGatheringComplete(
+  pc: RTCPeerConnection,
+  timeoutMs = 2000
+) {
   if (pc.iceGatheringState === "complete") {
     return Promise.resolve();
   }
 
   return new Promise<void>((resolve) => {
-    const onChange = () => {
-      if (pc.iceGatheringState === "complete") {
-        pc.removeEventListener("icegatheringstatechange", onChange);
-        resolve();
-      }
+    const finish = () => {
+      pc.removeEventListener("icegatheringstatechange", onChange);
+      clearTimeout(timer);
+      resolve();
     };
+    const onChange = () => {
+      if (pc.iceGatheringState === "complete") finish();
+    };
+    const timer = setTimeout(finish, timeoutMs);
     pc.addEventListener("icegatheringstatechange", onChange);
   });
 }

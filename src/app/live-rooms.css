@@ -775,6 +775,16 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   inset: 0;
 }
 
+.live-rooms-featured-hls.is-pending {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.live-rooms-tile-video {
+  position: absolute;
+  inset: 0;
+}
+
 .live-video-player {
   position: absolute;
   inset: 0;
