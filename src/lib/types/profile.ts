@@ -28,6 +28,7 @@ export type Profile = {
   x_url: string | null;
   website_url: string | null;
   onboarding_completed_at: string | null;
+  plan: "free" | "premium";
   created_at: string;
   updated_at: string;
 };

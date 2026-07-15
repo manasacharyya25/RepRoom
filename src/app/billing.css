@@ -1,0 +1,143 @@
+.upgrade-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 6, 8, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.upgrade-prompt-modal {
+  width: min(420px, calc(100vw - 40px));
+  padding: 22px 22px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.upgrade-prompt-modal h3 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.upgrade-prompt-modal p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.upgrade-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.upgrade-prompt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 10px 18px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.upgrade-prompt-btn:hover {
+  background: var(--accent-hover);
+}
+
+.upgrade-prompt-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upgrade-prompt-btn--ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.upgrade-prompt-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.room-select-quota {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.room-select-upgrade-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.live-rooms-immersive-quota {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.room-select-card.is-locked {
+  position: relative;
+  pointer-events: auto;
+}
+
+.room-select-card-lock {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border: none;
+  border-radius: inherit;
+  background: rgba(6, 6, 8, 0.72);
+  color: #fff;
+  cursor: pointer;
+  text-align: center;
+}
+
+.room-select-card-lock strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.room-select-card-lock span {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.room-access-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
+}
+
+.room-access-gate p {
+  color: var(--text-muted);
+}

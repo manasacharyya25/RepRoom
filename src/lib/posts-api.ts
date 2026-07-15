@@ -12,7 +12,7 @@ import { COMMENT_MAX_LENGTH } from "@/lib/types/post";
 
 export const POSTS_BUCKET = "posts" as const;
 export const POSTS_PAGE_SIZE = 9;
-export const FEED_PAGE_SIZE = 50;
+export const FEED_PAGE_SIZE = 100;
 
 function clampProgress(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));

@@ -213,14 +213,18 @@ function FeedPostCard({
   post,
   allowComments,
   persist,
+  readOnly,
   onOpen,
-  onStatsChange
+  onStatsChange,
+  onUpgradeRequest
 }: {
   post: FeedPost;
   allowComments: boolean;
   persist: boolean;
+  readOnly?: boolean;
   onOpen?: () => void;
   onStatsChange?: PostStatsChange;
+  onUpgradeRequest?: () => void;
 }) {
   const {
     liked,
@@ -238,7 +242,18 @@ function FeedPostCard({
     commentCount,
     onLike,
     sendComment
-  } = usePostInteractions(post, { persist, onStatsChange });
+  } = usePostInteractions(post, {
+    persist: persist && !readOnly,
+    onStatsChange
+  });
+
+  const guardAction = (action: () => void) => {
+    if (readOnly) {
+      onUpgradeRequest?.();
+      return;
+    }
+    action();
+  };
 
   return (
     <article
@@ -275,10 +290,10 @@ function FeedPostCard({
           }`}
           aria-label={liked ? "Unlike" : "Like"}
           aria-pressed={liked}
-          disabled={likeBusy}
+          disabled={likeBusy && !readOnly}
           onClick={(event) => {
             event.stopPropagation();
-            void onLike();
+            guardAction(() => void onLike());
           }}
         >
           <span aria-hidden>{liked ? "♥" : "♡"}</span> {likeCount}
@@ -290,6 +305,10 @@ function FeedPostCard({
           aria-expanded={allowComments ? commentsOpen : undefined}
           onClick={(event) => {
             event.stopPropagation();
+            if (readOnly) {
+              onUpgradeRequest?.();
+              return;
+            }
             if (!allowComments) return;
             if (onOpen) {
               onOpen();
@@ -463,7 +482,10 @@ export function CommunityFeed({
   hideHeader = false,
   posts: initialPosts = FEED_POSTS,
   subtitle = "For you",
-  title = "Community Feed"
+  title = "Community Feed",
+  readOnly = false,
+  guestLimit,
+  onUpgradeRequest
 }: {
   className?: string;
   decorative?: boolean;
@@ -473,8 +495,12 @@ export function CommunityFeed({
   posts?: FeedPost[];
   subtitle?: string;
   title?: string;
+  readOnly?: boolean;
+  guestLimit?: number;
+  onUpgradeRequest?: (reason: "guest_feed_action" | "guest_feed_end") => void;
 }) {
-  const live = enableLoadMore;
+  const live = enableLoadMore || Boolean(guestLimit);
+  const pageSize = guestLimit ?? FEED_PAGE_SIZE;
   const [posts, setPosts] = useState<FeedPost[]>(() =>
     live ? [] : initialPosts
   );
@@ -503,14 +529,14 @@ export function CommunityFeed({
       try {
         const supabase = createClient();
         const page = await listFeedPosts(supabase, {
-          limit: FEED_PAGE_SIZE
+          limit: pageSize
         });
         if (cancelled) return;
         const liked = new Set(page.likedPostIds);
         setPosts(
           page.posts.map((row) => mapFeedRowToPost(row, liked.has(row.id)))
         );
-        setHasMore(page.hasMore);
+        setHasMore(guestLimit ? false : page.hasMore);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
@@ -531,10 +557,10 @@ export function CommunityFeed({
     return () => {
       cancelled = true;
     };
-  }, [live]);
+  }, [live, pageSize, guestLimit]);
 
   const activePost = posts.find((post) => post.id === activePostId) ?? null;
-  const canOpenModal = allowComments;
+  const canOpenModal = allowComments && !readOnly;
 
   const updatePostStats: PostStatsChange = (postId, stats) => {
     setPosts((prev) =>
@@ -552,7 +578,9 @@ export function CommunityFeed({
   };
 
   const loadMore = async () => {
-    if (!live || !hasMore || isLoadingMore || posts.length === 0) return;
+    if (!enableLoadMore || !hasMore || isLoadingMore || posts.length === 0) {
+      return;
+    }
     setIsLoadingMore(true);
     setLoadError(null);
     try {
@@ -605,14 +633,32 @@ export function CommunityFeed({
               key={post.id}
               post={post}
               allowComments={allowComments}
-              persist={live}
-              onStatsChange={live ? updatePostStats : undefined}
+              persist={enableLoadMore}
+              readOnly={readOnly}
+              onStatsChange={enableLoadMore ? updatePostStats : undefined}
+              onUpgradeRequest={
+                onUpgradeRequest
+                  ? () => onUpgradeRequest("guest_feed_action")
+                  : undefined
+              }
               onOpen={
                 canOpenModal ? () => setActivePostId(post.id) : undefined
               }
             />
           ))}
         </div>
+
+        {guestLimit && !loading && posts.length > 0 ? (
+          <div className="feed-load-more">
+            <button
+              type="button"
+              className="feed-load-more-btn"
+              onClick={() => onUpgradeRequest?.("guest_feed_end")}
+            >
+              Sign in for the full feed
+            </button>
+          </div>
+        ) : null}
 
         {enableLoadMore && !loading ? (
           <div className="feed-load-more">
@@ -639,8 +685,8 @@ export function CommunityFeed({
         <FeedPostModal
           post={activePost}
           allowComments={allowComments}
-          persist={live}
-          onStatsChange={live ? updatePostStats : undefined}
+          persist={enableLoadMore}
+          onStatsChange={enableLoadMore ? updatePostStats : undefined}
           onClose={() => setActivePostId(null)}
         />
       ) : null}

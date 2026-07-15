@@ -14,7 +14,10 @@ export function LandingPage() {
           Satara
         </Link>
         <div className="landing-nav-actions">
-          <Link className="btn-primary" href="/login">
+          <Link className="btn-secondary" href="/login">
+            Log in
+          </Link>
+          <Link className="btn-primary" href="/feed">
             Get Started
           </Link>
         </div>
@@ -39,7 +42,7 @@ export function LandingPage() {
       </section>
 
       <section className="landing-cta-band">
-        <Link className="btn-primary btn-primary-lg" href="/login">
+        <Link className="btn-primary btn-primary-lg" href="/feed">
           Get Started Now
         </Link>
       </section>

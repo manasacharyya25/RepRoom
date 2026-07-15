@@ -12,6 +12,8 @@ type LiveVideoPlayerProps = {
   loop?: boolean;
   /** Native controls; default off (silent looping tiles). */
   controls?: boolean;
+  /** When true, pause playback (incoming tiles while tab hidden). */
+  paused?: boolean;
   className?: string;
   poster?: string;
   label?: string;
@@ -27,6 +29,7 @@ export function LiveVideoPlayer({
   muted = true,
   loop = false,
   controls = false,
+  paused = false,
   className,
   poster,
   label,
@@ -158,6 +161,18 @@ export function LiveVideoPlayer({
       video.load();
     };
   }, [mediaUrl, isDirectFile]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (paused) {
+      video.pause();
+      return;
+    }
+    void video.play().catch(() => {
+      /* ignore */
+    });
+  }, [paused]);
 
   return (
     <div className={`live-video-player${className ? ` ${className}` : ""}`}>

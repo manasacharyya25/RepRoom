@@ -6,7 +6,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
+import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { LiveVideoPlayer } from "@/components/live/LiveVideoPlayer";
+import "@/app/billing.css";
+import {
+  canAccessRoom,
+  formatRemainingTime,
+  GUEST_ROOM_ID,
+  type Tier,
+  type UpgradeReason
+} from "@/lib/entitlements";
+import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
@@ -60,6 +70,7 @@ function LiveTile({
   labelPosition = "left",
   priority = false,
   sizes,
+  paused,
   onClick
 }: {
   className?: string;
@@ -70,6 +81,7 @@ function LiveTile({
   labelPosition?: "left" | "center";
   priority?: boolean;
   sizes: string;
+  paused?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -84,6 +96,7 @@ function LiveTile({
           className="live-rooms-tile-video"
           loop
           muted
+          paused={paused}
           src={videoSrc}
         />
       ) : (
@@ -107,10 +120,14 @@ function LiveTile({
 
 export function ImmersiveRoom({
   room,
-  onLeave
+  onLeave,
+  tier = "free",
+  remainingSeconds = null
 }: {
   room: WorkoutRoom;
   onLeave: () => void | Promise<void>;
+  tier?: Tier;
+  remainingSeconds?: number | null;
 }) {
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
@@ -125,6 +142,7 @@ export function ImmersiveRoom({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [playbackHlsUrl, setPlaybackHlsUrl] = useState<string | null>(null);
   const [archiveUrls, setArchiveUrls] = useState<string[]>([]);
+  const [tabHidden, setTabHidden] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const whipRef = useRef<WhipPublisher | null>(null);
@@ -150,6 +168,17 @@ export function ImmersiveRoom({
     setLayout(cloneLiveSet(activeSet));
     setSelfMainSlot(0);
   }, [liveSetIndex, liveSets]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      setTabHidden(document.hidden);
+    };
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  const pauseIncoming = tabHidden;
 
   const handlePreviewClick = useCallback(
     (zone: PreviewZone, index: number) => {
@@ -436,6 +465,12 @@ export function ImmersiveRoom({
           </button>
           <h1 className="live-rooms-immersive-title">
             {room.title} · Room {room.roomNumber}
+            {tier !== "premium" && remainingSeconds !== null ? (
+              <span className="live-rooms-immersive-quota">
+                {" "}
+                · {formatRemainingTime(remainingSeconds)}
+              </span>
+            ) : null}
           </h1>
           <button
             type="button"
@@ -539,6 +574,7 @@ export function ImmersiveRoom({
                       className="live-rooms-featured-hls"
                       loop
                       muted
+                      paused={pauseIncoming}
                       src={archiveSrc}
                     />
                   ) : (
@@ -578,6 +614,7 @@ export function ImmersiveRoom({
                   onClick={() => handlePreviewClick("bottom", index)}
                   sizes="(max-width: 960px) 25vw, 180px"
                   videoSrc={archiveForSlot(2 + index)}
+                  paused={pauseIncoming}
                 />
               ))}
             </div>
@@ -594,6 +631,7 @@ export function ImmersiveRoom({
               onClick={() => handlePreviewClick("rail", index)}
               sizes="200px"
               videoSrc={archiveForSlot(6 + index)}
+              paused={pauseIncoming}
             />
           ))}
         </div>
@@ -659,10 +697,65 @@ export function LiveRoomsExperience() {
   const [chatLoading, setChatLoading] = useState(true);
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [tier, setTier] = useState<Tier>("guest");
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(
+    600
+  );
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(
+    null
+  );
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const profileCacheRef = useRef(
     new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fingerprint = await getDeviceFingerprint();
+        const response = await fetch(
+          `/api/room-access/status?fingerprint=${encodeURIComponent(fingerprint)}`
+        );
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as {
+          tier?: Tier;
+          remainingSeconds?: number | null;
+        };
+        if (!cancelled) {
+          setTier(data.tier ?? "guest");
+          setRemainingSeconds(
+            data.remainingSeconds === undefined
+              ? null
+              : data.remainingSeconds
+          );
+        }
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stubUpgrade = async () => {
+    setUpgradeBusy(true);
+    try {
+      const response = await fetch("/api/billing/stub-upgrade", {
+        method: "POST"
+      });
+      if (!response.ok) throw new Error("Upgrade failed");
+      setUpgradeReason(null);
+      setTier("premium");
+      setRemainingSeconds(null);
+    } catch {
+      setUpgradeReason("soft_upgrade");
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
 
   const filteredRooms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -809,8 +902,58 @@ export function LiveRoomsExperience() {
             />
           </label>
 
+          <p className="room-select-quota">
+            {formatRemainingTime(remainingSeconds)}
+            {tier === "free" ? (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  className="room-select-upgrade-link"
+                  onClick={() => setUpgradeReason("soft_upgrade")}
+                >
+                  Go Premium
+                </button>
+              </>
+            ) : null}
+            {tier === "guest" ? " · Sign in for 30m/day" : null}
+          </p>
+
           <div className="room-select-grid">
-            {filteredRooms.map((room) => (
+            {filteredRooms.map((room) => {
+              const locked = !canAccessRoom(tier, room.id);
+              if (locked) {
+                return (
+                  <div
+                    className="room-select-card is-locked"
+                    key={room.id}
+                  >
+                    <div className="room-select-card-media">
+                      <Image
+                        alt=""
+                        className="room-select-card-image"
+                        fill
+                        sizes="(max-width: 960px) 50vw, 280px"
+                        src={room.coverImage}
+                      />
+                    </div>
+                    <div className="room-select-card-body">
+                      <strong>{room.title}</strong>
+                      <span>Locked</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="room-select-card-lock"
+                      onClick={() => setUpgradeReason("locked_room")}
+                    >
+                      <strong>Sign in to unlock</strong>
+                      <span>Guests can try {GUEST_ROOM_ID}</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
               <Link
                 className="room-select-card"
                 href={`/rooms/${room.id}`}
@@ -847,7 +990,8 @@ export function LiveRoomsExperience() {
                   </div>
                 </div>
               </Link>
-            ))}
+              );
+            })}
 
             {!query.trim() ? (
               <button
@@ -996,6 +1140,14 @@ export function LiveRoomsExperience() {
           onClose={() => setPrivateRoomModalOpen(false)}
         />
       ) : null}
+
+      <UpgradePrompt
+        open={Boolean(upgradeReason)}
+        reason={upgradeReason ?? "locked_room"}
+        busy={upgradeBusy}
+        onClose={() => setUpgradeReason(null)}
+        onStubUpgrade={stubUpgrade}
+      />
     </div>
   );
 }

@@ -1,24 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PROTECTED_PREFIXES = [
-  "/rooms",
+const AUTH_REQUIRED_PREFIXES = [
   "/profile",
-  "/feed",
   "/inbox",
   "/onboarding",
   "/u"
 ];
 
+const GUEST_ALLOWED_PREFIXES = ["/rooms", "/feed"];
+
 export async function middleware(request: NextRequest) {
   const { supabase, supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
-  const isProtected = PROTECTED_PREFIXES.some(
+  const requiresAuth = AUTH_REQUIRED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 
-  if (isProtected && !user) {
+  const isAppSurface = GUEST_ALLOWED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+
+  if (requiresAuth && !user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
@@ -35,20 +39,22 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     onboardingComplete = Boolean(profile?.onboarding_completed_at);
-
-    // Profile row missing (trigger not run yet) → treat as incomplete
     if (!profile) {
       onboardingComplete = false;
     }
   }
 
-  if (user && !onboardingComplete && pathname !== "/onboarding") {
-    if (!pathname.startsWith("/auth") && isProtected) {
-      const onboardingUrl = request.nextUrl.clone();
-      onboardingUrl.pathname = "/onboarding";
-      onboardingUrl.search = "";
-      return NextResponse.redirect(onboardingUrl);
-    }
+  if (
+    user &&
+    !onboardingComplete &&
+    pathname !== "/onboarding" &&
+    !pathname.startsWith("/auth") &&
+    (requiresAuth || isAppSurface)
+  ) {
+    const onboardingUrl = request.nextUrl.clone();
+    onboardingUrl.pathname = "/onboarding";
+    onboardingUrl.search = "";
+    return NextResponse.redirect(onboardingUrl);
   }
 
   if (pathname === "/login" && user) {
