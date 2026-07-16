@@ -8,6 +8,7 @@ import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { LiveVideoPlayer } from "@/components/live/LiveVideoPlayer";
+import { YouTubePreviewEmbed } from "@/components/live/YouTubePreviewEmbed";
 import "@/app/billing.css";
 import {
   canAccessRoom,
@@ -21,6 +22,7 @@ import {
   getOrCreateClientGuestId,
   syncClientGuestId
 } from "@/lib/guest-client-id";
+import { guestPreviewYoutubeId } from "@/lib/guest-preview-videos";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
@@ -70,6 +72,7 @@ function LiveTile({
   className,
   image,
   videoSrc,
+  youtubeVideoId,
   label,
   labelPosition = "left",
   priority = false,
@@ -81,6 +84,8 @@ function LiveTile({
   image: string;
   /** Looping muted archive clip; falls back to image when missing. */
   videoSrc?: string | null;
+  /** Guest muted YouTube preview (preferred over archive when set). */
+  youtubeVideoId?: string | null;
   label: string;
   labelPosition?: "left" | "center";
   priority?: boolean;
@@ -95,7 +100,13 @@ function LiveTile({
       onClick={onClick}
       type="button"
     >
-      {videoSrc ? (
+      {youtubeVideoId ? (
+        <YouTubePreviewEmbed
+          paused={paused}
+          title={`${label} preview`}
+          videoId={youtubeVideoId}
+        />
+      ) : videoSrc ? (
         <LiveVideoPlayer
           className="live-rooms-tile-video"
           loop
@@ -128,7 +139,9 @@ export function ImmersiveRoom({
   tier = "free",
   remainingSeconds = null,
   quotaSeconds = 0,
-  onNeedSignInToGoLive
+  onNeedSignInToGoLive,
+  staticPreviewOnly = false,
+  blurred = false
 }: {
   room: WorkoutRoom;
   onLeave: () => void | Promise<void>;
@@ -137,6 +150,10 @@ export function ImmersiveRoom({
   /** Guest view quota used for the depleting progress bar. */
   quotaSeconds?: number;
   onNeedSignInToGoLive?: () => void;
+  /** Force static images only (no YouTube / archives) — used when view limit hits. */
+  staticPreviewOnly?: boolean;
+  /** Blur the room UI under a limit modal. */
+  blurred?: boolean;
 }) {
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
@@ -219,6 +236,12 @@ export function ImmersiveRoom({
   }, []);
 
   const pauseIncoming = tabHidden;
+  const useGuestYoutube = tier === "guest" && !staticPreviewOnly;
+
+  const guestYoutubeForSlot = useCallback(
+    (slot: number) => guestPreviewYoutubeId(slot),
+    []
+  );
 
   const handlePreviewClick = useCallback(
     (zone: PreviewZone, index: number) => {
@@ -425,6 +448,11 @@ export function ImmersiveRoom({
   }, [clearPublishGraceTimer]);
 
   useEffect(() => {
+    if (tier === "guest" || staticPreviewOnly) {
+      setArchiveUrls([]);
+      return;
+    }
+
     let cancelled = false;
 
     const loadArchives = async () => {
@@ -451,7 +479,7 @@ export function ImmersiveRoom({
     return () => {
       cancelled = true;
     };
-  }, [room.id]);
+  }, [room.id, tier, staticPreviewOnly]);
 
   const toggleGoLive = () => {
     if (isLive || isGoingLive) {
@@ -485,11 +513,14 @@ export function ImmersiveRoom({
   }, [onLeave, stopCamera]);
 
   return (
-    <div className="live-rooms-immersive">
+    <div
+      className={`live-rooms-immersive${blurred ? " is-blurred" : ""}`}
+      aria-hidden={blurred || undefined}
+    >
       <header className="live-rooms-immersive-header">
         <button
           className={`live-rooms-immersive-action${isLive ? " live-rooms-immersive-action--live" : ""}`}
-          disabled={isGoingLive}
+          disabled={isGoingLive || staticPreviewOnly}
           onClick={toggleGoLive}
           type="button"
         >
@@ -626,6 +657,12 @@ export function ImmersiveRoom({
                         <span className="live-rooms-featured-label">You</span>
                       ) : null}
                     </>
+                  ) : useGuestYoutube ? (
+                    <YouTubePreviewEmbed
+                      paused={pauseIncoming}
+                      title={`${feed.name} preview`}
+                      videoId={guestYoutubeForSlot(archiveSlot)}
+                    />
                   ) : archiveSrc ? (
                     <LiveVideoPlayer
                       className="live-rooms-featured-hls"
@@ -670,7 +707,14 @@ export function ImmersiveRoom({
                   labelPosition="center"
                   onClick={() => handlePreviewClick("bottom", index)}
                   sizes="(max-width: 960px) 25vw, 180px"
-                  videoSrc={archiveForSlot(2 + index)}
+                  videoSrc={
+                    useGuestYoutube ? null : archiveForSlot(2 + index)
+                  }
+                  youtubeVideoId={
+                    useGuestYoutube
+                      ? guestYoutubeForSlot(2 + index)
+                      : null
+                  }
                   paused={pauseIncoming}
                 />
               ))}
@@ -687,7 +731,10 @@ export function ImmersiveRoom({
               label={participant.name}
               onClick={() => handlePreviewClick("rail", index)}
               sizes="200px"
-              videoSrc={archiveForSlot(6 + index)}
+              videoSrc={useGuestYoutube ? null : archiveForSlot(6 + index)}
+              youtubeVideoId={
+                useGuestYoutube ? guestYoutubeForSlot(6 + index) : null
+              }
               paused={pauseIncoming}
             />
           ))}

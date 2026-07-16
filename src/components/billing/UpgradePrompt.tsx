@@ -14,9 +14,9 @@ const COPY: Record<
     primaryHref: "/login?next=/rooms"
   },
   guest_time: {
-    title: "Daily guest time is up",
-    body: "You’ve used your 15 minutes of room viewing for today. Sign in for full community access.",
-    primary: "Sign in",
+    title: "Come back tomorrow",
+    body: "You’ve used today’s guest preview time. Come back tomorrow, or log in for full community access.",
+    primary: "Log in",
     primaryHref: "/login?next=/rooms"
   },
   guest_feed_action: {
@@ -57,6 +57,8 @@ type UpgradePromptProps = {
   busy?: boolean;
   /** Overrides COPY primaryHref (e.g. return to current room after login). */
   primaryHref?: string;
+  /** Label for the dismiss button. */
+  dismissLabel?: string;
 };
 
 export function UpgradePrompt({
@@ -65,7 +67,8 @@ export function UpgradePrompt({
   onClose,
   onStubUpgrade,
   busy,
-  primaryHref
+  primaryHref,
+  dismissLabel
 }: UpgradePromptProps) {
   if (!open) return null;
   const copy = COPY[reason];
@@ -94,7 +97,8 @@ export function UpgradePrompt({
             className="upgrade-prompt-btn upgrade-prompt-btn--ghost"
             onClick={onClose}
           >
-            Not now
+            {dismissLabel ??
+              (reason === "guest_time" ? "Come back tomorrow" : "Not now")}
           </button>
           {isPremiumCta ? (
             <button
