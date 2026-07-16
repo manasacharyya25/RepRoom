@@ -90,7 +90,6 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  font-size: 1.15rem;
 }
 
 .login-heading {
@@ -99,6 +98,11 @@
   font-weight: 800;
   letter-spacing: -0.05em;
   line-height: 1;
+}
+
+.login-heading-wordmark {
+  height: clamp(40px, 6vw, 52px);
+  width: auto;
 }
 
 .login-subheading {

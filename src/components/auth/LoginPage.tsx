@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import "@/app/landing.css";
 import "@/app/login.css";
+import { BrandMark, BrandName, Logo } from "@/components/brand/Logo";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
@@ -120,12 +121,7 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <header className="landing-nav login-nav">
-        <Link className="landing-logo" href="/">
-          <span className="landing-logo-mark" aria-hidden>
-            S
-          </span>
-          Satara
-        </Link>
+        <Logo />
         <div className="landing-nav-actions">
           <Link className="btn-secondary" href="/">
             Home
@@ -148,11 +144,9 @@ export function LoginPage() {
 
         <section className="login-panel" aria-labelledby="login-heading">
           <div className="login-brand-block">
-            <span className="landing-logo-mark login-panel-mark" aria-hidden>
-              S
-            </span>
+            <BrandMark className="login-panel-mark" size={44} />
             <h1 id="login-heading" className="login-heading">
-              Satara
+              <BrandName className="login-heading-wordmark" height={48} />
             </h1>
             <p className="login-subheading">{title}</p>
           </div>

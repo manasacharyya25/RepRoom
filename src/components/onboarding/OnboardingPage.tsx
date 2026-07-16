@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
+import { Logo } from "@/components/brand/Logo";
 import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
 import { heightToCm, hoursGoalTarget, slugifyUsername, toKg } from "@/lib/goals";
 import { completeOnboarding } from "@/lib/onboarding";
@@ -373,12 +374,7 @@ export function OnboardingPage() {
   return (
     <div className="onboarding-page">
       <header className="landing-nav onboarding-nav">
-        <Link className="landing-logo" href="/">
-          <span className="landing-logo-mark" aria-hidden>
-            S
-          </span>
-          Satara
-        </Link>
+        <Logo />
         <div className="landing-nav-actions">
           <button
             type="button"

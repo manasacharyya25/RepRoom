@@ -1,5 +1,6 @@
 import Link from "next/link";
 import "@/app/landing.css";
+import { Logo } from "@/components/brand/Logo";
 import { FeedShareCarousel } from "@/components/landing/FeedShareCarousel";
 import { HeroLivePreview } from "@/components/landing/HeroLivePreview";
 
@@ -7,12 +8,7 @@ export function LandingPage() {
   return (
     <div className="landing">
       <header className="landing-nav">
-        <Link className="landing-logo" href="/">
-          <span className="landing-logo-mark" aria-hidden>
-            S
-          </span>
-          Satara
-        </Link>
+        <Logo showMark={false} />
         <div className="landing-nav-actions">
           <Link className="btn-secondary" href="/login">
             Log in

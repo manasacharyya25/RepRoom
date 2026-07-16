@@ -11,7 +11,11 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "Satara — Work out together. Motivate each other.",
   description:
-    "Join live Yoga, Workout, Cardio, Zumba, and Meditation rooms. Motivate each other, share progress, and stay accountable."
+    "Join live Yoga, Workout, Cardio, Zumba, and Meditation rooms. Motivate each other, share progress, and stay accountable.",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png"
+  }
 };
 
 export default function RootLayout({

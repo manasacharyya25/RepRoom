@@ -49,12 +49,16 @@ html:has(.landing) body::-webkit-scrollbar {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: var(--accent);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 1rem;
-  font-weight: 800;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.landing-logo-wordmark {
+  display: block;
+  height: 36px;
+  width: auto;
+  object-fit: contain;
 }
 
 .landing-nav-links {

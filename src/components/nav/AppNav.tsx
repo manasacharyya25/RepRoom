@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { InboxDrawer } from "@/components/inbox/InboxDrawer";
+import { Logo } from "@/components/brand/Logo";
 import { NotificationsDrawer } from "@/components/notifications/NotificationsDrawer";
 import {
   NotificationsProvider,
@@ -28,17 +29,6 @@ type AppNavProps = {
   /** Called when the inbox drawer is closed. */
   onInboxClose?: () => void;
 };
-
-function Logo() {
-  return (
-    <Link className="landing-logo" href="/">
-      <span className="landing-logo-mark" aria-hidden>
-        S
-      </span>
-      Satara
-    </Link>
-  );
-}
 
 function InboxIcon() {
   return (

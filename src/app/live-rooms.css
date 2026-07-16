@@ -805,6 +805,23 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   border: 0;
 }
 
+.yt-embed-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(12, 12, 14, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  opacity: 1;
+  transition-property: opacity;
+  transition-timing-function: ease;
+  pointer-events: none;
+}
+
+.yt-embed-holder.is-revealed .yt-embed-cover {
+  opacity: 0;
+}
+
 .live-rooms-preview-button:hover {
   outline: 2px solid rgba(255, 92, 43, 0.55);
   outline-offset: -2px;
