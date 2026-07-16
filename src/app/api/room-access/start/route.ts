@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     roomId?: string;
     fingerprint?: string;
+    clientGuestId?: string;
   } | null;
 
   const roomId = body?.roomId?.trim() ?? "";
@@ -19,7 +20,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid room" }, { status: 400 });
   }
 
-  const ctx = await resolveAccessContext(body?.fingerprint ?? "");
+  const ctx = await resolveAccessContext(
+    body?.fingerprint ?? "",
+    body?.clientGuestId
+  );
   const responseHeaders = new Headers();
   if (ctx.guestId) {
     responseHeaders.set("Set-Cookie", guestCookieHeaderValue(ctx.guestId));
@@ -31,26 +35,36 @@ export async function POST(request: Request) {
         allowed: false,
         reason: "locked_room",
         tier: ctx.tier,
-        remainingSeconds: 0
+        remainingSeconds: 0,
+        guestId: ctx.guestId
       },
       { status: 403, headers: responseHeaders }
     );
   }
 
   const supabase = await createClient();
-  const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
 
-  if (usage.remainingSeconds !== null && usage.remainingSeconds <= 0) {
-    return NextResponse.json(
-      {
-        allowed: false,
-        reason: ctx.tier === "guest" ? "guest_time" : "free_time",
-        tier: ctx.tier,
-        remainingSeconds: 0,
-        secondsUsed: usage.secondsUsed
-      },
-      { status: 403, headers: responseHeaders }
-    );
+  let remainingSeconds: number | null = null;
+  let secondsUsed = 0;
+
+  if (ctx.metersView) {
+    const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
+    remainingSeconds = usage.remainingSeconds;
+    secondsUsed = usage.secondsUsed;
+
+    if (remainingSeconds !== null && remainingSeconds <= 0) {
+      return NextResponse.json(
+        {
+          allowed: false,
+          reason: "guest_time",
+          tier: ctx.tier,
+          remainingSeconds: 0,
+          secondsUsed,
+          guestId: ctx.guestId
+        },
+        { status: 403, headers: responseHeaders }
+      );
+    }
   }
 
   const { data: claim, error: claimError } = await supabase.rpc(
@@ -79,7 +93,8 @@ export async function POST(request: Request) {
         reason: "device_conflict",
         message: claimObj.message ?? "Already active on another device",
         tier: ctx.tier,
-        remainingSeconds: usage.remainingSeconds
+        remainingSeconds,
+        guestId: ctx.guestId
       },
       { status: 409, headers: responseHeaders }
     );
@@ -89,9 +104,11 @@ export async function POST(request: Request) {
     {
       allowed: true,
       tier: ctx.tier,
-      remainingSeconds: usage.remainingSeconds,
-      secondsUsed: usage.secondsUsed,
-      quotaSeconds: ctx.quotaSeconds
+      remainingSeconds,
+      secondsUsed,
+      quotaSeconds: ctx.metersView ? ctx.quotaSeconds : 0,
+      metersView: ctx.metersView,
+      guestId: ctx.guestId
     },
     { headers: responseHeaders }
   );

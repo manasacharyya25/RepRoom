@@ -9,10 +9,14 @@ import { createClient } from "@/lib/supabase/server";
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     fingerprint?: string;
+    clientGuestId?: string;
     seconds?: number;
   } | null;
 
-  const ctx = await resolveAccessContext(body?.fingerprint ?? "");
+  const ctx = await resolveAccessContext(
+    body?.fingerprint ?? "",
+    body?.clientGuestId
+  );
   const headers = new Headers();
   if (ctx.guestId) {
     headers.set("Set-Cookie", guestCookieHeaderValue(ctx.guestId));
@@ -24,7 +28,7 @@ export async function POST(request: Request) {
     Math.max(0, Math.round(body?.seconds ?? 0))
   );
 
-  if (flushSeconds > 0 && ctx.quotaSeconds > 0) {
+  if (ctx.metersView && flushSeconds > 0 && ctx.quotaSeconds > 0) {
     await addUsageSeconds(
       supabase,
       ctx.subjectKey,
@@ -38,5 +42,8 @@ export async function POST(request: Request) {
     p_device_hash: ctx.deviceHash
   });
 
-  return NextResponse.json({ ok: true }, { headers });
+  return NextResponse.json(
+    { ok: true, guestId: ctx.guestId },
+    { headers }
+  );
 }

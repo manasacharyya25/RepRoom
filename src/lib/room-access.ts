@@ -1,14 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getTier,
+  metersViewTimeOnEnter,
   roomQuotaSeconds,
   type ProfilePlan,
   type Tier
 } from "@/lib/entitlements";
 import {
-  getOrCreateGuestId,
   getRequestIpHash,
   hashDeviceFingerprint,
+  resolveGuestId,
   subjectKeyForGuest,
   subjectKeyForUser
 } from "@/lib/guest-identity";
@@ -23,10 +24,13 @@ export type AccessContext = {
   ipHash: string;
   quotaSeconds: number;
   plan: ProfilePlan | null;
+  /** Guest view time meters on enter; free/premium broadcast later. */
+  metersView: boolean;
 };
 
 export async function resolveAccessContext(
-  fingerprint: string
+  fingerprint: string,
+  clientGuestId?: string | null
 ): Promise<AccessContext> {
   const supabase = await createClient();
   const {
@@ -52,11 +56,16 @@ export async function resolveAccessContext(
       deviceHash,
       ipHash,
       quotaSeconds: roomQuotaSeconds(tier),
-      plan
+      plan,
+      metersView: metersViewTimeOnEnter(tier)
     };
   }
 
-  const guestId = await getOrCreateGuestId();
+  const guestId = await resolveGuestId({
+    supabase,
+    deviceHash,
+    clientGuestId
+  });
   const tier: Tier = "guest";
   return {
     tier,
@@ -66,7 +75,8 @@ export async function resolveAccessContext(
     deviceHash,
     ipHash,
     quotaSeconds: roomQuotaSeconds(tier),
-    plan: null
+    plan: null,
+    metersView: metersViewTimeOnEnter(tier)
   };
 }
 

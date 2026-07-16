@@ -593,6 +593,25 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   border-bottom: 1px solid var(--border);
 }
 
+.live-rooms-view-timer {
+  flex-shrink: 0;
+  height: 4px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.live-rooms-view-timer-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 70%, #fff) 100%
+  );
+  transition: width 0.2s linear;
+}
+
 .live-rooms-immersive-action {
   justify-self: start;
   padding: 10px 18px;

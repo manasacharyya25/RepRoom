@@ -1,15 +1,60 @@
 import { createHash, randomUUID } from "crypto";
 import { cookies, headers } from "next/headers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const GUEST_COOKIE = "satara_guest_id";
 
-export async function getOrCreateGuestId(): Promise<string> {
+function isUsableGuestId(value: string | null | undefined): value is string {
+  return Boolean(value && value.trim().length >= 8);
+}
+
+export async function readGuestCookie(): Promise<string | null> {
   const jar = await cookies();
   const existing = jar.get(GUEST_COOKIE)?.value?.trim();
-  if (existing && existing.length >= 8) return existing;
+  return isUsableGuestId(existing) ? existing : null;
+}
+
+/**
+ * Resolve a stable guest id for view-quota continuity:
+ * 1) HttpOnly cookie
+ * 2) prior device_hash → guest_id map (server)
+ * 3) client localStorage id
+ * 4) new UUID
+ */
+export async function resolveGuestId(options: {
+  supabase: SupabaseClient;
+  deviceHash: string;
+  clientGuestId?: string | null;
+}): Promise<string> {
+  const cookieGuestId = await readGuestCookie();
+  const clientGuestId = isUsableGuestId(options.clientGuestId)
+    ? options.clientGuestId.trim()
+    : null;
+
+  try {
+    const { data, error } = await options.supabase.rpc("guest_resolve_id", {
+      p_device_hash: options.deviceHash,
+      p_cookie_guest_id: cookieGuestId,
+      p_client_guest_id: clientGuestId
+    });
+    if (!error && isUsableGuestId(typeof data === "string" ? data : null)) {
+      return (data as string).trim();
+    }
+  } catch {
+    /* migration may not be applied yet — fall back below */
+  }
+
+  return cookieGuestId ?? clientGuestId ?? randomUUID();
+}
+
+/** @deprecated Prefer resolveGuestId for returning-guest continuity. */
+export async function getOrCreateGuestId(): Promise<string> {
+  const existing = await readGuestCookie();
+  if (existing) return existing;
 
   const id = randomUUID();
   try {
+    const jar = await cookies();
     jar.set(GUEST_COOKIE, id, {
       httpOnly: true,
       sameSite: "lax",

@@ -6,6 +6,10 @@ import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { ImmersiveRoom } from "@/components/live/LiveRoomsExperience";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import {
+  getOrCreateClientGuestId,
+  syncClientGuestId
+} from "@/lib/guest-client-id";
+import {
   ROOM_HEARTBEAT_SECONDS,
   type Tier,
   type UpgradeReason
@@ -60,15 +64,20 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
   const leaveAccess = useCallback(async () => {
     const seconds = Math.round((Date.now() - lastBeatRef.current) / 1000);
     try {
-      await fetch("/api/room-access/leave", {
+      const response = await fetch("/api/room-access/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fingerprint: fingerprintRef.current,
+          clientGuestId: getOrCreateClientGuestId(),
           seconds
         }),
         keepalive: true
       });
+      const data = (await response.json().catch(() => null)) as {
+        guestId?: string | null;
+      } | null;
+      syncClientGuestId(data?.guestId);
     } catch {
       /* ignore */
     }
@@ -99,11 +108,12 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
       setBlocking(true);
       const fingerprint = await getDeviceFingerprint();
       fingerprintRef.current = fingerprint;
+      const clientGuestId = getOrCreateClientGuestId();
 
       const response = await fetch("/api/room-access/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId: room.id, fingerprint })
+        body: JSON.stringify({ roomId: room.id, fingerprint, clientGuestId })
       });
       const data = (await response.json()) as {
         allowed?: boolean;
@@ -112,7 +122,9 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         tier?: Tier;
         remainingSeconds?: number | null;
         quotaSeconds?: number;
+        guestId?: string | null;
       };
+      syncClientGuestId(data.guestId);
 
       if (cancelled) return;
 
@@ -160,13 +172,27 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 fingerprint: fingerprintRef.current,
+                clientGuestId: getOrCreateClientGuestId(),
                 seconds: Math.max(seconds, ROOM_HEARTBEAT_SECONDS)
               })
             });
             const payload = (await beat.json()) as {
               exhausted?: boolean;
               reason?: UpgradeReason;
+              guestId?: string | null;
+              remainingSeconds?: number | null;
             };
+            syncClientGuestId(payload.guestId);
+            if (
+              typeof payload.remainingSeconds === "number" ||
+              payload.remainingSeconds === null
+            ) {
+              setAccess((prev) =>
+                prev
+                  ? { ...prev, remainingSeconds: payload.remainingSeconds ?? null }
+                  : prev
+              );
+            }
             if (payload.exhausted && payload.reason) {
               forceLeaveWithUpgrade(payload.reason);
             }
@@ -246,13 +272,22 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         room={room}
         tier={access.tier}
         remainingSeconds={access.remainingSeconds}
+        quotaSeconds={access.quotaSeconds}
+        onNeedSignInToGoLive={() => setUpgradeReason("go_live_auth")}
       />
       <UpgradePrompt
         open={Boolean(upgradeReason)}
         reason={upgradeReason ?? "free_time"}
         busy={upgradeBusy}
+        primaryHref={
+          upgradeReason === "go_live_auth"
+            ? `/login?next=/rooms/${encodeURIComponent(room.id)}`
+            : undefined
+        }
         onClose={() => {
+          const reason = upgradeReason;
           setUpgradeReason(null);
+          if (reason === "go_live_auth") return;
           router.push("/rooms");
         }}
         onStubUpgrade={stubUpgrade}

@@ -17,6 +17,10 @@ import {
   type UpgradeReason
 } from "@/lib/entitlements";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
+import {
+  getOrCreateClientGuestId,
+  syncClientGuestId
+} from "@/lib/guest-client-id";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
@@ -122,12 +126,17 @@ export function ImmersiveRoom({
   room,
   onLeave,
   tier = "free",
-  remainingSeconds = null
+  remainingSeconds = null,
+  quotaSeconds = 0,
+  onNeedSignInToGoLive
 }: {
   room: WorkoutRoom;
   onLeave: () => void | Promise<void>;
   tier?: Tier;
   remainingSeconds?: number | null;
+  /** Guest view quota used for the depleting progress bar. */
+  quotaSeconds?: number;
+  onNeedSignInToGoLive?: () => void;
 }) {
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
@@ -143,6 +152,7 @@ export function ImmersiveRoom({
   const [playbackHlsUrl, setPlaybackHlsUrl] = useState<string | null>(null);
   const [archiveUrls, setArchiveUrls] = useState<string[]>([]);
   const [tabHidden, setTabHidden] = useState(false);
+  const [viewTimerPercent, setViewTimerPercent] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const whipRef = useRef<WhipPublisher | null>(null);
@@ -152,7 +162,37 @@ export function ImmersiveRoom({
     null
   );
   const hlsReadyRef = useRef(false);
+  const viewEndsAtRef = useRef<number | null>(null);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
+
+  const showViewTimer =
+    tier === "guest" &&
+    quotaSeconds > 0 &&
+    remainingSeconds !== null &&
+    remainingSeconds >= 0;
+
+  useEffect(() => {
+    if (!showViewTimer) {
+      viewEndsAtRef.current = null;
+      setViewTimerPercent(null);
+      return;
+    }
+
+    viewEndsAtRef.current = Date.now() + remainingSeconds * 1000;
+
+    const tick = () => {
+      const endsAt = viewEndsAtRef.current;
+      if (endsAt === null) return;
+      const leftMs = Math.max(0, endsAt - Date.now());
+      setViewTimerPercent(
+        Math.max(0, Math.min(100, (leftMs / (quotaSeconds * 1000)) * 100))
+      );
+    };
+
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => window.clearInterval(id);
+  }, [showViewTimer, remainingSeconds, quotaSeconds]);
 
   const PUBLISH_GRACE_MS = 2.5 * 60 * 1000;
 
@@ -295,12 +335,12 @@ export function ImmersiveRoom({
     try {
       const supabase = createClient();
       const {
-        data: { user },
-        error: userError
+        data: { user }
       } = await supabase.auth.getUser();
-      if (userError) throw userError;
       if (!user) {
-        throw new Error("Sign in to go live.");
+        setIsGoingLive(false);
+        onNeedSignInToGoLive?.();
+        return;
       }
 
       const stream = await captureLiveCamera();
@@ -373,6 +413,7 @@ export function ImmersiveRoom({
     PUBLISH_GRACE_MS,
     attachStreamToVideo,
     clearPublishGraceTimer,
+    onNeedSignInToGoLive,
     room.id,
     stopCamera
   ]);
@@ -465,7 +506,7 @@ export function ImmersiveRoom({
           </button>
           <h1 className="live-rooms-immersive-title">
             {room.title} · Room {room.roomNumber}
-            {tier !== "premium" && remainingSeconds !== null ? (
+            {tier === "free" && remainingSeconds !== null ? (
               <span className="live-rooms-immersive-quota">
                 {" "}
                 · {formatRemainingTime(remainingSeconds)}
@@ -520,6 +561,22 @@ export function ImmersiveRoom({
           </button>
         </div>
       </header>
+
+      {viewTimerPercent !== null ? (
+        <div
+          className="live-rooms-view-timer"
+          role="progressbar"
+          aria-label="Guest view time remaining"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(viewTimerPercent)}
+        >
+          <div
+            className="live-rooms-view-timer-fill"
+            style={{ width: `${viewTimerPercent}%` }}
+          />
+        </div>
+      ) : null}
 
       <div className="live-rooms-immersive-body">
         <div className="live-rooms-immersive-main-column">
@@ -692,7 +749,7 @@ export function LiveRoomsExperience() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<LobbyMessageView[]>([]);
-  const [chatMinimized, setChatMinimized] = useState(false);
+  const [chatMinimized, setChatMinimized] = useState(true);
   const [privateRoomModalOpen, setPrivateRoomModalOpen] = useState(false);
   const [chatLoading, setChatLoading] = useState(true);
   const [chatSending, setChatSending] = useState(false);
@@ -715,21 +772,30 @@ export function LiveRoomsExperience() {
     void (async () => {
       try {
         const fingerprint = await getDeviceFingerprint();
-        const response = await fetch(
-          `/api/room-access/status?fingerprint=${encodeURIComponent(fingerprint)}`
-        );
+        const clientGuestId = getOrCreateClientGuestId();
+        const params = new URLSearchParams({
+          fingerprint,
+          ...(clientGuestId ? { clientGuestId } : {})
+        });
+        const response = await fetch(`/api/room-access/status?${params}`);
         if (!response.ok || cancelled) return;
         const data = (await response.json()) as {
           tier?: Tier;
           remainingSeconds?: number | null;
+          guestId?: string | null;
         };
+        syncClientGuestId(data.guestId);
         if (!cancelled) {
-          setTier(data.tier ?? "guest");
+          const nextTier = data.tier ?? "guest";
+          setTier(nextTier);
           setRemainingSeconds(
             data.remainingSeconds === undefined
               ? null
               : data.remainingSeconds
           );
+          if (nextTier !== "guest") {
+            setChatMinimized(false);
+          }
         }
       } catch {
         /* keep defaults */
@@ -888,7 +954,7 @@ export function LiveRoomsExperience() {
 
       <div
         className={`room-select-shell${
-          chatMinimized ? " is-chat-minimized" : ""
+          chatMinimized || tier === "guest" ? " is-chat-minimized" : ""
         }`}
       >
         <div className="room-select-main">
@@ -902,22 +968,23 @@ export function LiveRoomsExperience() {
             />
           </label>
 
-          <p className="room-select-quota">
-            {formatRemainingTime(remainingSeconds)}
-            {tier === "free" ? (
-              <>
-                {" · "}
-                <button
-                  type="button"
-                  className="room-select-upgrade-link"
-                  onClick={() => setUpgradeReason("soft_upgrade")}
-                >
-                  Go Premium
-                </button>
-              </>
-            ) : null}
-            {tier === "guest" ? " · Sign in for 30m/day" : null}
-          </p>
+          {tier !== "guest" ? (
+            <p className="room-select-quota">
+              {formatRemainingTime(remainingSeconds)}
+              {tier === "free" ? (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="room-select-upgrade-link"
+                    onClick={() => setUpgradeReason("soft_upgrade")}
+                  >
+                    Go Premium
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
 
           <div className="room-select-grid">
             {filteredRooms.map((room) => {
@@ -1017,13 +1084,19 @@ export function LiveRoomsExperience() {
           ) : null}
         </div>
 
-        {chatMinimized ? (
+        {chatMinimized || tier === "guest" ? (
           <button
             type="button"
             className="room-select-chat-restore"
             aria-label="Expand chat"
             title="Expand chat"
-            onClick={() => setChatMinimized(false)}
+            onClick={() => {
+              if (tier === "guest") {
+                setUpgradeReason("guest_feed_end");
+                return;
+              }
+              setChatMinimized(false);
+            }}
           >
             <svg viewBox="0 0 24 24" aria-hidden fill="none">
               <path

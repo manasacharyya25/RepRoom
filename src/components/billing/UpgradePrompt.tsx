@@ -9,13 +9,13 @@ const COPY: Record<
 > = {
   locked_room: {
     title: "Sign in to unlock rooms",
-    body: "Guests can try Yoga. Create a free account to open every live room.",
+    body: "Create a free account to access every live room.",
     primary: "Sign in",
     primaryHref: "/login?next=/rooms"
   },
   guest_time: {
     title: "Daily guest time is up",
-    body: "You’ve used your 10 minutes for today. Sign in for 30 minutes of rooms each day.",
+    body: "You’ve used your 15 minutes of room viewing for today. Sign in for full community access.",
     primary: "Sign in",
     primaryHref: "/login?next=/rooms"
   },
@@ -27,9 +27,15 @@ const COPY: Record<
   },
   guest_feed_end: {
     title: "See the full feed",
-    body: "You’re at the guest preview limit. Sign in for the complete community feed.",
+    body: "You’re at the guest preview limit. Sign in for the complete community access.",
     primary: "Sign in",
     primaryHref: "/login?next=/feed"
+  },
+  go_live_auth: {
+    title: "Sign in to go live",
+    body: "Create a free account or log in to broadcast in this room.",
+    primary: "Sign in",
+    primaryHref: "/login?next=/rooms"
   },
   free_time: {
     title: "Go Premium for unlimited rooms",
@@ -49,6 +55,8 @@ type UpgradePromptProps = {
   onClose: () => void;
   onStubUpgrade?: () => void | Promise<void>;
   busy?: boolean;
+  /** Overrides COPY primaryHref (e.g. return to current room after login). */
+  primaryHref?: string;
 };
 
 export function UpgradePrompt({
@@ -56,12 +64,14 @@ export function UpgradePrompt({
   open,
   onClose,
   onStubUpgrade,
-  busy
+  busy,
+  primaryHref
 }: UpgradePromptProps) {
   if (!open) return null;
   const copy = COPY[reason];
   const isPremiumCta =
     reason === "free_time" || reason === "soft_upgrade";
+  const signInHref = primaryHref || copy.primaryHref || "/login";
 
   return (
     <div
@@ -96,10 +106,7 @@ export function UpgradePrompt({
               {busy ? "Upgrading…" : copy.primary}
             </button>
           ) : (
-            <Link
-              className="upgrade-prompt-btn"
-              href={copy.primaryHref || "/login"}
-            >
+            <Link className="upgrade-prompt-btn" href={signInHref}>
               {copy.primary}
             </Link>
           )}

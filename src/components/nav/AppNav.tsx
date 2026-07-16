@@ -184,6 +184,28 @@ function AppNavInner({
   const [inboxOpen, setInboxOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeDmUserId, setActiveDmUserId] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (cancelled) return;
+      setIsSignedIn(Boolean(user));
+      setAuthReady(true);
+    });
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsSignedIn(Boolean(session?.user));
+      setAuthReady(true);
+    });
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const clearDmQuery = useCallback(() => {
     if (!searchParams.has("dm")) return;
@@ -249,6 +271,9 @@ function AppNavInner({
   );
 
   if (variant === "feed") {
+    const showAuthedActions = authReady && isSignedIn;
+    const showGuestLogin = authReady && !isSignedIn;
+
     return (
       <NotificationsProvider>
         <header className="landing-nav">
@@ -257,19 +282,31 @@ function AppNavInner({
             <Link className="btn-secondary" href="/rooms">
               Rooms
             </Link>
-            {inboxButtonIcon}
-            {notificationButton}
-            <Link className="btn-primary" href="/profile">
-              Profile
-            </Link>
+            {showAuthedActions ? (
+              <>
+                {inboxButtonIcon}
+                {notificationButton}
+                <Link className="btn-primary" href="/profile">
+                  Profile
+                </Link>
+              </>
+            ) : null}
+            {showGuestLogin ? (
+              <Link className="btn-primary" href="/login?next=/feed">
+                Log in
+              </Link>
+            ) : null}
           </div>
         </header>
-        {drawers}
+        {showAuthedActions ? drawers : null}
       </NotificationsProvider>
     );
   }
 
   if (variant === "rooms") {
+    const showAuthedActions = authReady && isSignedIn;
+    const showGuestLogin = authReady && !isSignedIn;
+
     return (
       <NotificationsProvider>
         <header className="landing-nav room-select-nav">
@@ -283,14 +320,23 @@ function AppNavInner({
             >
               Feed
             </Link>
-            {inboxButtonIcon}
-            {notificationButton}
-            <Link className="btn-primary" href="/profile">
-              Profile
-            </Link>
+            {showAuthedActions ? (
+              <>
+                {inboxButtonIcon}
+                {notificationButton}
+                <Link className="btn-primary" href="/profile">
+                  Profile
+                </Link>
+              </>
+            ) : null}
+            {showGuestLogin ? (
+              <Link className="btn-primary" href="/login?next=/rooms">
+                Log in
+              </Link>
+            ) : null}
           </div>
         </header>
-        {drawers}
+        {showAuthedActions ? drawers : null}
       </NotificationsProvider>
     );
   }

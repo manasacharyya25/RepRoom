@@ -6,11 +6,27 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const fingerprint = searchParams.get("fingerprint") ?? "";
+  const clientGuestId = searchParams.get("clientGuestId");
 
-  const ctx = await resolveAccessContext(fingerprint);
+  const ctx = await resolveAccessContext(fingerprint, clientGuestId);
   const headers = new Headers();
   if (ctx.guestId) {
     headers.set("Set-Cookie", guestCookieHeaderValue(ctx.guestId));
+  }
+
+  if (!ctx.metersView) {
+    return NextResponse.json(
+      {
+        tier: ctx.tier,
+        plan: ctx.plan,
+        remainingSeconds: null,
+        secondsUsed: 0,
+        quotaSeconds: 0,
+        metersView: false,
+        guestId: ctx.guestId
+      },
+      { headers }
+    );
   }
 
   const supabase = await createClient();
@@ -22,7 +38,9 @@ export async function GET(request: Request) {
       plan: ctx.plan,
       remainingSeconds: usage.remainingSeconds,
       secondsUsed: usage.secondsUsed,
-      quotaSeconds: ctx.quotaSeconds
+      quotaSeconds: ctx.quotaSeconds,
+      metersView: true,
+      guestId: ctx.guestId
     },
     { headers }
   );
