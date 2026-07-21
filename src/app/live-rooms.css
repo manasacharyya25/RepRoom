@@ -996,6 +996,29 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
     -webkit-overflow-scrolling: touch;
   }
 
+  .live-rooms-immersive-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .live-rooms-immersive-action {
+    padding: 7px 12px;
+    font-size: 0.75rem;
+  }
+  
+  .live-rooms-immersive-rail {
+    display: none;
+  }
+
+  .room-select-chat,
+.room-select-chat-restore {
+  display: none !important;
+}
+
+.room-select-shell:not(.is-chat-minimized) {
+  padding-bottom: 0; /* undo bottom-sheet spacing */
+}
+
+
   .room-select-shell {
     grid-template-columns: 1fr;
     overflow: visible;
@@ -1041,13 +1064,9 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .live-rooms-immersive-body {
-    grid-template-columns: minmax(0, 1fr) minmax(100px, 130px);
-  }
-
   .live-rooms-immersive-bottom-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .live-rooms-immersive-bottom {

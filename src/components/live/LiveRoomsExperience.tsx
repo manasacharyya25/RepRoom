@@ -74,6 +74,22 @@ function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
   };
 }
 
+const MOBILE_VIEWPORT_QUERY = "(max-width: 960px)";
+
+function useIsMobileViewport() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(MOBILE_VIEWPORT_QUERY);
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  return isMobile;
+}
+
 function LiveTile({
   className,
   image,
@@ -171,6 +187,7 @@ export function ImmersiveRoom({
   /** Blur the room UI under a limit modal. */
   blurred?: boolean;
 }) {
+  const isMobileViewport = useIsMobileViewport();
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
   const [layout, setLayout] = useState<RoomLiveSet>(() =>
@@ -578,7 +595,7 @@ export function ImmersiveRoom({
             &lt;
           </button>
           <h1 className="live-rooms-immersive-title">
-            {room.title} · Room {room.roomNumber}
+            {room.title}
             {tier === "free" && remainingSeconds !== null ? (
               <span className="live-rooms-immersive-quota">
                 {" "}
@@ -740,7 +757,10 @@ export function ImmersiveRoom({
 
           <div className="live-rooms-immersive-bottom">
             <div className="live-rooms-immersive-bottom-grid">
-              {layout.bottom.map((participant, index) => {
+              {(isMobileViewport
+                ? layout.bottom.slice(0, 2)
+                : layout.bottom
+              ).map((participant, index) => {
                 const showChunkPreview =
                   room.id === PREVIEW_PRIMARY_ROOM_ID &&
                   !useGuestYoutube &&
@@ -762,7 +782,7 @@ export function ImmersiveRoom({
                     label={participant.name}
                     labelPosition="center"
                     onClick={() => handlePreviewClick("bottom", index)}
-                    sizes="(max-width: 960px) 25vw, 180px"
+                    sizes="(max-width: 960px) 50vw, 180px"
                     videoSrc={
                       useGuestYoutube || showChunkPreview
                         ? null
@@ -781,23 +801,25 @@ export function ImmersiveRoom({
           </div>
         </div>
 
-        <div className="live-rooms-immersive-rail">
-          {layout.rail.map((participant, index) => (
-            <LiveTile
-              className="live-rooms-immersive-rail-tile"
-              image={participant.image}
-              key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
-              label={participant.name}
-              onClick={() => handlePreviewClick("rail", index)}
-              sizes="200px"
-              videoSrc={useGuestYoutube ? null : archiveForSlot(6 + index)}
-              youtubeVideoId={
-                useGuestYoutube ? guestYoutubeForSlot(6 + index) : null
-              }
-              paused={pauseIncoming}
-            />
-          ))}
-        </div>
+        {!isMobileViewport ? (
+          <div className="live-rooms-immersive-rail">
+            {layout.rail.map((participant, index) => (
+              <LiveTile
+                className="live-rooms-immersive-rail-tile"
+                image={participant.image}
+                key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+                label={participant.name}
+                onClick={() => handlePreviewClick("rail", index)}
+                sizes="200px"
+                videoSrc={useGuestYoutube ? null : archiveForSlot(6 + index)}
+                youtubeVideoId={
+                  useGuestYoutube ? guestYoutubeForSlot(6 + index) : null
+                }
+                paused={pauseIncoming}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

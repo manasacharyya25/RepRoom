@@ -116,6 +116,31 @@ html:has(.landing) body::-webkit-scrollbar {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.nav-action-icon {
+  display: none;
+}
+
+.nav-action-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.nav-action-icon-img {
+  width: 18px;
+  height: 18px;
+  display: block;
+  object-fit: contain;
+  /* Match muted nav icon color on dark UI */
+  filter: brightness(0) invert(0.72);
+  transition: filter 0.15s ease;
+}
+
+.nav-action:hover .nav-action-icon-img,
+.nav-action.is-active .nav-action-icon-img {
+  filter: brightness(0) invert(1);
+}
+
 .btn-ghost {
   padding: 10px 18px;
   border: none;
@@ -1258,6 +1283,14 @@ html:has(.landing) body::-webkit-scrollbar {
 }
 
 @media (max-width: 960px) {
+  .landing-nav {
+    padding: 14px 8px;
+  }
+
+  .room-select-nav {
+    padding: 14px 8px;
+  }
+
   .landing-nav-links {
     display: none;
   }
@@ -1265,10 +1298,42 @@ html:has(.landing) body::-webkit-scrollbar {
   .landing-nav-actions {
     gap: 8px;
   }
+
   .landing-nav-actions .btn-primary,
   .landing-nav-actions .btn-secondary {
     padding: 7px 14px;
     font-size: 0.8rem;
+  }
+
+  .landing-nav-actions .nav-action {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 12px;
+    font-size: 0;
+  }
+
+  .landing-nav-actions .nav-action .nav-action-label {
+    display: none;
+  }
+
+  .landing-nav-actions .nav-action .nav-action-icon {
+    display: grid;
+    place-items: center;
+  }
+
+  .landing-nav-actions .nav-action.btn-primary {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+    box-shadow: none;
+  }
+
+  .landing-nav-actions .nav-action.btn-primary:hover,
+  .landing-nav-actions .nav-action.btn-secondary.is-active {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .feed-page .landing-nav-links,

@@ -70,7 +70,7 @@ export function HeroLivePreview() {
         <div className="hero-mock-header">
           <span>← Back</span>
           <strong>
-            {room.title} · Room {room.roomNumber}
+            {room.title}
           </strong>
           <span className="hero-mock-live-count">{room.liveCount} live</span>
         </div>

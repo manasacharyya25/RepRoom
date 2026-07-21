@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode
+} from "react";
 import { InboxDrawer } from "@/components/inbox/InboxDrawer";
 import { Logo } from "@/components/brand/Logo";
 import { NotificationsDrawer } from "@/components/notifications/NotificationsDrawer";
@@ -65,6 +71,89 @@ function BellIcon() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function RoomsIcon() {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="nav-action-icon-img"
+      src="/images/icons/rooms.png"
+      alt=""
+      width={18}
+      height={18}
+      draggable={false}
+    />
+  );
+}
+
+function FeedIcon() {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="nav-action-icon-img"
+      src="/images/icons/feed.png"
+      alt=""
+      width={18}
+      height={18}
+      draggable={false}
+    />
+  );
+}
+
+function ProfileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M12 12.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M6.5 18.25a5.5 5.5 0 0 1 11 0"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M10.25 5.75H7.75A2 2 0 0 0 5.75 7.75v8.5a2 2 0 0 0 2 2h2.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10.75 12h7.5M15.5 8.75 18.75 12 15.5 15.25"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function NavActionContent({
+  label,
+  icon
+}: {
+  label: string;
+  icon: ReactNode;
+}) {
+  return (
+    <>
+      <span className="nav-action-label">{label}</span>
+      <span className="nav-action-icon" aria-hidden>
+        {icon}
+      </span>
+    </>
   );
 }
 
@@ -269,15 +358,25 @@ function AppNavInner({
         <header className="landing-nav">
           <Logo />
           <div className="landing-nav-actions">
-            <Link className="btn-secondary" href="/rooms">
-              Rooms
+            <Link
+              className="btn-secondary nav-action"
+              href="/rooms"
+              aria-label="Rooms"
+              title="Rooms"
+            >
+              <NavActionContent label="Rooms" icon={<RoomsIcon />} />
             </Link>
             {showAuthedActions ? (
               <>
                 {inboxButtonIcon}
                 {notificationButton}
-                <Link className="btn-primary" href="/profile">
-                  Profile
+                <Link
+                  className="btn-primary nav-action"
+                  href="/profile"
+                  aria-label="Profile"
+                  title="Profile"
+                >
+                  <NavActionContent label="Profile" icon={<ProfileIcon />} />
                 </Link>
               </>
             ) : null}
@@ -303,19 +402,28 @@ function AppNavInner({
           <Logo />
           <div className="landing-nav-actions room-select-nav-actions">
             <Link
-              className={
-                pathname === "/feed" ? "btn-secondary is-active" : "btn-secondary"
-              }
+              className={`nav-action${
+                pathname === "/feed"
+                  ? " btn-secondary is-active"
+                  : " btn-secondary"
+              }`}
               href="/feed"
+              aria-label="Feed"
+              title="Feed"
             >
-              Feed
+              <NavActionContent label="Feed" icon={<FeedIcon />} />
             </Link>
             {showAuthedActions ? (
               <>
                 {inboxButtonIcon}
                 {notificationButton}
-                <Link className="btn-primary" href="/profile">
-                  Profile
+                <Link
+                  className="btn-primary nav-action"
+                  href="/profile"
+                  aria-label="Profile"
+                  title="Profile"
+                >
+                  <NavActionContent label="Profile" icon={<ProfileIcon />} />
                 </Link>
               </>
             ) : null}
@@ -333,8 +441,8 @@ function AppNavInner({
 
   if (variant === "profile") {
     const links = [
-      { href: "/rooms", label: "Rooms" },
-      { href: "/feed", label: "Feed" }
+      { href: "/rooms", label: "Rooms", icon: <RoomsIcon /> },
+      { href: "/feed", label: "Feed", icon: <FeedIcon /> }
     ] as const;
 
     return (
@@ -348,10 +456,14 @@ function AppNavInner({
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={isActive ? "btn-secondary is-active" : "btn-secondary"}
+                  className={`nav-action${
+                    isActive ? " btn-secondary is-active" : " btn-secondary"
+                  }`}
+                  aria-label={link.label}
+                  title={link.label}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  {link.label}
+                  <NavActionContent label={link.label} icon={link.icon} />
                 </Link>
               );
             })}
@@ -359,12 +471,14 @@ function AppNavInner({
             {notificationButton}
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary nav-action"
+              aria-label="Log out"
+              title="Log out"
               onClick={() => {
                 void signOutAndRedirect(router);
               }}
             >
-              Log out
+              <NavActionContent label="Log out" icon={<LogoutIcon />} />
             </button>
           </nav>
         </header>
@@ -377,17 +491,24 @@ function AppNavInner({
     <header className="landing-nav">
       <Logo />
       <div className="landing-nav-actions">
-        <Link className="btn-secondary" href="/profile">
-          Profile
+        <Link
+          className="btn-secondary nav-action"
+          href="/profile"
+          aria-label="Profile"
+          title="Profile"
+        >
+          <NavActionContent label="Profile" icon={<ProfileIcon />} />
         </Link>
         <button
           type="button"
-          className="btn-primary"
+          className="btn-primary nav-action"
+          aria-label="Log out"
+          title="Log out"
           onClick={() => {
             void signOutAndRedirect(router);
           }}
         >
-          Log out
+          <NavActionContent label="Log out" icon={<LogoutIcon />} />
         </button>
       </div>
     </header>
