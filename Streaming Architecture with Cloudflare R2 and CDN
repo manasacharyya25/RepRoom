@@ -1,0 +1,394 @@
+# Workout Live Preview System — Client Implementation Plan
+
+## Goal
+
+Build a near-live workout video streaming system using browser-native recording.
+
+The system does NOT use:
+- MediaMTX
+- WebRTC streaming
+- HLS
+- Server-side transcoding
+
+Instead:
+- Browser captures webcam
+- Browser encodes video into WebM chunks
+- Chunks are uploaded periodically to object storage (Cloudflare R2)
+- Viewers fetch and play chunks using Media Source Extensions (MSE)
+
+Target experience:
+- Maximum ~2 minute delay
+- Up to 9 simultaneous preview tiles
+- Low infrastructure cost
+- CDN-friendly playback
+
+
+==================================================
+1. Broadcaster Client (Recording Side)
+==================================================
+
+Flow:
+
+Webcam
+  ↓
+getUserMedia()
+  ↓
+MediaRecorder API
+  ↓
+120-second WebM chunks
+  ↓
+Upload chunk to backend/R2
+
+
+Implementation:
+
+Use:
+
+navigator.mediaDevices.getUserMedia()
+
+Example constraints:
+
+{
+  video: {
+    width: 640,
+    height: 360,
+    frameRate: 15
+  },
+  audio: false
+}
+
+
+Target output:
+
+360p
+15 FPS
+~300-400 kbps
+
+
+MediaRecorder:
+
+Create chunks every 120 seconds.
+
+Example:
+
+Room:
+abc123
+
+Generated files:
+
+abc123/
+  chunk_000001.webm
+  chunk_000002.webm
+  chunk_000003.webm
+
+
+Each chunk:
+- Is immutable
+- Is uploaded once
+- Never modified
+
+
+Upload flow:
+
+1. Start MediaRecorder
+2. Receive Blob from dataavailable event
+3. Upload Blob
+4. Continue recording
+
+
+The upload process must handle:
+- Retry on failure
+- Chunk ordering
+- Network interruptions
+- Resuming after reconnect
+
+
+==================================================
+2. Viewer Client (Playback Side)
+==================================================
+
+Flow:
+
+R2/CDN
+  ↓
+Download WebM chunks
+  ↓
+Media Source Extensions
+  ↓
+HTML video element
+
+
+The viewer should NOT download complete videos.
+
+The player maintains a rolling buffer.
+
+
+Example:
+
+Available:
+
+chunk_100
+chunk_101
+chunk_102
+
+
+Player plays:
+
+chunk_101
+
+while preparing:
+
+chunk_102
+
+
+==================================================
+3. Playback Algorithm
+==================================================
+
+Each tile has its own player instance.
+
+For each room:
+
+Maintain:
+
+- Current playback chunk
+- Latest available chunk
+- Buffer duration
+
+
+Target delay:
+
+~120 seconds behind live edge
+
+
+Algorithm:
+
+1. Find latest uploaded chunk
+2. Start playback from:
+   
+   latest chunk - 1 chunk
+
+
+3. Append chunks sequentially using MSE:
+
+fetch(chunk.webm)
+
+↓
+
+arrayBuffer()
+
+↓
+
+sourceBuffer.appendBuffer()
+
+
+4. Continue polling for new chunks
+
+
+Example:
+
+Latest:
+
+chunk_500
+
+
+Playback:
+
+chunk_499
+
+
+When chunk_500 becomes available:
+
+append after chunk_499
+
+
+==================================================
+4. Multi Tile Preview
+==================================================
+
+Maximum:
+
+9 simultaneous video tiles
+
+
+Each tile has:
+
+- Independent MediaSource
+- Independent buffer
+- Independent chunk polling
+
+
+Optimization:
+
+Only play visible tiles.
+
+Use:
+
+IntersectionObserver
+
+
+Rules:
+
+Visible tile:
+- Fetch chunks
+- Decode
+- Play
+
+
+Hidden tile:
+- Pause
+- Release buffers
+
+
+==================================================
+5. Error Handling
+==================================================
+
+Network delay:
+
+Do NOT immediately fail playback.
+
+
+If next chunk is unavailable:
+
+1. Continue displaying current buffered content
+2. Retry fetching
+3. Resume when chunk arrives
+
+
+The system prioritizes:
+
+Smooth playback > minimum latency
+
+
+Possible behaviors:
+
+- Hold last frame
+- Wait for next chunk
+- Dynamically increase delay
+
+
+==================================================
+6. Chunk Discovery
+==================================================
+
+Initial MVP:
+
+Use predictable chunk naming.
+
+Example:
+
+roomId/
+
+chunk_000001.webm
+chunk_000002.webm
+
+
+Viewer can determine:
+
+Current latest chunk number
+
+through backend API.
+
+
+Example:
+
+GET /rooms/{roomId}/latest
+
+
+Response:
+
+{
+  "latestChunk": 502
+}
+
+
+The player then requests:
+
+chunk_501.webm
+chunk_502.webm
+
+
+==================================================
+7. Storage/CDN Assumptions
+==================================================
+
+Files are immutable.
+
+Important:
+
+Do NOT overwrite existing chunks.
+
+
+Good:
+
+/room123/chunk_001.webm
+
+Bad:
+
+/room123/latest.webm
+
+
+Reason:
+
+Immutable objects have excellent CDN cache behavior.
+
+
+==================================================
+8. Expected Scale
+
+Creators:
+
+1000 users
+
+Streaming:
+
+2 hours/day
+
+30 days
+
+
+Chunk size:
+
+120 seconds
+
+
+Output:
+
+~1.8 million chunks/month
+
+
+Viewers:
+
+100K users
+
+Watching previews continuously
+
+
+Playback:
+
+9 tiles maximum
+
+
+==================================================
+9. Future Improvements (Not MVP)
+
+Possible later additions:
+
+- Adaptive quality
+- Better codec selection
+- Background transcoding
+- Different quality streams
+- Premium real-time sessions
+
+
+MVP priority:
+
+Make:
+- recording reliable
+- uploading reliable
+- playback smooth
+- 9 tile grid stable
+
+Do not optimize for sub-second latency.
+The product only needs the feeling of live presence.

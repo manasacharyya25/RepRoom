@@ -2,7 +2,7 @@ export type Tier = "guest" | "free" | "premium";
 
 export type ProfilePlan = "free" | "premium";
 
-export const GUEST_ROOM_ID = "yoga";
+export const GUEST_ROOM_ID = "workout";
 /** Guest view timer — starts on room enter, daily UTC cap. */
 export const GUEST_VIEW_SECONDS = 15 * 60;
 /** @deprecated Use GUEST_VIEW_SECONDS */

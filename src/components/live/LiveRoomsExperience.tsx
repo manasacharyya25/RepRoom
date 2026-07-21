@@ -7,6 +7,7 @@ import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
+import { ChunkPreviewPlayer } from "@/components/live/ChunkPreviewPlayer";
 import { LiveVideoPlayer } from "@/components/live/LiveVideoPlayer";
 import { YouTubePreviewEmbed } from "@/components/live/YouTubePreviewEmbed";
 import "@/app/billing.css";
@@ -42,6 +43,11 @@ import {
   captureLiveCamera,
   stopMediaStream
 } from "@/lib/streaming/capture";
+import {
+  startChunkRecorder,
+  type ChunkRecorder
+} from "@/lib/streaming/chunk-recorder";
+import { PREVIEW_DEV_BROADCASTER_ID, PREVIEW_PRIMARY_ROOM_ID } from "@/lib/streaming/preview-chunks";
 import { hlsUrl, whipUrl } from "@/lib/streaming/config";
 import {
   startWhipPublisher,
@@ -73,6 +79,7 @@ function LiveTile({
   image,
   videoSrc,
   youtubeVideoId,
+  chunkPreview,
   label,
   labelPosition = "left",
   priority = false,
@@ -86,6 +93,8 @@ function LiveTile({
   videoSrc?: string | null;
   /** Guest muted YouTube preview (preferred over archive when set). */
   youtubeVideoId?: string | null;
+  /** Live R2 chunk preview (logged-in workout MVP tile). */
+  chunkPreview?: { roomId: string; userId: string } | null;
   label: string;
   labelPosition?: "left" | "center";
   priority?: boolean;
@@ -105,6 +114,13 @@ function LiveTile({
           paused={paused}
           title={`${label} preview`}
           videoId={youtubeVideoId}
+        />
+      ) : chunkPreview ? (
+        <ChunkPreviewPlayer
+          className="live-rooms-tile-video"
+          paused={paused}
+          roomId={chunkPreview.roomId}
+          userId={chunkPreview.userId}
         />
       ) : videoSrc ? (
         <LiveVideoPlayer
@@ -173,6 +189,7 @@ export function ImmersiveRoom({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const whipRef = useRef<WhipPublisher | null>(null);
+  const chunkRecorderRef = useRef<ChunkRecorder | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const liveEpochRef = useRef(0);
   const publishGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -312,6 +329,9 @@ export function ImmersiveRoom({
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
 
+    chunkRecorderRef.current?.stop();
+    chunkRecorderRef.current = null;
+
     void whipRef.current?.stop();
     whipRef.current = null;
     stopMediaStream(streamRef.current);
@@ -377,14 +397,36 @@ export function ImmersiveRoom({
       setIsGoingLive(false);
       attachStreamToVideo(videoRef.current);
 
-      // If WHIP/HLS never becomes ready, quietly end after a grace period.
-      publishGraceTimerRef.current = setTimeout(() => {
-        if (liveEpochRef.current !== epoch) return;
-        if (hlsReadyRef.current) return;
-        stopCamera();
-      }, PUBLISH_GRACE_MS);
+      const useR2Chunks = room.id === PREVIEW_PRIMARY_ROOM_ID;
+
+      // Legacy MediaMTX grace timer — only when publishing via WHIP/HLS.
+      if (!useR2Chunks) {
+        publishGraceTimerRef.current = setTimeout(() => {
+          if (liveEpochRef.current !== epoch) return;
+          if (hlsReadyRef.current) return;
+          stopCamera();
+        }, PUBLISH_GRACE_MS);
+      }
 
       void (async () => {
+        if (liveEpochRef.current !== epoch || !streamRef.current) return;
+
+        if (useR2Chunks) {
+          chunkRecorderRef.current?.stop();
+          chunkRecorderRef.current = startChunkRecorder({
+            stream: streamRef.current,
+            roomId: room.id,
+            onError: (message) => {
+              console.warn("[preview-chunks]", message);
+            },
+            onUploaded: (info) => {
+              console.info("[preview-chunks] uploaded", info.key);
+            }
+          });
+          return;
+        }
+
+        // Non-workout rooms: keep MediaMTX archive + WHIP until migrated.
         try {
           const sessionResponse = await fetch("/api/archives", {
             method: "POST",
@@ -698,26 +740,43 @@ export function ImmersiveRoom({
 
           <div className="live-rooms-immersive-bottom">
             <div className="live-rooms-immersive-bottom-grid">
-              {layout.bottom.map((participant, index) => (
-                <LiveTile
-                  className="live-rooms-immersive-bottom-tile"
-                  image={participant.image}
-                  key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
-                  label={participant.name}
-                  labelPosition="center"
-                  onClick={() => handlePreviewClick("bottom", index)}
-                  sizes="(max-width: 960px) 25vw, 180px"
-                  videoSrc={
-                    useGuestYoutube ? null : archiveForSlot(2 + index)
-                  }
-                  youtubeVideoId={
-                    useGuestYoutube
-                      ? guestYoutubeForSlot(2 + index)
-                      : null
-                  }
-                  paused={pauseIncoming}
-                />
-              ))}
+              {layout.bottom.map((participant, index) => {
+                const showChunkPreview =
+                  room.id === PREVIEW_PRIMARY_ROOM_ID &&
+                  !useGuestYoutube &&
+                  index === 0;
+
+                return (
+                  <LiveTile
+                    chunkPreview={
+                      showChunkPreview
+                        ? {
+                            roomId: room.id,
+                            userId: PREVIEW_DEV_BROADCASTER_ID
+                          }
+                        : null
+                    }
+                    className="live-rooms-immersive-bottom-tile"
+                    image={participant.image}
+                    key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+                    label={participant.name}
+                    labelPosition="center"
+                    onClick={() => handlePreviewClick("bottom", index)}
+                    sizes="(max-width: 960px) 25vw, 180px"
+                    videoSrc={
+                      useGuestYoutube || showChunkPreview
+                        ? null
+                        : archiveForSlot(2 + index)
+                    }
+                    youtubeVideoId={
+                      useGuestYoutube
+                        ? guestYoutubeForSlot(2 + index)
+                        : null
+                    }
+                    paused={pauseIncoming}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

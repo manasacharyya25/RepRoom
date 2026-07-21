@@ -144,7 +144,7 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
   }
 ];
 
-export const DEFAULT_ROOM_ID: RoomId = "yoga";
+export const DEFAULT_ROOM_ID: RoomId = "workout";
 
 const ROOM_IDS = new Set<RoomId>([
   "yoga",
