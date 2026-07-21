@@ -11,11 +11,9 @@ import {
 } from "react";
 import { InboxDrawer } from "@/components/inbox/InboxDrawer";
 import { Logo } from "@/components/brand/Logo";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { NotificationsDrawer } from "@/components/notifications/NotificationsDrawer";
-import {
-  NotificationsProvider,
-  useNotifications
-} from "@/components/notifications/NotificationsProvider";
+import { useNotifications } from "@/components/notifications/NotificationsProvider";
 import { createClient } from "@/lib/supabase/client";
 import "@/app/inbox.css";
 import "@/app/notifications.css";
@@ -259,32 +257,11 @@ function AppNavInner({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { authReady, isSignedIn } = useAuth();
   const dmUserId = searchParams.get("dm");
   const [inboxOpen, setInboxOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeDmUserId, setActiveDmUserId] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      if (cancelled) return;
-      setIsSignedIn(Boolean(user));
-      setAuthReady(true);
-    });
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsSignedIn(Boolean(session?.user));
-      setAuthReady(true);
-    });
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, []);
 
   const clearDmQuery = useCallback(() => {
     if (!searchParams.has("dm")) return;
@@ -349,12 +326,12 @@ function AppNavInner({
     </>
   );
 
-  if (variant === "feed") {
-    const showAuthedActions = authReady && isSignedIn;
-    const showGuestLogin = authReady && !isSignedIn;
+  const showAuthedActions = authReady && isSignedIn;
+  const showGuestLogin = authReady && !isSignedIn;
 
+  if (variant === "feed") {
     return (
-      <NotificationsProvider>
+      <>
         <header className="landing-nav">
           <Logo />
           <div className="landing-nav-actions">
@@ -388,16 +365,13 @@ function AppNavInner({
           </div>
         </header>
         {showAuthedActions ? drawers : null}
-      </NotificationsProvider>
+      </>
     );
   }
 
   if (variant === "rooms") {
-    const showAuthedActions = authReady && isSignedIn;
-    const showGuestLogin = authReady && !isSignedIn;
-
     return (
-      <NotificationsProvider>
+      <>
         <header className="landing-nav room-select-nav">
           <Logo />
           <div className="landing-nav-actions room-select-nav-actions">
@@ -435,7 +409,7 @@ function AppNavInner({
           </div>
         </header>
         {showAuthedActions ? drawers : null}
-      </NotificationsProvider>
+      </>
     );
   }
 
@@ -446,7 +420,7 @@ function AppNavInner({
     ] as const;
 
     return (
-      <NotificationsProvider>
+      <>
         <header className="landing-nav">
           <Logo />
           <nav className="landing-nav-actions profile-nav-pills" aria-label="Main">
@@ -483,7 +457,7 @@ function AppNavInner({
           </nav>
         </header>
         {drawers}
-      </NotificationsProvider>
+      </>
     );
   }
 

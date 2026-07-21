@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
+import { useEntitlements } from "@/components/auth/EntitlementsProvider";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { ChunkPreviewPlayer } from "@/components/live/ChunkPreviewPlayer";
 import { LiveVideoPlayer } from "@/components/live/LiveVideoPlayer";
@@ -18,11 +19,6 @@ import {
   type Tier,
   type UpgradeReason
 } from "@/lib/entitlements";
-import { getDeviceFingerprint } from "@/lib/device-fingerprint";
-import {
-  getOrCreateClientGuestId,
-  syncClientGuestId
-} from "@/lib/guest-client-id";
 import { guestPreviewYoutubeId } from "@/lib/guest-preview-videos";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
@@ -874,6 +870,12 @@ function PrivateRoomComingSoonModal({ onClose }: { onClose: () => void }) {
 
 export function LiveRoomsExperience() {
   const supabase = useMemo(() => createClient(), []);
+  const {
+    tier,
+    remainingSeconds,
+    setTier,
+    setRemainingSeconds
+  } = useEntitlements();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<LobbyMessageView[]>([]);
@@ -882,10 +884,6 @@ export function LiveRoomsExperience() {
   const [chatLoading, setChatLoading] = useState(true);
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
-  const [tier, setTier] = useState<Tier>("guest");
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(
-    600
-  );
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(
     null
   );
@@ -896,43 +894,10 @@ export function LiveRoomsExperience() {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const fingerprint = await getDeviceFingerprint();
-        const clientGuestId = getOrCreateClientGuestId();
-        const params = new URLSearchParams({
-          fingerprint,
-          ...(clientGuestId ? { clientGuestId } : {})
-        });
-        const response = await fetch(`/api/room-access/status?${params}`);
-        if (!response.ok || cancelled) return;
-        const data = (await response.json()) as {
-          tier?: Tier;
-          remainingSeconds?: number | null;
-          guestId?: string | null;
-        };
-        syncClientGuestId(data.guestId);
-        if (!cancelled) {
-          const nextTier = data.tier ?? "guest";
-          setTier(nextTier);
-          setRemainingSeconds(
-            data.remainingSeconds === undefined
-              ? null
-              : data.remainingSeconds
-          );
-          if (nextTier !== "guest") {
-            setChatMinimized(false);
-          }
-        }
-      } catch {
-        /* keep defaults */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (tier !== "guest") {
+      setChatMinimized(false);
+    }
+  }, [tier]);
 
   const stubUpgrade = async () => {
     setUpgradeBusy(true);

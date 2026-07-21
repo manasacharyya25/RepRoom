@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import {
   countUnreadNotifications,
   fetchNotificationView,
@@ -46,11 +47,12 @@ export function useNotifications() {
 }
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
+  const { authReady, user } = useAuth();
+  const userId = user?.id ?? null;
   const [items, setItems] = useState<NotificationView[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
 
   const refreshInboxUnread = useCallback(async () => {
     const supabase = createClient();
@@ -74,23 +76,20 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [refreshInboxUnread]);
 
   useEffect(() => {
+    if (!authReady) return;
+
     let cancelled = false;
     const boot = async () => {
       setLoading(true);
       try {
-        const supabase = createClient();
-        const {
-          data: { user }
-        } = await supabase.auth.getUser();
-        if (cancelled) return;
-        if (!user) {
-          setUserId(null);
-          setItems([]);
-          setUnreadCount(0);
-          setInboxUnreadCount(0);
+        if (!userId) {
+          if (!cancelled) {
+            setItems([]);
+            setUnreadCount(0);
+            setInboxUnreadCount(0);
+          }
           return;
         }
-        setUserId(user.id);
         await refresh();
       } catch {
         if (!cancelled) {
@@ -106,7 +105,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [authReady, userId, refresh]);
 
   useEffect(() => {
     if (!userId) return;
