@@ -17,7 +17,14 @@ export const LIVE_IMAGES = {
   participant8: liveImage("/images/live/participant-8.png"),
   sidebar1: liveImage("/images/live/sidebar-1.png"),
   sidebar2: liveImage("/images/live/sidebar-2.jpg"),
-  sidebar3: liveImage("/images/live/sidebar-3.png")
+  sidebar3: liveImage("/images/live/sidebar-3.png"),
+  transformBefore: liveImage("/images/landing/transform-before.png"),
+  transformAfter: liveImage("/images/landing/transform-after.png"),
+  pumpCheck: liveImage("/images/landing/pump-check.png"),
+  fitCheck: liveImage("/images/landing/fit-check.png"),
+  mealPrep: liveImage("/images/landing/meal-prep.png"),
+  dailyWin: liveImage("/images/landing/daily-win.png"),
+  accountability: liveImage("/images/landing/accountability.png")
 } as const;
 
 export const HERO_PARTICIPANTS = [

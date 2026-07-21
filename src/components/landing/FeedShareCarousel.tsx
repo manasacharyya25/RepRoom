@@ -13,8 +13,8 @@ const SHARE_CARDS = [
     title: "Share Your Progress",
     cta: "Share",
     href: "/feed",
-    beforeImage: LIVE_IMAGES.participant2,
-    afterImage: LIVE_IMAGES.participant4,
+    beforeImage: LIVE_IMAGES.transformBefore,
+    afterImage: LIVE_IMAGES.transformAfter,
     variant: "transform" as const,
     subheading:
       "Before → after receipts. Drag the slider — flex on your future self."
@@ -25,7 +25,7 @@ const SHARE_CARDS = [
     title: "Get Feedback",
     cta: "Post Form",
     href: "/feed",
-    image: LIVE_IMAGES.participant3,
+    image: LIVE_IMAGES.fitCheck,
     variant: "single" as const,
     subheading:
       "Share your fit checks. Drop the mirror pic, collect the hype (and the form tips)."
@@ -36,9 +36,8 @@ const SHARE_CARDS = [
     title: "Fuel Your Body",
     cta: "Share Plate",
     href: "/feed",
-    image: LIVE_IMAGES.participant8,
-    secondaryImage: LIVE_IMAGES.participant1,
-    variant: "split" as const,
+    image: LIVE_IMAGES.mealPrep,
+    variant: "single" as const,
     subheading:
       "Share your meal plans — kitchen gains count, and that Tupperware stack is a flex."
   },
@@ -58,7 +57,7 @@ const SHARE_CARDS = [
     title: "Post the Pump",
     cta: "Post Pump",
     href: "/feed",
-    image: LIVE_IMAGES.participant5,
+    image: LIVE_IMAGES.pumpCheck,
     variant: "single" as const,
     subheading:
       "Fresh out of the gym? Share the pump check before the swole tax hits."
@@ -69,9 +68,8 @@ const SHARE_CARDS = [
     title: "Tag Your Crew",
     cta: "Find Crew",
     href: "/feed",
-    image: LIVE_IMAGES.participant6,
-    secondaryImage: LIVE_IMAGES.participant7,
-    variant: "split" as const,
+    image: LIVE_IMAGES.accountability,
+    variant: "single" as const,
     subheading:
       "Call out your workout buddy. Peer pressure, but make it wholesome."
   },
@@ -81,7 +79,7 @@ const SHARE_CARDS = [
     title: "Celebrate Wins",
     cta: "Share Win",
     href: "/feed",
-    image: LIVE_IMAGES.participant1,
+    image: LIVE_IMAGES.dailyWin,
     variant: "single" as const,
     subheading:
       "Tiny wins still count. Posted the walk? Logged the stretch? We’re cheering."
