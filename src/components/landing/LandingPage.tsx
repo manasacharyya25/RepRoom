@@ -24,7 +24,7 @@ export function LandingPage() {
           <h1>Work out together. Motivate each other.</h1>
           <p className="landing-description">
             Satara is a live fitness community where you join real workout rooms
-            with others — Yoga, Cardio, Zumba, Workout, and Meditation. Pin the people who
+            with others — Workout, Yoga, and Zumba. Pin the people who
             push you, share progress on the feed, and stay accountable with optional face
             filters when you want privacy.
           </p>

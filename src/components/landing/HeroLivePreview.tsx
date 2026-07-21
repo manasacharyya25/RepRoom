@@ -3,17 +3,33 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { HERO_PARTICIPANTS, LIVE_IMAGES } from "@/lib/live-images";
+import {
+  hasLandingHeroVideos,
+  landingHeroVideosForRoom
+} from "@/lib/landing-hero-videos";
 import { getRoomById, type RoomId } from "@/lib/rooms";
 
 const ROOM_TAGS = [
-  { label: "Cardio", roomId: "cardio" as RoomId },
   { label: "Workout", roomId: "workout" as RoomId },
-  { label: "Meditation", roomId: "meditation" as RoomId }
+  { label: "Yoga", roomId: "yoga" as RoomId },
+  { label: "Zumba", roomId: "zumba" as RoomId }
 ] as const;
+
+function shuffleItems<T>(items: readonly T[]) {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [
+      shuffled[swapIndex],
+      shuffled[index]
+    ];
+  }
+  return shuffled;
+}
 
 export function HeroLivePreview() {
   const [activeLabel, setActiveLabel] = useState<(typeof ROOM_TAGS)[number]["label"]>(
-    "Cardio"
+    "Workout"
   );
 
   const room = useMemo(() => {
@@ -24,6 +40,11 @@ export function HeroLivePreview() {
   const coach = room.pinnedFeeds[0] ?? { name: "Coach", image: LIVE_IMAGES.main };
   const avatars = room.participants.slice(0, 5);
   const sidebar = room.sidebarParticipants.slice(0, 3);
+  const heroVideos = useMemo(
+    () => shuffleItems(landingHeroVideosForRoom(room.id)),
+    [room.id]
+  );
+  const useHeroVideos = hasLandingHeroVideos(room.id);
 
   return (
     <div className="hero-mock-wrap">
@@ -56,14 +77,26 @@ export function HeroLivePreview() {
         <div className="hero-mock-body">
           <div className="hero-mock-main">
             <div className="hero-mock-video">
-              <Image
-                alt=""
-                className="hero-mock-video-image"
-                fill
-                priority
-                sizes="(max-width: 960px) 100vw, 560px"
-                src={room.coverImage}
-              />
+              {useHeroVideos ? (
+                <video
+                  autoPlay
+                  className="hero-mock-video-image"
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  src={heroVideos[0]}
+                />
+              ) : (
+                <Image
+                  alt=""
+                  className="hero-mock-video-image"
+                  fill
+                  priority
+                  sizes="(max-width: 960px) 100vw, 560px"
+                  src={room.coverImage}
+                />
+              )}
               <span className="hero-mock-live-badge">● Live</span>
               <span className="hero-mock-tile-label">{coach.name}</span>
             </div>
@@ -87,18 +120,30 @@ export function HeroLivePreview() {
             </div>
           </div>
           <div className="hero-mock-sidebar">
-            {sidebar.map((participant) => (
+            {sidebar.map((participant, index) => (
               <div
                 className="hero-mock-sidebar-tile"
                 key={`${room.id}-side-${participant.name}`}
               >
-                <Image
-                  alt=""
-                  className="hero-mock-sidebar-tile-image"
-                  fill
-                  sizes="160px"
-                  src={participant.image}
-                />
+                {useHeroVideos ? (
+                  <video
+                    autoPlay
+                    className="hero-mock-sidebar-tile-image"
+                    loop
+                    muted
+                    playsInline
+                    preload="auto"
+                    src={heroVideos[index + 1]}
+                  />
+                ) : (
+                  <Image
+                    alt=""
+                    className="hero-mock-sidebar-tile-image"
+                    fill
+                    sizes="160px"
+                    src={participant.image}
+                  />
+                )}
                 <span className="hero-mock-live-badge">● Live</span>
                 <span className="hero-mock-tile-label">{participant.name}</span>
               </div>
