@@ -166,33 +166,6 @@ export function FeedShareCarousel() {
                     </div>
                   ) : null}
 
-                  {card.variant === "split" &&
-                  "image" in card &&
-                  card.image &&
-                  "secondaryImage" in card &&
-                  card.secondaryImage ? (
-                    <div className="share-carousel-split">
-                      <span className="share-carousel-half">
-                        <Image
-                          alt=""
-                          className="share-carousel-image"
-                          fill
-                          sizes="160px"
-                          src={card.image}
-                        />
-                      </span>
-                      <span className="share-carousel-half">
-                        <Image
-                          alt=""
-                          className="share-carousel-image"
-                          fill
-                          sizes="160px"
-                          src={card.secondaryImage}
-                        />
-                      </span>
-                    </div>
-                  ) : null}
-
                   {card.variant === "single" && "image" in card && card.image ? (
                     <Image
                       alt=""
