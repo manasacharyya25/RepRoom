@@ -257,7 +257,7 @@
   }
 
   .login-visual {
-    min-height: 220px;
+    min-height: min(20vh, 520px);
     order: -1;
   }
 

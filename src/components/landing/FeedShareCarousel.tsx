@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent
+} from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { LIVE_IMAGES } from "@/lib/live-images";
 
@@ -87,6 +94,7 @@ const SHARE_CARDS = [
 ] as const;
 
 const SIDE_COUNT = 3;
+const SWIPE_THRESHOLD_PX = 48;
 
 function cardOffset(index: number, active: number, total: number) {
   let delta = index - active;
@@ -99,6 +107,12 @@ function cardOffset(index: number, active: number, total: number) {
 export function FeedShareCarousel() {
   const [activeIndex, setActiveIndex] = useState(0);
   const active = SHARE_CARDS[activeIndex] ?? SHARE_CARDS[0];
+  const swipeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
 
   const ordered = useMemo(
     () =>
@@ -110,6 +124,63 @@ export function FeedShareCarousel() {
     [activeIndex]
   );
 
+  const goNext = useCallback(() => {
+    setActiveIndex((index) => (index + 1) % SHARE_CARDS.length);
+  }, []);
+
+  const goPrev = useCallback(() => {
+    setActiveIndex(
+      (index) => (index - 1 + SHARE_CARDS.length) % SHARE_CARDS.length
+    );
+  }, []);
+
+  const finishSwipe = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const swipe = swipeRef.current;
+      if (!swipe || swipe.pointerId !== event.pointerId) return;
+
+      const deltaX = event.clientX - swipe.startX;
+      const deltaY = event.clientY - swipe.startY;
+      swipeRef.current = null;
+
+      if (
+        Math.abs(deltaX) < SWIPE_THRESHOLD_PX ||
+        Math.abs(deltaX) <= Math.abs(deltaY)
+      ) {
+        return;
+      }
+
+      suppressClickRef.current = true;
+      if (deltaX < 0) {
+        goNext();
+      } else {
+        goPrev();
+      }
+    },
+    [goNext, goPrev]
+  );
+
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      swipeRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY
+      };
+    },
+    []
+  );
+
+  const onPointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (swipeRef.current?.pointerId === event.pointerId) {
+        swipeRef.current = null;
+      }
+    },
+    []
+  );
+
   return (
     <div className="share-carousel">
       <div className="share-carousel-copy">
@@ -119,7 +190,13 @@ export function FeedShareCarousel() {
         </p>
       </div>
 
-      <div className="share-carousel-stage" aria-roledescription="carousel">
+      <div
+        className="share-carousel-stage"
+        aria-roledescription="carousel"
+        onPointerDown={onPointerDown}
+        onPointerUp={finishSwipe}
+        onPointerCancel={onPointerCancel}
+      >
         <div className="share-carousel-track">
           {ordered.map(({ card, index, offset }) => {
             const isActive = offset === 0;
@@ -142,6 +219,10 @@ export function FeedShareCarousel() {
                 aria-current={isActive ? "true" : undefined}
                 aria-label={`${card.title}. ${card.subheading}`}
                 onClick={() => {
+                  if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                  }
                   if (!isActive) setActiveIndex(index);
                 }}
               >

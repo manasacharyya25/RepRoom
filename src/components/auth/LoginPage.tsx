@@ -122,11 +122,6 @@ export function LoginPage() {
     <div className="login-page">
       <header className="landing-nav login-nav">
         <Logo />
-        <div className="landing-nav-actions">
-          <Link className="btn-secondary" href="/">
-            Home
-          </Link>
-        </div>
       </header>
 
       <main className="login-stage">
@@ -143,14 +138,6 @@ export function LoginPage() {
         </div>
 
         <section className="login-panel" aria-labelledby="login-heading">
-          <div className="login-brand-block">
-            <BrandMark className="login-panel-mark" size={44} />
-            <h1 id="login-heading" className="login-heading">
-              <BrandName className="login-heading-wordmark" height={48} />
-            </h1>
-            <p className="login-subheading">{title}</p>
-          </div>
-
           <button
             type="button"
             className="login-google"

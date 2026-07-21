@@ -988,9 +988,12 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 
 @media (max-width: 960px) {
   .room-select-page {
-    height: auto;
-    min-height: 100vh;
-    overflow: auto;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .room-select-shell {
@@ -1002,14 +1005,31 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
     grid-template-columns: 1fr;
   }
 
+  /* Reserve space under the docked chat sheet so rooms stay scrollable above it */
+  .room-select-shell:not(.is-chat-minimized) {
+    padding-bottom: calc(min(52vh, 420px) + 28px);
+  }
+
   .room-select-main {
     overflow: visible;
   }
 
   .room-select-chat {
-    position: relative;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    z-index: 30;
+    width: auto;
     height: min(52vh, 420px);
-    max-height: none;
+    max-height: min(52vh, 420px);
+    align-self: auto;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .room-select-chat-list {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .room-select-chat-restore {

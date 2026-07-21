@@ -50,10 +50,9 @@ type LogoProps = {
   showMark?: boolean;
 };
 
-export function Logo({ href = "/", showMark = true }: LogoProps) {
+export function Logo({ href = "/" }: LogoProps) {
   return (
     <Link className="landing-logo" href={href} aria-label="RhoQ home">
-      {showMark ? <BrandMark /> : null}
       <BrandName height={36} />
     </Link>
   );
