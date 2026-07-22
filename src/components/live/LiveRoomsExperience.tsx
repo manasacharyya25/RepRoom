@@ -43,7 +43,11 @@ import {
   startChunkRecorder,
   type ChunkRecorder
 } from "@/lib/streaming/chunk-recorder";
-import { PREVIEW_DEV_BROADCASTER_ID, PREVIEW_PRIMARY_ROOM_ID } from "@/lib/streaming/preview-chunks";
+import {
+  LIVE_DISCOVERY_PAGE_SIZE,
+  type LiveSessionView
+} from "@/lib/streaming/live-sessions";
+import { PREVIEW_PRIMARY_ROOM_ID } from "@/lib/streaming/preview-chunks";
 import { hlsUrl, whipUrl } from "@/lib/streaming/config";
 import {
   startWhipPublisher,
@@ -105,8 +109,13 @@ function LiveTile({
   videoSrc?: string | null;
   /** Guest muted YouTube preview (preferred over archive when set). */
   youtubeVideoId?: string | null;
-  /** Live R2 chunk preview (logged-in workout MVP tile). */
-  chunkPreview?: { roomId: string; userId: string } | null;
+  /** Live or ended R2 chunk preview from discovery. */
+  chunkPreview?: {
+    r2Folder: string;
+    lastChunkNumber?: number;
+    mode?: "live" | "archive";
+    onDead?: () => void;
+  } | null;
   label: string;
   labelPosition?: "left" | "center";
   priority?: boolean;
@@ -130,9 +139,12 @@ function LiveTile({
       ) : chunkPreview ? (
         <ChunkPreviewPlayer
           className="live-rooms-tile-video"
+          initialLastChunk={chunkPreview.lastChunkNumber}
+          mode={chunkPreview.mode}
+          onDead={chunkPreview.onDead}
           paused={paused}
-          roomId={chunkPreview.roomId}
-          userId={chunkPreview.userId}
+          r2Folder={chunkPreview.r2Folder}
+          label={label}
         />
       ) : videoSrc ? (
         <LiveVideoPlayer
@@ -203,8 +215,21 @@ export function ImmersiveRoom({
   const streamRef = useRef<MediaStream | null>(null);
   const whipRef = useRef<WhipPublisher | null>(null);
   const chunkRecorderRef = useRef<ChunkRecorder | null>(null);
+  /** MediaMTX archive session id (non-workout rooms). */
   const sessionIdRef = useRef<string | null>(null);
+  /** R2 live_sessions row id (workout room chunk pipeline). */
+  const liveR2SessionIdRef = useRef<string | null>(null);
   const liveEpochRef = useRef(0);
+  const [liveSlots, setLiveSlots] = useState<(LiveSessionView | null)[]>(() =>
+    Array.from({ length: LIVE_DISCOVERY_PAGE_SIZE }, () => null)
+  );
+  const [archiveSlots, setArchiveSlots] = useState<(LiveSessionView | null)[]>(
+    () => Array.from({ length: LIVE_DISCOVERY_PAGE_SIZE }, () => null)
+  );
+  const liveSlotsRef = useRef(liveSlots);
+  liveSlotsRef.current = liveSlots;
+  const archiveSlotsRef = useRef(archiveSlots);
+  archiveSlotsRef.current = archiveSlots;
   const publishGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -341,6 +366,8 @@ export function ImmersiveRoom({
 
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
+    const liveR2SessionId = liveR2SessionIdRef.current;
+    liveR2SessionIdRef.current = null;
 
     chunkRecorderRef.current?.stop();
     chunkRecorderRef.current = null;
@@ -356,6 +383,16 @@ export function ImmersiveRoom({
     setHlsReady(false);
     setIsLive(false);
     setIsGoingLive(false);
+
+    if (liveR2SessionId) {
+      void fetch("/api/live/sessions/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: liveR2SessionId })
+      }).catch(() => {
+        /* End session is best-effort */
+      });
+    }
 
     if (sessionId) {
       void fetch(`/api/archives/${sessionId}`, { method: "PATCH" })
@@ -425,17 +462,42 @@ export function ImmersiveRoom({
         if (liveEpochRef.current !== epoch || !streamRef.current) return;
 
         if (useR2Chunks) {
-          chunkRecorderRef.current?.stop();
-          chunkRecorderRef.current = startChunkRecorder({
-            stream: streamRef.current,
-            roomId: room.id,
-            onError: (message) => {
-              console.warn("[preview-chunks]", message);
-            },
-            onUploaded: (info) => {
-              console.info("[preview-chunks] uploaded", info.key);
+          try {
+            const liveResponse = await fetch("/api/live/sessions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ roomId: room.id })
+            });
+            if (!liveResponse.ok || liveEpochRef.current !== epoch) {
+              if (liveEpochRef.current === epoch) {
+                stopCamera();
+                setCameraError("Could not start live session.");
+              }
+              return;
             }
-          });
+            const liveData = (await liveResponse.json()) as {
+              session: LiveSessionView;
+            };
+            liveR2SessionIdRef.current = liveData.session.sessionId;
+
+            chunkRecorderRef.current?.stop();
+            chunkRecorderRef.current = startChunkRecorder({
+              stream: streamRef.current,
+              roomId: room.id,
+              sessionId: liveData.session.sessionId,
+              onError: (message) => {
+                console.warn("[preview-chunks]", message);
+              },
+              onUploaded: (info) => {
+                console.info("[preview-chunks] uploaded", info.key);
+              }
+            });
+          } catch {
+            if (liveEpochRef.current === epoch) {
+              stopCamera();
+              setCameraError("Could not start live session.");
+            }
+          }
           return;
         }
 
@@ -502,8 +564,245 @@ export function ImmersiveRoom({
     clearPublishGraceTimer();
   }, [clearPublishGraceTimer]);
 
+  const discoveryEnabled =
+    room.id === PREVIEW_PRIMARY_ROOM_ID &&
+    tier !== "guest" &&
+    !staticPreviewOnly;
+
+  const emptyDiscoverySlots = () =>
+    Array.from({ length: LIVE_DISCOVERY_PAGE_SIZE }, () => null as LiveSessionView | null);
+
+  const fetchEndedArchives = useCallback(
+    async (options: {
+      limit: number;
+      excludeSessionIds: string[];
+      excludeUserIds: string[];
+    }) => {
+      if (options.limit <= 0) return [] as LiveSessionView[];
+      const params = new URLSearchParams({
+        roomId: room.id,
+        limit: String(options.limit)
+      });
+      if (options.excludeSessionIds.length > 0) {
+        params.set("exclude", options.excludeSessionIds.join(","));
+      }
+      if (options.excludeUserIds.length > 0) {
+        params.set("excludeUsers", options.excludeUserIds.join(","));
+      }
+      const response = await fetch(
+        `/api/live/sessions/archives?${params.toString()}`
+      );
+      if (!response.ok) return [];
+      const data = (await response.json()) as {
+        sessions?: LiveSessionView[];
+      };
+      return data.sessions ?? [];
+    },
+    [room.id]
+  );
+
+  const fillArchiveSlots = useCallback(
+    async (
+      live: (LiveSessionView | null)[],
+      previousArchives: (LiveSessionView | null)[] = emptyDiscoverySlots()
+    ) => {
+      const nextArchives = emptyDiscoverySlots();
+      const usedSessionIds = new Set<string>();
+      const usedUserIds = new Set<string>();
+
+      for (const session of live) {
+        if (!session) continue;
+        usedSessionIds.add(session.sessionId);
+        usedUserIds.add(session.userId);
+      }
+      if (liveR2SessionIdRef.current) {
+        usedSessionIds.add(liveR2SessionIdRef.current);
+      }
+
+      // Keep existing archive assignments on still-empty live slots when possible.
+      for (let index = 0; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+        if (live[index]) continue;
+        const existing = previousArchives[index];
+        if (
+          existing &&
+          !usedSessionIds.has(existing.sessionId) &&
+          !usedUserIds.has(existing.userId)
+        ) {
+          nextArchives[index] = existing;
+          usedSessionIds.add(existing.sessionId);
+          usedUserIds.add(existing.userId);
+        }
+      }
+
+      const emptyIndexes: number[] = [];
+      for (let index = 0; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+        if (!live[index] && !nextArchives[index]) {
+          emptyIndexes.push(index);
+        }
+      }
+
+      if (emptyIndexes.length === 0) {
+        return nextArchives;
+      }
+
+      const fetched = await fetchEndedArchives({
+        limit: emptyIndexes.length,
+        excludeSessionIds: [...usedSessionIds],
+        excludeUserIds: [...usedUserIds]
+      });
+
+      emptyIndexes.forEach((slotIndex, fetchIndex) => {
+        nextArchives[slotIndex] = fetched[fetchIndex] ?? null;
+      });
+
+      return nextArchives;
+    },
+    [fetchEndedArchives]
+  );
+
+  const replaceLiveSlot = useCallback(
+    async (slotIndex: number, deadSessionId: string) => {
+      if (!discoveryEnabled) return;
+
+      const exclude = new Set(
+        liveSlotsRef.current
+          .filter((session): session is LiveSessionView => Boolean(session))
+          .map((session) => session.sessionId)
+      );
+      exclude.add(deadSessionId);
+      if (liveR2SessionIdRef.current) {
+        exclude.add(liveR2SessionIdRef.current);
+      }
+
+      let replacement: LiveSessionView | null = null;
+      try {
+        const response = await fetch(
+          `/api/live/sessions/replace?roomId=${encodeURIComponent(room.id)}&exclude=${encodeURIComponent(
+            [...exclude].join(",")
+          )}`
+        );
+        if (response.ok) {
+          const data = (await response.json()) as {
+            session?: LiveSessionView | null;
+          };
+          replacement = data.session ?? null;
+        }
+      } catch {
+        replacement = null;
+      }
+
+      const nextLive = [...liveSlotsRef.current];
+      if (nextLive[slotIndex]?.sessionId !== deadSessionId) return;
+      nextLive[slotIndex] = replacement;
+      setLiveSlots(nextLive);
+
+      if (!replacement) {
+        const nextArchives = await fillArchiveSlots(
+          nextLive,
+          archiveSlotsRef.current
+        );
+        setArchiveSlots(nextArchives);
+      } else {
+        setArchiveSlots((prev) => {
+          const next = [...prev];
+          next[slotIndex] = null;
+          return next;
+        });
+      }
+    },
+    [discoveryEnabled, fillArchiveSlots, room.id]
+  );
+
   useEffect(() => {
-    if (tier === "guest" || staticPreviewOnly) {
+    if (!discoveryEnabled) {
+      setLiveSlots(emptyDiscoverySlots());
+      setArchiveSlots(emptyDiscoverySlots());
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDiscovery = async () => {
+      try {
+        const response = await fetch(
+          `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${LIVE_DISCOVERY_PAGE_SIZE}`
+        );
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as {
+          sessions?: LiveSessionView[];
+        };
+        const selfId = liveR2SessionIdRef.current;
+        const sessions = (data.sessions ?? []).filter(
+          (session) => session.sessionId !== selfId
+        );
+        const nextLive = Array.from(
+          { length: LIVE_DISCOVERY_PAGE_SIZE },
+          (_, index) => sessions[index] ?? null
+        );
+        if (cancelled) return;
+        setLiveSlots(nextLive);
+
+        const nextArchives = await fillArchiveSlots(nextLive);
+        if (cancelled) return;
+        setArchiveSlots(nextArchives);
+      } catch {
+        /* optional */
+      }
+    };
+
+    void loadDiscovery();
+    return () => {
+      cancelled = true;
+    };
+  }, [discoveryEnabled, fillArchiveSlots, room.id]);
+
+  const liveSessionForSlot = useCallback(
+    (slot: number) => {
+      if (useGuestYoutube || !discoveryEnabled) return null;
+      const session = liveSlots[slot];
+      if (!session) return null;
+      if (session.sessionId === liveR2SessionIdRef.current) return null;
+      return session;
+    },
+    [discoveryEnabled, liveSlots, useGuestYoutube]
+  );
+
+  const archiveSessionForSlot = useCallback(
+    (slot: number) => {
+      if (useGuestYoutube || !discoveryEnabled) return null;
+      if (liveSessionForSlot(slot)) return null;
+      return archiveSlots[slot] ?? null;
+    },
+    [archiveSlots, discoveryEnabled, liveSessionForSlot, useGuestYoutube]
+  );
+
+  const chunkPreviewForSlot = useCallback(
+    (slot: number) => {
+      const live = liveSessionForSlot(slot);
+      if (live) {
+        return {
+          r2Folder: live.r2Folder,
+          lastChunkNumber: live.lastChunkNumber,
+          mode: "live" as const,
+          onDead: () => {
+            void replaceLiveSlot(slot, live.sessionId);
+          }
+        };
+      }
+      const archive = archiveSessionForSlot(slot);
+      if (!archive) return null;
+      return {
+        r2Folder: archive.r2Folder,
+        lastChunkNumber: archive.lastChunkNumber,
+        mode: "archive" as const
+      };
+    },
+    [archiveSessionForSlot, liveSessionForSlot, replaceLiveSlot]
+  );
+
+  useEffect(() => {
+    // Workout discovery uses ended live_sessions in R2; filesystem archives for other rooms.
+    if (discoveryEnabled || tier === "guest" || staticPreviewOnly) {
       setArchiveUrls([]);
       return;
     }
@@ -534,7 +833,7 @@ export function ImmersiveRoom({
     return () => {
       cancelled = true;
     };
-  }, [room.id, tier, staticPreviewOnly]);
+  }, [discoveryEnabled, room.id, tier, staticPreviewOnly]);
 
   const toggleGoLive = () => {
     if (isLive || isGoingLive) {
@@ -673,12 +972,28 @@ export function ImmersiveRoom({
               const showLiveHls =
                 isSelfSlot && hlsReady && Boolean(playbackHlsUrl);
               const archiveSlot = index === 0 ? 0 : 1;
-              const archiveSrc = isSelfSlot ? null : archiveForSlot(archiveSlot);
+              const liveSession = isSelfSlot
+                ? null
+                : liveSessionForSlot(archiveSlot);
+              const archiveSession = isSelfSlot
+                ? null
+                : archiveSessionForSlot(archiveSlot);
+              const chunkPreview = isSelfSlot
+                ? null
+                : chunkPreviewForSlot(archiveSlot);
+              const archiveSrc =
+                isSelfSlot || chunkPreview
+                  ? null
+                  : archiveForSlot(archiveSlot);
+              const tileLabel =
+                liveSession?.displayName?.trim() ||
+                archiveSession?.displayName?.trim() ||
+                feed.name;
 
               return (
                 <button
                   aria-label={
-                    isSelfSlot ? "Move your live feed" : `Focus ${feed.name}`
+                    isSelfSlot ? "Move your live feed" : `Focus ${tileLabel}`
                   }
                   className="live-rooms-preview-button live-rooms-immersive-pinned-tile"
                   key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
@@ -715,8 +1030,18 @@ export function ImmersiveRoom({
                   ) : useGuestYoutube ? (
                     <YouTubePreviewEmbed
                       paused={pauseIncoming}
-                      title={`${feed.name} preview`}
+                      title={`${tileLabel} preview`}
                       videoId={guestYoutubeForSlot(archiveSlot)}
+                    />
+                  ) : chunkPreview ? (
+                    <ChunkPreviewPlayer
+                      className="live-rooms-featured-hls"
+                      initialLastChunk={chunkPreview.lastChunkNumber}
+                      label={tileLabel}
+                      mode={chunkPreview.mode}
+                      onDead={chunkPreview.onDead}
+                      paused={pauseIncoming}
+                      r2Folder={chunkPreview.r2Folder}
                     />
                   ) : archiveSrc ? (
                     <LiveVideoPlayer
@@ -738,7 +1063,7 @@ export function ImmersiveRoom({
                   )}
                   {!isSelfSlot ? (
                     <span className="live-rooms-featured-label">
-                      {feed.name}
+                      {tileLabel}
                     </span>
                   ) : null}
                 </button>
@@ -757,37 +1082,32 @@ export function ImmersiveRoom({
                 ? layout.bottom.slice(0, 2)
                 : layout.bottom
               ).map((participant, index) => {
-                const showChunkPreview =
-                  room.id === PREVIEW_PRIMARY_ROOM_ID &&
-                  !useGuestYoutube &&
-                  index === 0;
+                const slot = 2 + index;
+                const liveSession = liveSessionForSlot(slot);
+                const archiveSession = archiveSessionForSlot(slot);
+                const chunkPreview = chunkPreviewForSlot(slot);
+                const tileLabel =
+                  liveSession?.displayName?.trim() ||
+                  archiveSession?.displayName?.trim() ||
+                  participant.name;
 
                 return (
                   <LiveTile
-                    chunkPreview={
-                      showChunkPreview
-                        ? {
-                            roomId: room.id,
-                            userId: PREVIEW_DEV_BROADCASTER_ID
-                          }
-                        : null
-                    }
+                    chunkPreview={chunkPreview}
                     className="live-rooms-immersive-bottom-tile"
                     image={participant.image}
                     key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
-                    label={participant.name}
+                    label={tileLabel}
                     labelPosition="center"
                     onClick={() => handlePreviewClick("bottom", index)}
                     sizes="(max-width: 960px) 50vw, 180px"
                     videoSrc={
-                      useGuestYoutube || showChunkPreview
+                      useGuestYoutube || chunkPreview
                         ? null
-                        : archiveForSlot(2 + index)
+                        : archiveForSlot(slot)
                     }
                     youtubeVideoId={
-                      useGuestYoutube
-                        ? guestYoutubeForSlot(2 + index)
-                        : null
+                      useGuestYoutube ? guestYoutubeForSlot(slot) : null
                     }
                     paused={pauseIncoming}
                   />
@@ -799,21 +1119,37 @@ export function ImmersiveRoom({
 
         {!isMobileViewport ? (
           <div className="live-rooms-immersive-rail">
-            {layout.rail.map((participant, index) => (
-              <LiveTile
-                className="live-rooms-immersive-rail-tile"
-                image={participant.image}
-                key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
-                label={participant.name}
-                onClick={() => handlePreviewClick("rail", index)}
-                sizes="200px"
-                videoSrc={useGuestYoutube ? null : archiveForSlot(6 + index)}
-                youtubeVideoId={
-                  useGuestYoutube ? guestYoutubeForSlot(6 + index) : null
-                }
-                paused={pauseIncoming}
-              />
-            ))}
+            {layout.rail.map((participant, index) => {
+              const slot = 6 + index;
+              const liveSession = liveSessionForSlot(slot);
+              const archiveSession = archiveSessionForSlot(slot);
+              const chunkPreview = chunkPreviewForSlot(slot);
+              const tileLabel =
+                liveSession?.displayName?.trim() ||
+                archiveSession?.displayName?.trim() ||
+                participant.name;
+
+              return (
+                <LiveTile
+                  chunkPreview={chunkPreview}
+                  className="live-rooms-immersive-rail-tile"
+                  image={participant.image}
+                  key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+                  label={tileLabel}
+                  onClick={() => handlePreviewClick("rail", index)}
+                  sizes="200px"
+                  videoSrc={
+                    useGuestYoutube || chunkPreview
+                      ? null
+                      : archiveForSlot(slot)
+                  }
+                  youtubeVideoId={
+                    useGuestYoutube ? guestYoutubeForSlot(slot) : null
+                  }
+                  paused={pauseIncoming}
+                />
+              );
+            })}
           </div>
         ) : null}
       </div>

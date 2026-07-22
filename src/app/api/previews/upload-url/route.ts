@@ -25,6 +25,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as {
     roomId?: string;
+    sessionId?: string;
     chunkIndex?: number;
     contentType?: string;
   } | null;
@@ -32,6 +33,11 @@ export async function POST(request: Request) {
   const roomId = body?.roomId?.trim() ?? "";
   if (!isRoomId(roomId)) {
     return NextResponse.json({ error: "Invalid room" }, { status: 400 });
+  }
+
+  const sessionId = body?.sessionId?.trim() ?? "";
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId required" }, { status: 400 });
   }
 
   const chunkIndex = Number(body?.chunkIndex);
@@ -44,6 +50,7 @@ export async function POST(request: Request) {
   const key = previewChunkKey({
     roomId,
     userId: user.id,
+    sessionId,
     chunkIndex
   });
 

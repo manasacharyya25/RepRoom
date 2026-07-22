@@ -12,6 +12,7 @@ export type ChunkRecorder = {
 type StartChunkRecorderOptions = {
   stream: MediaStream;
   roomId: string;
+  sessionId: string;
   /** Called when a chunk fails to upload (non-fatal). */
   onError?: (message: string) => void;
   /** Fired after each successful upload. */
@@ -29,7 +30,7 @@ type StartChunkRecorderOptions = {
 export function startChunkRecorder(
   options: StartChunkRecorderOptions
 ): ChunkRecorder {
-  const { stream, roomId, onError, onUploaded } = options;
+  const { stream, roomId, sessionId, onError, onUploaded } = options;
   const mimeType = pickMediaRecorderMimeType();
   if (!mimeType) {
     onError?.("MediaRecorder WebM is not supported in this browser.");
@@ -53,6 +54,7 @@ export function startChunkRecorder(
 
     const form = new FormData();
     form.set("roomId", roomId);
+    form.set("sessionId", sessionId);
     form.set("chunkIndex", String(index));
     form.set("file", blob, `chunk_${String(index).padStart(6, "0")}.webm`);
 

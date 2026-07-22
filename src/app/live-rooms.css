@@ -868,6 +868,36 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   background: #0a0a0c;
 }
 
+.live-video-player--dual .live-video-player-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 40ms linear;
+}
+
+.live-video-player--dual .live-video-player-video.is-active {
+  opacity: 1;
+  z-index: 1;
+}
+
+.live-video-player--dual .live-video-player-video.is-standby {
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.live-video-player-preload {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 .live-video-player-video {
   width: 100%;
   height: 100%;

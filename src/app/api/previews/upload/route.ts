@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-/** ~8MB — a 5s 360p WebM should be well under this. */
+/** ~8MB — a 15s 360p WebM should be well under this. */
 const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 
 function isUploadBlob(value: unknown): value is Blob {
@@ -70,6 +70,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid room" }, { status: 400 });
   }
 
+  const sessionId = String(form.get("sessionId") ?? "").trim();
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+  }
+
   const chunkIndex = Number(form.get("chunkIndex"));
   if (!Number.isFinite(chunkIndex) || chunkIndex < 1 || chunkIndex > 1_000_000) {
     return NextResponse.json({ error: "Invalid chunkIndex" }, { status: 400 });
@@ -83,9 +88,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Chunk too large" }, { status: 413 });
   }
 
+  const { data: session, error: sessionError } = await supabase
+    .from("live_sessions")
+    .select("session_id, status")
+    .eq("session_id", sessionId)
+    .eq("user_id", user.id)
+    .eq("room_id", roomId)
+    .maybeSingle();
+
+  if (sessionError || !session || session.status !== "live") {
+    return NextResponse.json(
+      { error: "Live session not found or not active" },
+      { status: 404 }
+    );
+  }
+
   const key = previewChunkKey({
     roomId,
     userId: user.id,
+    sessionId,
     chunkIndex
   });
   const contentType = "video/webm";
@@ -94,8 +115,6 @@ export async function POST(request: Request) {
   try {
     const { client, bucket } = createR2Client();
 
-    // Presign + server-side fetch avoids AWS SDK PutObject checksum middleware,
-    // which R2 often rejects.
     const uploadUrl = await getSignedUrl(
       client,
       new PutObjectCommand({
@@ -127,9 +146,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const now = new Date().toISOString();
+    await supabase
+      .from("live_sessions")
+      .update({
+        last_chunk_number: chunkIndex,
+        last_chunk_uploaded_at: now,
+        updated_at: now
+      })
+      .eq("session_id", sessionId)
+      .eq("user_id", user.id)
+      .eq("status", "live");
+
     return NextResponse.json({
       ok: true,
       key,
+      sessionId,
       chunkIndex,
       bytes: body.length,
       publicUrl: publicObjectUrl(key)

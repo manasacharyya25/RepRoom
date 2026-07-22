@@ -37,27 +37,48 @@ export function padChunkIndex(index: number) {
 
 /**
  * Object key for a live preview chunk.
- * Example: live/workout/{userId}/chunk_000001.webm
+ * Example: live/workout/{userId}/{sessionId}/chunk_000001.webm
  */
 export function previewChunkKey(options: {
   roomId: string;
   userId: string;
+  sessionId: string;
   chunkIndex: number;
 }) {
   const room = options.roomId.trim().replace(/^\/+|\/+$/g, "");
   const user = options.userId.trim().replace(/^\/+|\/+$/g, "");
-  if (!room || !user) throw new Error("roomId and userId are required");
-  return `live/${room}/${user}/chunk_${padChunkIndex(options.chunkIndex)}.webm`;
+  const session = options.sessionId.trim().replace(/^\/+|\/+$/g, "");
+  if (!room || !user || !session) {
+    throw new Error("roomId, userId, and sessionId are required");
+  }
+  return `live/${room}/${user}/${session}/chunk_${padChunkIndex(options.chunkIndex)}.webm`;
 }
 
 /** Public CDN / r2.dev URL for a chunk (client playback). */
 export function previewChunkPublicUrl(
   publicBaseUrl: string,
-  options: { roomId: string; userId: string; chunkIndex: number }
+  options: {
+    roomId: string;
+    userId: string;
+    sessionId: string;
+    chunkIndex: number;
+  }
 ) {
   const base = publicBaseUrl.trim().replace(/\/+$/, "");
   if (!base) throw new Error("publicBaseUrl is required");
   return `${base}/${previewChunkKey(options)}`;
+}
+
+/** Public URL from an r2_folder + chunk index. */
+export function previewChunkUrlFromFolder(
+  publicBaseUrl: string,
+  r2Folder: string,
+  chunkIndex: number
+) {
+  const base = publicBaseUrl.trim().replace(/\/+$/, "");
+  const folder = r2Folder.trim().replace(/^\/+|\/+$/g, "");
+  if (!base || !folder) throw new Error("publicBaseUrl and r2Folder are required");
+  return `${base}/${folder}/chunk_${padChunkIndex(chunkIndex)}.webm`;
 }
 
 export function pickMediaRecorderMimeType() {
