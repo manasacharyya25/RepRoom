@@ -653,6 +653,86 @@ export function ImmersiveRoom({
     };
   }, [discoveryEnabled, fillArchiveSlots, room.id]);
 
+  const hasEmptyDiscoveryTile = useMemo(() => {
+    if (!discoveryEnabled) return false;
+    const fillStart = isLive ? 1 : 0;
+    for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+      if (!liveSlots[index] && !archiveSlots[index]) return true;
+    }
+    return false;
+  }, [archiveSlots, discoveryEnabled, isLive, liveSlots]);
+
+  // While any tile is empty, re-check for new live sessions once a minute.
+  useEffect(() => {
+    if (!discoveryEnabled || !hasEmptyDiscoveryTile) return;
+
+    let cancelled = false;
+    const EMPTY_TILE_POLL_MS = 60_000;
+
+    const fillEmptyWithNewLives = async () => {
+      const live = liveSlotsRef.current;
+      const archives = archiveSlotsRef.current;
+      const reserveSelf = selfSlotReservedRef.current;
+      const fillStart = reserveSelf ? 1 : 0;
+
+      const emptyIndexes: number[] = [];
+      for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+        if (!live[index] && !archives[index]) {
+          emptyIndexes.push(index);
+        }
+      }
+      if (emptyIndexes.length === 0) return;
+
+      try {
+        const response = await fetch(
+          `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${LIVE_DISCOVERY_PAGE_SIZE}`
+        );
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as {
+          sessions?: LiveSessionView[];
+        };
+
+        const selfId = liveR2SessionIdRef.current;
+        const usedSessionIds = new Set<string>();
+        const usedUserIds = new Set<string>();
+        for (const session of live) {
+          if (!session) continue;
+          usedSessionIds.add(session.sessionId);
+          usedUserIds.add(session.userId);
+        }
+        if (selfId) usedSessionIds.add(selfId);
+
+        const nextLive = [...live];
+        let placed = 0;
+        for (const session of data.sessions ?? []) {
+          if (placed >= emptyIndexes.length) break;
+          if (usedSessionIds.has(session.sessionId)) continue;
+          if (usedUserIds.has(session.userId)) continue;
+          const slotIndex = emptyIndexes[placed];
+          nextLive[slotIndex] = session;
+          usedSessionIds.add(session.sessionId);
+          usedUserIds.add(session.userId);
+          placed += 1;
+        }
+
+        if (placed > 0 && !cancelled) {
+          setLiveSlots(nextLive);
+        }
+      } catch {
+        /* optional */
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void fillEmptyWithNewLives();
+    }, EMPTY_TILE_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [discoveryEnabled, hasEmptyDiscoveryTile, room.id]);
+
   const liveSessionForSlot = useCallback(
     (slot: number) => {
       if (!discoveryEnabled) return null;
