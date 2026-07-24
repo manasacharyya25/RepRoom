@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
+import {
+  broadcastQuotaSeconds,
+  getTier,
+  metersBroadcast,
+  type ProfilePlan
+} from "@/lib/entitlements";
 import { isRoomId } from "@/lib/rooms";
+import { getUsage } from "@/lib/room-access";
 import {
   decodeLiveCursor,
   encodeLiveCursor,
@@ -12,6 +19,7 @@ import {
   type LiveSessionRow
 } from "@/lib/streaming/live-sessions";
 import { createClient } from "@/lib/supabase/server";
+import { subjectKeyForUser } from "@/lib/guest-identity";
 
 export const runtime = "nodejs";
 
@@ -109,6 +117,33 @@ export async function POST(request: Request) {
   const roomId = body?.roomId?.trim() ?? "";
   if (!isRoomId(roomId)) {
     return NextResponse.json({ error: "Invalid room" }, { status: 400 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .maybeSingle();
+  const plan = (profile?.plan as ProfilePlan | undefined) ?? "free";
+  const tier = getTier({ userId: user.id, plan });
+
+  if (metersBroadcast(tier)) {
+    const quota = broadcastQuotaSeconds(tier);
+    const usage = await getUsage(
+      supabase,
+      subjectKeyForUser(user.id),
+      quota
+    );
+    if (usage.remainingSeconds !== null && usage.remainingSeconds <= 0) {
+      return NextResponse.json(
+        {
+          error: "Broadcast time used up for today",
+          reason: "free_time",
+          remainingSeconds: 0
+        },
+        { status: 403 }
+      );
+    }
   }
 
   const now = new Date().toISOString();

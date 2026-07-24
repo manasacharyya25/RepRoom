@@ -35,7 +35,7 @@ export async function POST(request: Request) {
         allowed: false,
         reason: "locked_room",
         tier: ctx.tier,
-        remainingSeconds: 0,
+        remainingSeconds: null,
         guestId: ctx.guestId
       },
       { status: 403, headers: responseHeaders }
@@ -46,24 +46,17 @@ export async function POST(request: Request) {
 
   let remainingSeconds: number | null = null;
   let secondsUsed = 0;
+  let quotaSeconds = 0;
 
-  if (ctx.metersView) {
-    const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
-    remainingSeconds = usage.remainingSeconds;
-    secondsUsed = usage.secondsUsed;
-
-    if (remainingSeconds !== null && remainingSeconds <= 0) {
-      return NextResponse.json(
-        {
-          allowed: false,
-          reason: "guest_time",
-          tier: ctx.tier,
-          remainingSeconds: 0,
-          secondsUsed,
-          guestId: ctx.guestId
-        },
-        { status: 403, headers: responseHeaders }
-      );
+  // Broadcast remaining for signed-in users (viewing is not metered).
+  if (ctx.userId) {
+    quotaSeconds = ctx.quotaSeconds;
+    if (ctx.metersBroadcast) {
+      const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
+      remainingSeconds = usage.remainingSeconds;
+      secondsUsed = usage.secondsUsed;
+    } else {
+      remainingSeconds = null;
     }
   }
 
@@ -106,8 +99,8 @@ export async function POST(request: Request) {
       tier: ctx.tier,
       remainingSeconds,
       secondsUsed,
-      quotaSeconds: ctx.metersView ? ctx.quotaSeconds : 0,
-      metersView: ctx.metersView,
+      quotaSeconds,
+      metersBroadcast: ctx.metersBroadcast,
       guestId: ctx.guestId
     },
     { headers: responseHeaders }

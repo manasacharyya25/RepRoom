@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  broadcastQuotaSeconds,
   getTier,
-  metersViewTimeOnEnter,
-  roomQuotaSeconds,
+  metersBroadcast,
   type ProfilePlan,
   type Tier
 } from "@/lib/entitlements";
@@ -22,10 +22,11 @@ export type AccessContext = {
   guestId: string | null;
   deviceHash: string;
   ipHash: string;
+  /** Broadcast quota for free users; 0 = unlimited (premium) or N/A (guest). */
   quotaSeconds: number;
   plan: ProfilePlan | null;
-  /** Guest view time meters on enter; free/premium broadcast later. */
-  metersView: boolean;
+  /** Free users meter Go Live time against the DB quota. */
+  metersBroadcast: boolean;
 };
 
 export async function resolveAccessContext(
@@ -55,9 +56,9 @@ export async function resolveAccessContext(
       guestId: null,
       deviceHash,
       ipHash,
-      quotaSeconds: roomQuotaSeconds(tier),
+      quotaSeconds: broadcastQuotaSeconds(tier),
       plan,
-      metersView: metersViewTimeOnEnter(tier)
+      metersBroadcast: metersBroadcast(tier)
     };
   }
 
@@ -74,9 +75,9 @@ export async function resolveAccessContext(
     guestId,
     deviceHash,
     ipHash,
-    quotaSeconds: roomQuotaSeconds(tier),
+    quotaSeconds: 0,
     plan: null,
-    metersView: metersViewTimeOnEnter(tier)
+    metersBroadcast: false
   };
 }
 

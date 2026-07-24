@@ -8,9 +8,11 @@ import "@/app/live-rooms.css";
 import { AppNav } from "@/components/nav/AppNav";
 import { useEntitlements } from "@/components/auth/EntitlementsProvider";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
+import { PremiumPlanModal } from "@/components/billing/PremiumPlanModal";
 import { ChunkPreviewPlayer } from "@/components/live/ChunkPreviewPlayer";
 import { FeedAuthorHoverCard } from "@/components/feed/FeedAuthorHoverCard";
 import type { FeedAuthorPreview } from "@/lib/feed-posts";
+import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import "@/app/billing.css";
 import {
   canAccessRoom,
@@ -187,6 +189,8 @@ export function ImmersiveRoom({
   remainingSeconds = null,
   quotaSeconds = 0,
   onNeedSignInToGoLive,
+  onBroadcastRemaining,
+  onBroadcastLimitReached,
   staticPreviewOnly = false,
   blurred = false
 }: {
@@ -197,6 +201,9 @@ export function ImmersiveRoom({
   /** Guest view quota used for the depleting progress bar. */
   quotaSeconds?: number;
   onNeedSignInToGoLive?: () => void;
+  /** Free broadcast remaining after a flush or live tick. */
+  onBroadcastRemaining?: (remainingSeconds: number | null) => void;
+  onBroadcastLimitReached?: () => void;
   /** Force static images only — used when view limit hits. */
   staticPreviewOnly?: boolean;
   /** Blur the room UI under a limit modal. */
@@ -239,6 +246,10 @@ export function ImmersiveRoom({
   const archiveSlotsRef = useRef(archiveSlots);
   archiveSlotsRef.current = archiveSlots;
   const viewEndsAtRef = useRef<number | null>(null);
+  const broadcastStartedAtRef = useRef<number | null>(null);
+  const broadcastBudgetRef = useRef<number | null>(null);
+  const broadcastFlushedRef = useRef(0);
+  const broadcastLimitNotifiedRef = useRef(false);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
 
   const showViewTimer =
@@ -338,6 +349,13 @@ export function ImmersiveRoom({
     const liveR2SessionId = liveR2SessionIdRef.current;
     liveR2SessionIdRef.current = null;
 
+    const broadcastStartedAt = broadcastStartedAtRef.current;
+    const broadcastBudget = broadcastBudgetRef.current;
+    const alreadyFlushed = broadcastFlushedRef.current;
+    broadcastStartedAtRef.current = null;
+    broadcastBudgetRef.current = null;
+    broadcastFlushedRef.current = 0;
+
     chunkRecorderRef.current?.stop();
     chunkRecorderRef.current = null;
     stopMediaStream(streamRef.current);
@@ -358,7 +376,102 @@ export function ImmersiveRoom({
         /* End session is best-effort */
       });
     }
-  }, [releaseDiscoverySelfSlot]);
+
+    if (tier === "free" && broadcastStartedAt !== null) {
+      const elapsed = Math.max(
+        0,
+        Math.round((Date.now() - broadcastStartedAt) / 1000)
+      );
+      const capped =
+        broadcastBudget === null
+          ? elapsed
+          : Math.min(elapsed, Math.max(0, broadcastBudget));
+      const seconds = Math.max(0, capped - alreadyFlushed);
+      if (seconds > 0) {
+        void (async () => {
+          try {
+            const fingerprint = await getDeviceFingerprint();
+            const response = await fetch("/api/room-access/broadcast", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fingerprint, seconds }),
+              keepalive: true
+            });
+            if (!response.ok) return;
+            const data = (await response.json()) as {
+              remainingSeconds?: number | null;
+              exhausted?: boolean;
+            };
+            onBroadcastRemaining?.(
+              data.remainingSeconds === undefined
+                ? null
+                : data.remainingSeconds
+            );
+            if (data.exhausted && !broadcastLimitNotifiedRef.current) {
+              broadcastLimitNotifiedRef.current = true;
+              onBroadcastLimitReached?.();
+            }
+          } catch {
+            /* best-effort */
+          }
+        })();
+      }
+    }
+  }, [
+    onBroadcastLimitReached,
+    onBroadcastRemaining,
+    releaseDiscoverySelfSlot,
+    tier
+  ]);
+
+  const flushBroadcastProgress = useCallback(async () => {
+    if (tier !== "free") return;
+    const started = broadcastStartedAtRef.current;
+    const budget = broadcastBudgetRef.current;
+    if (started === null) return;
+
+    const elapsed = Math.max(0, Math.floor((Date.now() - started) / 1000));
+    const capped = budget === null ? elapsed : Math.min(elapsed, Math.max(0, budget));
+    const seconds = Math.max(0, capped - broadcastFlushedRef.current);
+    if (seconds <= 0) return;
+
+    broadcastFlushedRef.current += seconds;
+
+    try {
+      const fingerprint = await getDeviceFingerprint();
+      const response = await fetch("/api/room-access/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fingerprint, seconds })
+      });
+      if (!response.ok) {
+        broadcastFlushedRef.current = Math.max(
+          0,
+          broadcastFlushedRef.current - seconds
+        );
+        return;
+      }
+      const data = (await response.json()) as {
+        remainingSeconds?: number | null;
+        exhausted?: boolean;
+      };
+      onBroadcastRemaining?.(
+        data.remainingSeconds === undefined ? null : data.remainingSeconds
+      );
+      if (data.exhausted) {
+        stopCamera();
+        if (!broadcastLimitNotifiedRef.current) {
+          broadcastLimitNotifiedRef.current = true;
+          onBroadcastLimitReached?.();
+        }
+      }
+    } catch {
+      broadcastFlushedRef.current = Math.max(
+        0,
+        broadcastFlushedRef.current - seconds
+      );
+    }
+  }, [onBroadcastLimitReached, onBroadcastRemaining, stopCamera, tier]);
 
   const startCamera = useCallback(async () => {
     setIsGoingLive(true);
@@ -378,6 +491,16 @@ export function ImmersiveRoom({
         return;
       }
 
+      if (
+        tier === "free" &&
+        remainingSeconds !== null &&
+        remainingSeconds <= 0
+      ) {
+        setIsGoingLive(false);
+        onBroadcastLimitReached?.();
+        return;
+      }
+
       const stream = await captureLiveCamera();
       if (liveEpochRef.current !== epoch) {
         stopMediaStream(stream);
@@ -385,6 +508,12 @@ export function ImmersiveRoom({
       }
 
       streamRef.current = stream;
+      if (tier === "free") {
+        broadcastLimitNotifiedRef.current = false;
+        broadcastFlushedRef.current = 0;
+        broadcastBudgetRef.current = remainingSeconds;
+        broadcastStartedAtRef.current = Date.now();
+      }
       setSelfMainSlot(0);
       shiftDiscoveryRightForSelf();
       setIsLive(true);
@@ -403,6 +532,16 @@ export function ImmersiveRoom({
           if (!liveResponse.ok || liveEpochRef.current !== epoch) {
             if (liveEpochRef.current === epoch) {
               stopCamera();
+              if (liveResponse.status === 403) {
+                const err = (await liveResponse.json().catch(() => null)) as {
+                  reason?: string;
+                } | null;
+                if (err?.reason === "free_time") {
+                  onBroadcastRemaining?.(0);
+                  onBroadcastLimitReached?.();
+                  return;
+                }
+              }
               setCameraError("Could not start live session.");
             }
             return;
@@ -447,10 +586,53 @@ export function ImmersiveRoom({
     }
   }, [
     attachStreamToVideo,
+    onBroadcastLimitReached,
+    onBroadcastRemaining,
     onNeedSignInToGoLive,
+    remainingSeconds,
     room.id,
     shiftDiscoveryRightForSelf,
-    stopCamera
+    stopCamera,
+    tier
+  ]);
+
+  useEffect(() => {
+    if (!isLive || tier !== "free") return;
+    if (broadcastStartedAtRef.current === null) return;
+
+    const tick = () => {
+      const started = broadcastStartedAtRef.current;
+      const budget = broadcastBudgetRef.current;
+      if (started === null || budget === null) return;
+      const elapsed = (Date.now() - started) / 1000;
+      const left = Math.max(0, budget - elapsed);
+      onBroadcastRemaining?.(Math.ceil(left));
+      if (left <= 0) {
+        stopCamera();
+        if (!broadcastLimitNotifiedRef.current) {
+          broadcastLimitNotifiedRef.current = true;
+          onBroadcastLimitReached?.();
+        }
+      }
+    };
+
+    tick();
+    const tickId = window.setInterval(tick, 1000);
+    const flushId = window.setInterval(() => {
+      void flushBroadcastProgress();
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(tickId);
+      window.clearInterval(flushId);
+    };
+  }, [
+    flushBroadcastProgress,
+    isLive,
+    onBroadcastLimitReached,
+    onBroadcastRemaining,
+    stopCamera,
+    tier
   ]);
 
   const discoveryEnabled = !staticPreviewOnly;
@@ -849,7 +1031,7 @@ export function ImmersiveRoom({
             {tier === "free" && remainingSeconds !== null ? (
               <span className="live-rooms-immersive-quota">
                 {" "}
-                · {formatRemainingTime(remainingSeconds)}
+                · {formatRemainingTime(remainingSeconds)} broadcast
               </span>
             ) : null}
           </h1>
@@ -1143,7 +1325,7 @@ export function LiveRoomsExperience() {
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(
     null
   );
-  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const profileCacheRef = useRef(
     new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
@@ -1156,20 +1338,8 @@ export function LiveRoomsExperience() {
   }, [tier]);
 
   const stubUpgrade = async () => {
-    setUpgradeBusy(true);
-    try {
-      const response = await fetch("/api/billing/stub-upgrade", {
-        method: "POST"
-      });
-      if (!response.ok) throw new Error("Upgrade failed");
-      setUpgradeReason(null);
-      setTier("premium");
-      setRemainingSeconds(null);
-    } catch {
-      setUpgradeReason("soft_upgrade");
-    } finally {
-      setUpgradeBusy(false);
-    }
+    setUpgradeReason(null);
+    setPlanModalOpen(true);
   };
 
   const filteredRooms = useMemo(() => {
@@ -1317,22 +1487,20 @@ export function LiveRoomsExperience() {
             />
           </label>
 
-          {tier !== "guest" ? (
+          {tier === "free" ? (
             <p className="room-select-quota">
-              {formatRemainingTime(remainingSeconds)}
-              {tier === "free" ? (
-                <>
-                  {" · "}
-                  <button
-                    type="button"
-                    className="room-select-upgrade-link"
-                    onClick={() => setUpgradeReason("soft_upgrade")}
-                  >
-                    Go Premium
-                  </button>
-                </>
-              ) : null}
+              {formatRemainingTime(remainingSeconds)} broadcast
+              {" · "}
+              <button
+                type="button"
+                className="room-select-upgrade-link"
+                onClick={() => setPlanModalOpen(true)}
+              >
+                Go Premium
+              </button>
             </p>
+          ) : tier === "premium" ? (
+            <p className="room-select-quota">Unlimited broadcast</p>
           ) : null}
 
           <div className="room-select-grid">
@@ -1566,9 +1734,14 @@ export function LiveRoomsExperience() {
       <UpgradePrompt
         open={Boolean(upgradeReason)}
         reason={upgradeReason ?? "locked_room"}
-        busy={upgradeBusy}
         onClose={() => setUpgradeReason(null)}
         onStubUpgrade={stubUpgrade}
+      />
+
+      <PremiumPlanModal
+        open={planModalOpen}
+        onClose={() => setPlanModalOpen(false)}
+        onContinue={() => setPlanModalOpen(false)}
       />
     </div>
   );

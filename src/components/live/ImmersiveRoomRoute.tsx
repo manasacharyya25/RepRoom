@@ -3,12 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
+import { PremiumPlanModal } from "@/components/billing/PremiumPlanModal";
 import { ImmersiveRoom } from "@/components/live/LiveRoomsExperience";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import {
   getOrCreateClientGuestId,
   syncClientGuestId
 } from "@/lib/guest-client-id";
+import {
+  addGuestViewSeconds,
+  getGuestViewRemainingSeconds
+} from "@/lib/guest-view-quota";
 import {
   GUEST_VIEW_SECONDS,
   ROOM_HEARTBEAT_SECONDS,
@@ -24,6 +29,7 @@ import "@/app/billing.css";
 type StartOk = {
   allowed: true;
   tier: Tier;
+  /** Broadcast remaining for free users; guest view remaining is local. */
   remainingSeconds: number | null;
   quotaSeconds: number;
 };
@@ -31,18 +37,18 @@ type StartOk = {
 export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
   const router = useRouter();
   const joinedAtRef = useRef(Date.now());
-  const lastBeatRef = useRef(Date.now());
   const recordedRef = useRef(false);
   const fingerprintRef = useRef("");
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null
   );
+  const guestTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [access, setAccess] = useState<StartOk | null>(null);
   const [blocking, setBlocking] = useState(true);
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(
     null
   );
-  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
   const [gateMessage, setGateMessage] = useState<string | null>(null);
 
   const flushHours = useCallback(async () => {
@@ -66,15 +72,13 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
   }, []);
 
   const leaveAccess = useCallback(async () => {
-    const seconds = Math.round((Date.now() - lastBeatRef.current) / 1000);
     try {
       const response = await fetch("/api/room-access/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fingerprint: fingerprintRef.current,
-          clientGuestId: getOrCreateClientGuestId(),
-          seconds
+          clientGuestId: getOrCreateClientGuestId()
         }),
         keepalive: true
       });
@@ -94,18 +98,26 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
     }
   }, []);
 
+  const stopGuestTimer = useCallback(() => {
+    if (guestTimerRef.current) {
+      clearInterval(guestTimerRef.current);
+      guestTimerRef.current = null;
+    }
+  }, []);
+
   const leaveRoom = useCallback(() => {
     stopHeartbeat();
-    // Navigate immediately; flush access/hours in the background.
+    stopGuestTimer();
     void leaveAccess();
     void flushHours();
     void exitFullscreen();
     router.push("/rooms");
-  }, [flushHours, leaveAccess, router, stopHeartbeat]);
+  }, [flushHours, leaveAccess, router, stopGuestTimer, stopHeartbeat]);
 
   const showLimitModal = useCallback(
     (reason: UpgradeReason, tier: Tier = "guest") => {
       stopHeartbeat();
+      stopGuestTimer();
       setAccess((prev) =>
         prev
           ? { ...prev, remainingSeconds: 0 }
@@ -121,8 +133,21 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
       void flushHours();
       void exitFullscreen();
     },
-    [flushHours, leaveAccess, stopHeartbeat]
+    [flushHours, leaveAccess, stopGuestTimer, stopHeartbeat]
   );
+
+  const startGuestViewTimer = useCallback(() => {
+    stopGuestTimer();
+    guestTimerRef.current = setInterval(() => {
+      const remaining = addGuestViewSeconds(1);
+      setAccess((prev) =>
+        prev ? { ...prev, remainingSeconds: remaining } : prev
+      );
+      if (remaining <= 0) {
+        showLimitModal("guest_time", "guest");
+      }
+    }, 1000);
+  }, [showLimitModal, stopGuestTimer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,18 +186,6 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
             setUpgradeReason("locked_room");
             return;
           }
-          if (data.reason === "guest_time" || data.reason === "free_time") {
-            setAccess({
-              allowed: true,
-              tier: data.tier ?? "guest",
-              remainingSeconds: 0,
-              quotaSeconds:
-                data.quotaSeconds ??
-                (data.tier === "guest" ? GUEST_VIEW_SECONDS : 0)
-            });
-            setUpgradeReason(data.reason);
-            return;
-          }
           if (data.reason === "locked_room") {
             setUpgradeReason("locked_room");
             return;
@@ -181,55 +194,50 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
           return;
         }
 
-        setAccess({
-          allowed: true,
-          tier: data.tier ?? "guest",
-          remainingSeconds: data.remainingSeconds ?? null,
-          quotaSeconds: data.quotaSeconds ?? 0
-        });
-        joinedAtRef.current = Date.now();
-        lastBeatRef.current = Date.now();
-        recordedRef.current = false;
+        const tier = data.tier ?? "guest";
+
+        if (tier === "guest") {
+          const remaining = getGuestViewRemainingSeconds();
+          setAccess({
+            allowed: true,
+            tier: "guest",
+            remainingSeconds: remaining,
+            quotaSeconds: GUEST_VIEW_SECONDS
+          });
+          joinedAtRef.current = Date.now();
+          recordedRef.current = false;
+
+          if (remaining <= 0) {
+            setUpgradeReason("guest_time");
+          } else {
+            startGuestViewTimer();
+          }
+        } else {
+          setAccess({
+            allowed: true,
+            tier,
+            remainingSeconds: data.remainingSeconds ?? null,
+            quotaSeconds: data.quotaSeconds ?? 0
+          });
+          joinedAtRef.current = Date.now();
+          recordedRef.current = false;
+        }
 
         heartbeatTimerRef.current = setInterval(() => {
           void (async () => {
-            const seconds = Math.round(
-              (Date.now() - lastBeatRef.current) / 1000
-            );
-            lastBeatRef.current = Date.now();
             try {
               const beat = await fetch("/api/room-access/heartbeat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   fingerprint: fingerprintRef.current,
-                  clientGuestId: getOrCreateClientGuestId(),
-                  seconds: Math.max(seconds, ROOM_HEARTBEAT_SECONDS)
+                  clientGuestId: getOrCreateClientGuestId()
                 })
               });
               const payload = (await beat.json()) as {
-                exhausted?: boolean;
-                reason?: UpgradeReason;
                 guestId?: string | null;
-                remainingSeconds?: number | null;
               };
               syncClientGuestId(payload.guestId);
-              if (
-                typeof payload.remainingSeconds === "number" ||
-                payload.remainingSeconds === null
-              ) {
-                setAccess((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        remainingSeconds: payload.remainingSeconds ?? null
-                      }
-                    : prev
-                );
-              }
-              if (payload.exhausted && payload.reason) {
-                showLimitModal(payload.reason);
-              }
             } catch {
               /* ignore transient */
             }
@@ -255,30 +263,36 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
     return () => {
       cancelled = true;
       stopHeartbeat();
+      stopGuestTimer();
       window.removeEventListener("pagehide", onPageHide);
       void leaveAccess();
       void flushHours();
     };
-  }, [flushHours, leaveAccess, room.id, showLimitModal, stopHeartbeat]);
+  }, [
+    flushHours,
+    leaveAccess,
+    room.id,
+    startGuestViewTimer,
+    stopGuestTimer,
+    stopHeartbeat
+  ]);
 
-  const stubUpgrade = async () => {
-    setUpgradeBusy(true);
-    try {
-      const response = await fetch("/api/billing/stub-upgrade", {
-        method: "POST"
-      });
-      if (!response.ok) throw new Error("Upgrade failed");
-      setUpgradeReason(null);
-      window.location.reload();
-    } catch {
-      setGateMessage("Could not upgrade. Try signing in first.");
-    } finally {
-      setUpgradeBusy(false);
-    }
+  const openPlanModal = () => {
+    setUpgradeReason(null);
+    setPlanModalOpen(true);
   };
 
-  const limitReached =
-    upgradeReason === "guest_time" || upgradeReason === "free_time";
+  const onBroadcastRemaining = useCallback((remaining: number | null) => {
+    setAccess((prev) =>
+      prev ? { ...prev, remainingSeconds: remaining } : prev
+    );
+  }, []);
+
+  const onBroadcastLimitReached = useCallback(() => {
+    setUpgradeReason("free_time");
+  }, []);
+
+  const limitReached = upgradeReason === "guest_time";
 
   if (blocking) {
     return (
@@ -302,7 +316,6 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         <UpgradePrompt
           open={Boolean(upgradeReason)}
           reason={upgradeReason ?? "locked_room"}
-          busy={upgradeBusy}
           primaryHref={
             upgradeReason
               ? `/login?next=/rooms/${encodeURIComponent(room.id)}`
@@ -312,7 +325,12 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
             setUpgradeReason(null);
             router.push("/rooms");
           }}
-          onStubUpgrade={stubUpgrade}
+          onStubUpgrade={openPlanModal}
+        />
+        <PremiumPlanModal
+          open={planModalOpen}
+          onClose={() => setPlanModalOpen(false)}
+          onContinue={() => setPlanModalOpen(false)}
         />
       </div>
     );
@@ -327,27 +345,31 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         remainingSeconds={access.remainingSeconds}
         quotaSeconds={access.quotaSeconds}
         onNeedSignInToGoLive={() => setUpgradeReason("go_live_auth")}
+        onBroadcastRemaining={onBroadcastRemaining}
+        onBroadcastLimitReached={onBroadcastLimitReached}
         staticPreviewOnly={limitReached}
         blurred={limitReached}
       />
       <UpgradePrompt
         open={Boolean(upgradeReason)}
         reason={upgradeReason ?? "free_time"}
-        busy={upgradeBusy}
         primaryHref={
-          upgradeReason === "go_live_auth" ||
-          upgradeReason === "guest_time" ||
-          upgradeReason === "free_time"
+          upgradeReason === "go_live_auth" || upgradeReason === "guest_time"
             ? `/login?next=/rooms/${encodeURIComponent(room.id)}`
             : undefined
         }
         onClose={() => {
           const reason = upgradeReason;
           setUpgradeReason(null);
-          if (reason === "go_live_auth") return;
+          if (reason === "go_live_auth" || reason === "free_time") return;
           router.push("/rooms");
         }}
-        onStubUpgrade={stubUpgrade}
+        onStubUpgrade={openPlanModal}
+      />
+      <PremiumPlanModal
+        open={planModalOpen}
+        onClose={() => setPlanModalOpen(false)}
+        onContinue={() => setPlanModalOpen(false)}
       />
     </div>
   );

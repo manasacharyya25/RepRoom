@@ -141,3 +141,242 @@
 .room-access-gate p {
   color: var(--text-muted);
 }
+
+.premium-plan-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 6, 8, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.premium-plan-modal {
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(92vh, 720px);
+  overflow: auto;
+  padding: 22px 22px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border-strong);
+  background:
+    radial-gradient(ellipse 90% 50% at 50% -20%, var(--glow-a), transparent 55%),
+    var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.premium-plan-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.premium-plan-kicker {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.premium-plan-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.premium-plan-close {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.premium-plan-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.premium-plan-lead {
+  margin: 10px 0 18px;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.premium-plan-options {
+  display: grid;
+  gap: 10px;
+}
+
+.premium-plan-option {
+  position: relative;
+  display: block;
+  padding: 14px 14px 14px 42px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.premium-plan-option:hover {
+  border-color: var(--border-strong);
+}
+
+.premium-plan-option.is-selected {
+  border-color: rgba(255, 92, 43, 0.55);
+  background: var(--accent-soft);
+}
+
+.premium-plan-option input[type="radio"] {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.premium-plan-option-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.premium-plan-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.premium-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.premium-plan-price {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.premium-plan-price span {
+  margin-left: 2px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.premium-plan-detail {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.premium-plan-hours {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.premium-plan-hours-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.premium-plan-hours-label strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.premium-plan-hours-slider {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.premium-plan-hours-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.premium-plan-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.premium-plan-total {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.premium-plan-total strong {
+  color: var(--text);
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.premium-plan-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+@media (max-width: 520px) {
+  .premium-plan-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .premium-plan-actions {
+    margin-left: 0;
+  }
+
+  .premium-plan-actions .upgrade-prompt-btn {
+    flex: 1;
+  }
+}

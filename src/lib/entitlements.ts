@@ -3,12 +3,14 @@ export type Tier = "guest" | "free" | "premium";
 export type ProfilePlan = "free" | "premium";
 
 export const GUEST_ROOM_ID = "workout";
-/** Guest view timer — starts on room enter, daily UTC cap. */
+/** Guest view timer — client localStorage, daily UTC cap. */
 export const GUEST_VIEW_SECONDS = 15 * 60;
 /** @deprecated Use GUEST_VIEW_SECONDS */
 export const GUEST_ROOM_SECONDS = GUEST_VIEW_SECONDS;
-/** Free broadcast timer (future: starts on Go Live). Not used for viewing yet. */
-export const FREE_ROOM_SECONDS = 30 * 60;
+/** Free broadcast timer — starts on Go Live, daily UTC cap. */
+export const FREE_BROADCAST_SECONDS = 30 * 60;
+/** @deprecated Use FREE_BROADCAST_SECONDS */
+export const FREE_ROOM_SECONDS = FREE_BROADCAST_SECONDS;
 export const GUEST_FEED_LIMIT = 100;
 export const ROOM_HEARTBEAT_SECONDS = 20;
 export const ACTIVE_SESSION_STALE_SECONDS = 120;
@@ -28,18 +30,17 @@ export function canAccessRoom(tier: Tier, roomId: string): boolean {
 }
 
 /**
- * Daily view/broadcast quota seconds. `0` means unlimited.
- * Guests: view timer (15m). Free: broadcast quota (not metered on view yet).
+ * Daily broadcast quota seconds. `0` means unlimited.
+ * Free: 30m while live. Premium: unlimited. Guests cannot broadcast.
  */
-export function roomQuotaSeconds(tier: Tier): number {
-  if (tier === "guest") return GUEST_VIEW_SECONDS;
-  if (tier === "free") return FREE_ROOM_SECONDS;
+export function broadcastQuotaSeconds(tier: Tier): number {
+  if (tier === "free") return FREE_BROADCAST_SECONDS;
   return 0;
 }
 
-/** Whether this tier’s room time starts counting on enter (view). */
-export function metersViewTimeOnEnter(tier: Tier): boolean {
-  return tier === "guest";
+/** Whether this tier meters Go Live time against a daily broadcast quota. */
+export function metersBroadcast(tier: Tier): boolean {
+  return tier === "free";
 }
 
 export function formatRemainingTime(remainingSeconds: number | null): string {

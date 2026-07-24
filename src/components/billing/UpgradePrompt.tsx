@@ -38,14 +38,14 @@ const COPY: Record<
     primaryHref: "/login?next=/rooms"
   },
   free_time: {
-    title: "Go Premium for unlimited rooms",
-    body: "Your 30 free minutes for today are done. Upgrade for unlimited live room time.",
-    primary: "Upgrade (demo)"
+    title: "Broadcast time used up",
+    body: "You’ve used today’s 30 free minutes of Go Live. Upgrade for unlimited broadcast time.",
+    primary: "Choose a plan"
   },
   soft_upgrade: {
     title: "Train without limits",
-    body: "Premium unlocks unlimited daily time in every room.",
-    primary: "Upgrade (demo)"
+    body: "Premium unlocks unlimited daily broadcast time in every room.",
+    primary: "Choose a plan"
   }
 };
 

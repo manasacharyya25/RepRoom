@@ -14,7 +14,8 @@ export async function GET(request: Request) {
     headers.set("Set-Cookie", guestCookieHeaderValue(ctx.guestId));
   }
 
-  if (!ctx.metersView) {
+  // Guests: view quota is browser-local only.
+  if (ctx.tier === "guest") {
     return NextResponse.json(
       {
         tier: ctx.tier,
@@ -22,7 +23,22 @@ export async function GET(request: Request) {
         remainingSeconds: null,
         secondsUsed: 0,
         quotaSeconds: 0,
-        metersView: false,
+        metersBroadcast: false,
+        guestId: ctx.guestId
+      },
+      { headers }
+    );
+  }
+
+  if (!ctx.metersBroadcast) {
+    return NextResponse.json(
+      {
+        tier: ctx.tier,
+        plan: ctx.plan,
+        remainingSeconds: null,
+        secondsUsed: 0,
+        quotaSeconds: 0,
+        metersBroadcast: false,
         guestId: ctx.guestId
       },
       { headers }
@@ -39,7 +55,7 @@ export async function GET(request: Request) {
       remainingSeconds: usage.remainingSeconds,
       secondsUsed: usage.secondsUsed,
       quotaSeconds: ctx.quotaSeconds,
-      metersView: true,
+      metersBroadcast: true,
       guestId: ctx.guestId
     },
     { headers }

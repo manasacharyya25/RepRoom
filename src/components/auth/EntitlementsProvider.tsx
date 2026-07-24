@@ -12,7 +12,11 @@ import {
 } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
-import type { Tier } from "@/lib/entitlements";
+import {
+  GUEST_VIEW_SECONDS,
+  type Tier
+} from "@/lib/entitlements";
+import { getGuestViewRemainingSeconds } from "@/lib/guest-view-quota";
 import {
   getOrCreateClientGuestId,
   syncClientGuestId
@@ -65,11 +69,18 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
       guestId?: string | null;
     };
     syncClientGuestId(data.guestId);
-    setTier(data.tier ?? "guest");
-    setRemainingSeconds(
-      data.remainingSeconds === undefined ? null : data.remainingSeconds
-    );
-    setQuotaSeconds(data.quotaSeconds ?? 0);
+    const nextTier = data.tier ?? "guest";
+    setTier(nextTier);
+
+    if (nextTier === "guest") {
+      setRemainingSeconds(getGuestViewRemainingSeconds());
+      setQuotaSeconds(GUEST_VIEW_SECONDS);
+    } else {
+      setRemainingSeconds(
+        data.remainingSeconds === undefined ? null : data.remainingSeconds
+      );
+      setQuotaSeconds(data.quotaSeconds ?? 0);
+    }
     setStatusReady(true);
   }, []);
 
@@ -80,13 +91,13 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     if (lastUserIdRef.current !== userId) {
       lastUserIdRef.current = userId;
       setStatusReady(false);
-      // Optimistic unlock for signed-in users until status API returns.
       if (isSignedIn) {
         setTier("free");
         setRemainingSeconds(null);
       } else {
         setTier("guest");
-        setRemainingSeconds(null);
+        setRemainingSeconds(getGuestViewRemainingSeconds());
+        setQuotaSeconds(GUEST_VIEW_SECONDS);
       }
     }
 
@@ -97,6 +108,10 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
       } catch {
         if (!cancelled) {
           setTier(isSignedIn ? "free" : "guest");
+          if (!isSignedIn) {
+            setRemainingSeconds(getGuestViewRemainingSeconds());
+            setQuotaSeconds(GUEST_VIEW_SECONDS);
+          }
           setStatusReady(true);
         }
       }
