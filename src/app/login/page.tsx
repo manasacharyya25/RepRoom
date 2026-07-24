@@ -3,8 +3,8 @@ import { LoginPage } from "@/components/auth/LoginPage";
 import "@/app/login.css";
 
 export const metadata = {
-  title: "Sign in — Satara",
-  description: "Sign in to Satara with Google or email to join live workout rooms."
+  title: "Sign in — RhoQ",
+  description: "Sign in to RhoQ with Google or email to join live workout rooms."
 };
 
 export default function LoginRoute() {

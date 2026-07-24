@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Outfit } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { AppProviders } from "@/components/providers/AppProviders";
 import "./globals.css";
 
@@ -10,7 +11,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Satara — Work out together. Motivate each other.",
+  title: "RhoQ - Workout Together. Motivate Each Other",
   description:
     "Join live Yoga, Workout, Cardio, Zumba, and Meditation rooms. Motivate each other, share progress, and stay accountable.",
   icons: {
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={outfit.className}>
         <AppProviders>{children}</AppProviders>
+        <Analytics />
       </body>
     </html>
   );

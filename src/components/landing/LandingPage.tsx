@@ -44,10 +44,12 @@ export function LandingPage() {
       </section>
 
       <footer className="landing-footer">
-        <span>Satara Fitness</span>
-        <Link href="/feed">Feed</Link>
+        <span>Rhoq Fitness</span>
         <Link href="/rooms">Rooms</Link>
-        <Link href="/">Contact</Link>
+        <Link href="/feed">Feed</Link>
+        <Link href="/community-guidelines">Community Guidelines</Link>
+        <Link href="/privacy">Privacy Policy</Link>
+        <Link href="/terms">Terms of Service</Link>
       </footer>
     </div>
   );
