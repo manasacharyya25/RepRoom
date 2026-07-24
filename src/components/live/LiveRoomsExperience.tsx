@@ -231,6 +231,9 @@ export function ImmersiveRoom({
   const [archiveSlots, setArchiveSlots] = useState<(LiveSessionView | null)[]>(
     () => Array.from({ length: LIVE_DISCOVERY_PAGE_SIZE }, () => null)
   );
+  const [discoveryReady, setDiscoveryReady] = useState(
+    () => staticPreviewOnly
+  );
   const liveSlotsRef = useRef(liveSlots);
   liveSlotsRef.current = liveSlots;
   const archiveSlotsRef = useRef(archiveSlots);
@@ -600,50 +603,58 @@ export function ImmersiveRoom({
     if (!discoveryEnabled) {
       setLiveSlots(emptyDiscoverySlots());
       setArchiveSlots(emptyDiscoverySlots());
+      setDiscoveryReady(true);
       return;
     }
 
     let cancelled = false;
+    setDiscoveryReady(false);
 
     const loadDiscovery = async () => {
       try {
         const response = await fetch(
           `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${LIVE_DISCOVERY_PAGE_SIZE}`
         );
-        if (!response.ok || cancelled) return;
-        const data = (await response.json()) as {
-          sessions?: LiveSessionView[];
-        };
-        const selfId = liveR2SessionIdRef.current;
-        const sessions = (data.sessions ?? []).filter(
-          (session) => session.sessionId !== selfId
-        );
-        const reserveSelf = selfSlotReservedRef.current;
-        const nextLive = emptyDiscoverySlots();
-        if (reserveSelf) {
-          sessions
-            .slice(0, LIVE_DISCOVERY_PAGE_SIZE - 1)
-            .forEach((session, index) => {
-              nextLive[index + 1] = session;
-            });
-        } else {
-          sessions
-            .slice(0, LIVE_DISCOVERY_PAGE_SIZE)
-            .forEach((session, index) => {
-              nextLive[index] = session;
-            });
-        }
         if (cancelled) return;
-        setLiveSlots(nextLive);
+        if (response.ok) {
+          const data = (await response.json()) as {
+            sessions?: LiveSessionView[];
+          };
+          const selfId = liveR2SessionIdRef.current;
+          const sessions = (data.sessions ?? []).filter(
+            (session) => session.sessionId !== selfId
+          );
+          const reserveSelf = selfSlotReservedRef.current;
+          const nextLive = emptyDiscoverySlots();
+          if (reserveSelf) {
+            sessions
+              .slice(0, LIVE_DISCOVERY_PAGE_SIZE - 1)
+              .forEach((session, index) => {
+                nextLive[index + 1] = session;
+              });
+          } else {
+            sessions
+              .slice(0, LIVE_DISCOVERY_PAGE_SIZE)
+              .forEach((session, index) => {
+                nextLive[index] = session;
+              });
+          }
+          if (cancelled) return;
+          setLiveSlots(nextLive);
 
-        const nextArchives = await fillArchiveSlots(
-          nextLive,
-          archiveSlotsRef.current
-        );
-        if (cancelled) return;
-        setArchiveSlots(nextArchives);
+          const nextArchives = await fillArchiveSlots(
+            nextLive,
+            archiveSlotsRef.current
+          );
+          if (cancelled) return;
+          setArchiveSlots(nextArchives);
+        }
       } catch {
-        /* optional */
+        /* still reveal tiles — placeholders if fetch failed */
+      } finally {
+        if (!cancelled) {
+          setDiscoveryReady(true);
+        }
       }
     };
 
@@ -908,6 +919,17 @@ export function ImmersiveRoom({
       ) : null}
 
       <div className="live-rooms-immersive-body">
+        {!discoveryReady ? (
+          <div
+            className="live-rooms-discovery-loading"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="live-rooms-discovery-loading-spinner" aria-hidden />
+            <p>Loading live rooms…</p>
+          </div>
+        ) : (
+          <>
         <div className="live-rooms-immersive-main-column">
           <div className="live-rooms-immersive-pinned">
             {layout.main.map((feed, index) => {
@@ -1048,6 +1070,8 @@ export function ImmersiveRoom({
             })}
           </div>
         ) : null}
+          </>
+        )}
       </div>
     </div>
   );

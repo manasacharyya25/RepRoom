@@ -745,6 +745,38 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   padding: 12px 16px 16px;
 }
 
+.live-rooms-discovery-loading {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.live-rooms-discovery-loading p {
+  margin: 0;
+}
+
+.live-rooms-discovery-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  border-top-color: #ff5c2b;
+  animation: live-rooms-discovery-spin 0.75s linear infinite;
+}
+
+@keyframes live-rooms-discovery-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .live-rooms-immersive-main-column {
   min-width: 0;
   min-height: 0;
