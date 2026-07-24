@@ -94,11 +94,12 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
     }
   }, []);
 
-  const leaveRoom = useCallback(async () => {
+  const leaveRoom = useCallback(() => {
     stopHeartbeat();
-    await leaveAccess();
-    await flushHours();
-    await exitFullscreen();
+    // Navigate immediately; flush access/hours in the background.
+    void leaveAccess();
+    void flushHours();
+    void exitFullscreen();
     router.push("/rooms");
   }, [flushHours, leaveAccess, router, stopHeartbeat]);
 
