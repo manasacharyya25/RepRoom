@@ -843,6 +843,11 @@ html:has(.landing) body::-webkit-scrollbar {
   height: 32px;
 }
 
+.feed-author-hover--custom {
+  width: auto;
+  height: auto;
+}
+
 .feed-author-hover-trigger {
   display: block;
   padding: 0;
@@ -850,6 +855,14 @@ html:has(.landing) body::-webkit-scrollbar {
   background: transparent;
   cursor: pointer;
   border-radius: 50%;
+}
+
+.feed-author-hover-trigger--custom {
+  border-radius: 0;
+  width: 100%;
+  text-align: inherit;
+  font: inherit;
+  color: inherit;
 }
 
 .feed-author-hover-trigger:focus-visible {
@@ -885,10 +898,27 @@ html:has(.landing) body::-webkit-scrollbar {
   animation: feed-author-card-in 0.16s ease;
 }
 
+.feed-author-card--above {
+  top: auto;
+  bottom: calc(100% + 8px);
+  animation-name: feed-author-card-in-above;
+}
+
 @keyframes feed-author-card-in {
   from {
     opacity: 0;
     transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes feed-author-card-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

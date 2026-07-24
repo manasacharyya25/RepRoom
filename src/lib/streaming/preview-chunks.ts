@@ -24,13 +24,6 @@ export const PREVIEW_CHUNK_SECONDS = parsePreviewChunkSeconds(
 export const PREVIEW_CHUNK_MIME = "video/webm;codecs=vp8";
 export const PREVIEW_CHUNK_MIME_FALLBACK = "video/webm";
 
-/** First room for R2 preview pipeline. */
-export const PREVIEW_PRIMARY_ROOM_ID = "workout";
-
-/** Dev broadcaster with R2 chunks (MVP tile playback). */
-export const PREVIEW_DEV_BROADCASTER_ID =
-  "097d14e8-b12d-47d5-95fb-f7753a6a4978";
-
 export function padChunkIndex(index: number) {
   return String(Math.max(0, Math.floor(index))).padStart(6, "0");
 }

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { isRoomId } from "@/lib/rooms";
 import {
+  LIVE_SESSION_PROFILE_SELECT,
   LIVE_SESSION_STALE_SECONDS,
   mapLiveSessionRow,
+  type LiveSessionProfile,
   type LiveSessionRow
 } from "@/lib/streaming/live-sessions";
 import { createClient } from "@/lib/supabase/server";
@@ -48,17 +50,23 @@ export async function GET(request: Request) {
       (candidate) => !excludeSet.has(candidate.session_id)
     ) ?? null;
   if (!row) {
-    return NextResponse.json({ session: null, staleSeconds: LIVE_SESSION_STALE_SECONDS });
+    return NextResponse.json({
+      session: null,
+      staleSeconds: LIVE_SESSION_STALE_SECONDS
+    });
   }
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, avatar_url")
+    .select(LIVE_SESSION_PROFILE_SELECT)
     .eq("id", row.user_id)
     .maybeSingle();
 
   return NextResponse.json({
-    session: mapLiveSessionRow(row, profile),
+    session: mapLiveSessionRow(
+      row,
+      (profile as LiveSessionProfile | null) ?? null
+    ),
     staleSeconds: LIVE_SESSION_STALE_SECONDS
   });
 }

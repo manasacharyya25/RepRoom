@@ -2,15 +2,22 @@ import { NextResponse } from "next/server";
 import { isRoomId } from "@/lib/rooms";
 import {
   LIVE_DISCOVERY_PAGE_SIZE,
+  LIVE_SESSION_PROFILE_SELECT,
   mapLiveSessionRow,
+  type ArchiveSessionRow,
+  type LiveSessionProfile,
   type LiveSessionRow
 } from "@/lib/streaming/live-sessions";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+type SessionSourceRow = LiveSessionRow | ArchiveSessionRow;
+
 /**
- * Ended live sessions with uploaded chunks — used to fill empty discovery tiles.
+ * Archived (and recently ended) sessions with uploaded chunks — fill empty discovery tiles.
+ * Primary source: archive_sessions. Fallback: live_sessions still in the ended grace window
+ * before the cron moves them.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -38,44 +45,71 @@ export async function GET(request: Request) {
       .filter(Boolean)
   );
 
+  const fetchCap = Math.min(40, Math.max(limit + excludeSessions.size, limit));
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("live_sessions")
-    .select("*")
-    .eq("room_id", roomId)
-    .eq("status", "ended")
-    .gt("last_chunk_number", 0)
-    .order("ended_at", { ascending: false, nullsFirst: false })
-    .order("last_chunk_uploaded_at", { ascending: false })
-    .limit(Math.min(40, Math.max(limit + excludeSessions.size, limit)));
 
-  if (error) {
-    console.error("[live/sessions/archives]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const [{ data: archived, error: archiveError }, { data: pendingEnded, error: pendingError }] =
+    await Promise.all([
+      supabase
+        .from("archive_sessions")
+        .select("*")
+        .eq("room_id", roomId)
+        .gt("last_chunk_number", 0)
+        .order("ended_at", { ascending: false, nullsFirst: false })
+        .order("last_chunk_uploaded_at", { ascending: false })
+        .limit(fetchCap),
+      supabase
+        .from("live_sessions")
+        .select("*")
+        .eq("room_id", roomId)
+        .eq("status", "ended")
+        .gt("last_chunk_number", 0)
+        .order("ended_at", { ascending: false, nullsFirst: false })
+        .order("last_chunk_uploaded_at", { ascending: false })
+        .limit(fetchCap)
+    ]);
+
+  if (archiveError) {
+    console.error("[live/sessions/archives] archive_sessions", archiveError);
+    return NextResponse.json({ error: archiveError.message }, { status: 500 });
+  }
+  if (pendingError) {
+    // Grace-window fallback is best-effort; still serve archive_sessions.
+    console.warn("[live/sessions/archives] live ended fallback", pendingError);
   }
 
-  const rows = ((data ?? []) as LiveSessionRow[]).filter((row) => {
-    if (excludeSessions.has(row.session_id)) return false;
-    if (excludeUsers.has(row.user_id)) return false;
-    return true;
-  }).slice(0, limit);
+  const byId = new Map<string, SessionSourceRow>();
+  for (const row of [
+    ...((archived ?? []) as ArchiveSessionRow[]),
+    ...((pendingEnded ?? []) as LiveSessionRow[])
+  ]) {
+    if (excludeSessions.has(row.session_id)) continue;
+    if (excludeUsers.has(row.user_id)) continue;
+    if (!byId.has(row.session_id)) {
+      byId.set(row.session_id, row);
+    }
+  }
+
+  const rows = [...byId.values()]
+    .sort((a, b) => {
+      const aEnded = a.ended_at ?? a.last_chunk_uploaded_at;
+      const bEnded = b.ended_at ?? b.last_chunk_uploaded_at;
+      const byEnded = bEnded.localeCompare(aEnded);
+      if (byEnded !== 0) return byEnded;
+      return b.last_chunk_uploaded_at.localeCompare(a.last_chunk_uploaded_at);
+    })
+    .slice(0, limit);
 
   const userIds = [...new Set(rows.map((row) => row.user_id))];
-  const profilesById = new Map<
-    string,
-    { display_name: string | null; avatar_url: string | null }
-  >();
+  const profilesById = new Map<string, LiveSessionProfile>();
 
   if (userIds.length > 0) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url")
+      .select(LIVE_SESSION_PROFILE_SELECT)
       .in("id", userIds);
-    for (const profile of profiles ?? []) {
-      profilesById.set(profile.id, {
-        display_name: profile.display_name,
-        avatar_url: profile.avatar_url
-      });
+    for (const profile of (profiles ?? []) as LiveSessionProfile[]) {
+      if (profile.id) profilesById.set(profile.id, profile);
     }
   }
 

@@ -9,8 +9,8 @@ import { AppNav } from "@/components/nav/AppNav";
 import { useEntitlements } from "@/components/auth/EntitlementsProvider";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { ChunkPreviewPlayer } from "@/components/live/ChunkPreviewPlayer";
-import { LiveVideoPlayer } from "@/components/live/LiveVideoPlayer";
-import { YouTubePreviewEmbed } from "@/components/live/YouTubePreviewEmbed";
+import { FeedAuthorHoverCard } from "@/components/feed/FeedAuthorHoverCard";
+import type { FeedAuthorPreview } from "@/lib/feed-posts";
 import "@/app/billing.css";
 import {
   canAccessRoom,
@@ -19,7 +19,6 @@ import {
   type Tier,
   type UpgradeReason
 } from "@/lib/entitlements";
-import { guestPreviewYoutubeId } from "@/lib/guest-preview-videos";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
@@ -47,20 +46,12 @@ import {
   LIVE_DISCOVERY_PAGE_SIZE,
   type LiveSessionView
 } from "@/lib/streaming/live-sessions";
-import { PREVIEW_PRIMARY_ROOM_ID } from "@/lib/streaming/preview-chunks";
-import { hlsUrl, whipUrl } from "@/lib/streaming/config";
-import {
-  startWhipPublisher,
-  type WhipPublisher
-} from "@/lib/streaming/whip-publisher";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DbLobbyMessage,
   LobbyMessageView
 } from "@/lib/types/lobby-chat";
 import { LOBBY_MESSAGE_MAX_LENGTH } from "@/lib/types/lobby-chat";
-
-type PreviewZone = "main" | "bottom" | "rail";
 
 function isRemoteSrc(src: string) {
   return src.startsWith("http://") || src.startsWith("https://");
@@ -90,25 +81,56 @@ function useIsMobileViewport() {
   return isMobile;
 }
 
+function TileUserLabel({
+  label,
+  labelPosition = "left",
+  author,
+  variant = "tile"
+}: {
+  label: string;
+  labelPosition?: "left" | "center";
+  author?: FeedAuthorPreview | null;
+  variant?: "tile" | "featured";
+}) {
+  const labelClass =
+    variant === "featured"
+      ? "live-rooms-featured-label"
+      : `live-rooms-tile-label${
+          labelPosition === "center" ? " live-rooms-tile-label--center" : ""
+        }`;
+
+  if (!author) {
+    return <span className={labelClass}>{label}</span>;
+  }
+
+  return (
+    <FeedAuthorHoverCard
+      author={author}
+      cardPlacement="above"
+      className={`live-rooms-tile-author-hover${
+        labelPosition === "center"
+          ? " live-rooms-tile-author-hover--center"
+          : ""
+      }${variant === "featured" ? " live-rooms-tile-author-hover--featured" : ""}`}
+    >
+      <span className={`${labelClass} is-interactive`}>{label}</span>
+    </FeedAuthorHoverCard>
+  );
+}
+
 function LiveTile({
   className,
   image,
-  videoSrc,
-  youtubeVideoId,
   chunkPreview,
   label,
   labelPosition = "left",
+  author = null,
   priority = false,
   sizes,
-  paused,
-  onClick
+  paused
 }: {
   className?: string;
   image: string;
-  /** Looping muted archive clip; falls back to image when missing. */
-  videoSrc?: string | null;
-  /** Guest muted YouTube preview (preferred over archive when set). */
-  youtubeVideoId?: string | null;
   /** Live or ended R2 chunk preview from discovery. */
   chunkPreview?: {
     r2Folder: string;
@@ -118,25 +140,18 @@ function LiveTile({
   } | null;
   label: string;
   labelPosition?: "left" | "center";
+  author?: FeedAuthorPreview | null;
   priority?: boolean;
   sizes: string;
   paused?: boolean;
-  onClick?: () => void;
 }) {
   return (
-    <button
-      aria-label={`Focus ${label}`}
-      className={`live-rooms-preview-button ${className ?? ""}`}
-      onClick={onClick}
-      type="button"
+    <div
+      aria-label={label}
+      className={`live-rooms-preview-tile ${className ?? ""}`}
+      role="group"
     >
-      {youtubeVideoId ? (
-        <YouTubePreviewEmbed
-          paused={paused}
-          title={`${label} preview`}
-          videoId={youtubeVideoId}
-        />
-      ) : chunkPreview ? (
+      {chunkPreview ? (
         <ChunkPreviewPlayer
           className="live-rooms-tile-video"
           initialLastChunk={chunkPreview.lastChunkNumber}
@@ -145,14 +160,6 @@ function LiveTile({
           paused={paused}
           r2Folder={chunkPreview.r2Folder}
           label={label}
-        />
-      ) : videoSrc ? (
-        <LiveVideoPlayer
-          className="live-rooms-tile-video"
-          loop
-          muted
-          paused={paused}
-          src={videoSrc}
         />
       ) : (
         <Image
@@ -164,12 +171,12 @@ function LiveTile({
           src={image}
         />
       )}
-      <span
-        className={`live-rooms-tile-label${labelPosition === "center" ? " live-rooms-tile-label--center" : ""}`}
-      >
-        {label}
-      </span>
-    </button>
+      <TileUserLabel
+        author={author}
+        label={label}
+        labelPosition={labelPosition}
+      />
+    </div>
   );
 }
 
@@ -190,7 +197,7 @@ export function ImmersiveRoom({
   /** Guest view quota used for the depleting progress bar. */
   quotaSeconds?: number;
   onNeedSignInToGoLive?: () => void;
-  /** Force static images only (no YouTube / archives) — used when view limit hits. */
+  /** Force static images only — used when view limit hits. */
   staticPreviewOnly?: boolean;
   /** Blur the room UI under a limit modal. */
   blurred?: boolean;
@@ -205,19 +212,17 @@ export function ImmersiveRoom({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGoingLive, setIsGoingLive] = useState(false);
   const [isLive, setIsLive] = useState(false);
-  const [hlsReady, setHlsReady] = useState(false);
+  const isLiveRef = useRef(false);
+  isLiveRef.current = isLive;
+  /** Slot 0 reserved for local camera; discovery shifted right while live. */
+  const selfSlotReservedRef = useRef(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [playbackHlsUrl, setPlaybackHlsUrl] = useState<string | null>(null);
-  const [archiveUrls, setArchiveUrls] = useState<string[]>([]);
   const [tabHidden, setTabHidden] = useState(false);
   const [viewTimerPercent, setViewTimerPercent] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const whipRef = useRef<WhipPublisher | null>(null);
   const chunkRecorderRef = useRef<ChunkRecorder | null>(null);
-  /** MediaMTX archive session id (non-workout rooms). */
-  const sessionIdRef = useRef<string | null>(null);
-  /** R2 live_sessions row id (workout room chunk pipeline). */
+  /** R2 live_sessions row id. */
   const liveR2SessionIdRef = useRef<string | null>(null);
   const liveEpochRef = useRef(0);
   const [liveSlots, setLiveSlots] = useState<(LiveSessionView | null)[]>(() =>
@@ -230,10 +235,6 @@ export function ImmersiveRoom({
   liveSlotsRef.current = liveSlots;
   const archiveSlotsRef = useRef(archiveSlots);
   archiveSlotsRef.current = archiveSlots;
-  const publishGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const hlsReadyRef = useRef(false);
   const viewEndsAtRef = useRef<number | null>(null);
   const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
 
@@ -266,15 +267,32 @@ export function ImmersiveRoom({
     return () => window.clearInterval(id);
   }, [showViewTimer, remainingSeconds, quotaSeconds]);
 
-  const PUBLISH_GRACE_MS = 2.5 * 60 * 1000;
+  const emptyDiscoverySlots = () =>
+    Array.from(
+      { length: LIVE_DISCOVERY_PAGE_SIZE },
+      () => null as LiveSessionView | null
+    );
 
-  const archiveForSlot = useCallback(
-    (slot: number) => {
-      if (archiveUrls.length === 0) return null;
-      return archiveUrls[slot % archiveUrls.length] ?? null;
-    },
-    [archiveUrls]
-  );
+  const shiftDiscoveryRightForSelf = useCallback(() => {
+    if (selfSlotReservedRef.current) return;
+    selfSlotReservedRef.current = true;
+    setSelfMainSlot(0);
+    setLiveSlots((prev) => [
+      null,
+      ...prev.slice(0, LIVE_DISCOVERY_PAGE_SIZE - 1)
+    ]);
+    setArchiveSlots((prev) => [
+      null,
+      ...prev.slice(0, LIVE_DISCOVERY_PAGE_SIZE - 1)
+    ]);
+  }, []);
+
+  const releaseDiscoverySelfSlot = useCallback(() => {
+    if (!selfSlotReservedRef.current) return;
+    selfSlotReservedRef.current = false;
+    setLiveSlots((prev) => [...prev.slice(1), null]);
+    setArchiveSlots((prev) => [...prev.slice(1), null]);
+  }, []);
 
   useEffect(() => {
     setLayout(cloneLiveSet(activeSet));
@@ -291,54 +309,6 @@ export function ImmersiveRoom({
   }, []);
 
   const pauseIncoming = tabHidden;
-  const useGuestYoutube = tier === "guest" && !staticPreviewOnly;
-
-  const guestYoutubeForSlot = useCallback(
-    (slot: number) => guestPreviewYoutubeId(slot),
-    []
-  );
-
-  const handlePreviewClick = useCallback(
-    (zone: PreviewZone, index: number) => {
-      if (isLive && zone === "main" && index === selfMainSlot) {
-        setSelfMainSlot((slot) => (slot === 0 ? 1 : 0));
-        return;
-      }
-
-      setLayout((previous) => {
-        const next = cloneLiveSet(previous);
-
-        if (zone === "main") {
-          const otherIndex = index === 0 ? 1 : 0;
-          const current = next.main[index];
-          next.main[index] = next.main[otherIndex];
-          next.main[otherIndex] = current;
-          return next;
-        }
-
-        const clicked =
-          zone === "bottom" ? next.bottom[index] : next.rail[index];
-        const displaced = next.main[1];
-
-        next.main[1] = clicked;
-        if (zone === "bottom") {
-          next.bottom[index] = displaced;
-        } else {
-          next.rail[index] = displaced;
-        }
-
-        return next;
-      });
-    },
-    [isLive, selfMainSlot]
-  );
-
-  const clearPublishGraceTimer = useCallback(() => {
-    if (publishGraceTimerRef.current) {
-      clearTimeout(publishGraceTimerRef.current);
-      publishGraceTimerRef.current = null;
-    }
-  }, []);
 
   const attachStreamToVideo = useCallback((video: HTMLVideoElement | null) => {
     videoRef.current = video;
@@ -361,28 +331,20 @@ export function ImmersiveRoom({
 
   const stopCamera = useCallback(() => {
     liveEpochRef.current += 1;
-    clearPublishGraceTimer();
-    hlsReadyRef.current = false;
 
-    const sessionId = sessionIdRef.current;
-    sessionIdRef.current = null;
     const liveR2SessionId = liveR2SessionIdRef.current;
     liveR2SessionIdRef.current = null;
 
     chunkRecorderRef.current?.stop();
     chunkRecorderRef.current = null;
-
-    void whipRef.current?.stop();
-    whipRef.current = null;
     stopMediaStream(streamRef.current);
     streamRef.current = null;
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setPlaybackHlsUrl(null);
-    setHlsReady(false);
     setIsLive(false);
     setIsGoingLive(false);
+    releaseDiscoverySelfSlot();
 
     if (liveR2SessionId) {
       void fetch("/api/live/sessions/end", {
@@ -393,34 +355,11 @@ export function ImmersiveRoom({
         /* End session is best-effort */
       });
     }
-
-    if (sessionId) {
-      void fetch(`/api/archives/${sessionId}`, { method: "PATCH" })
-        .then(async (response) => {
-          if (!response.ok) return;
-          const data = (await response.json()) as {
-            session?: { fileUrl?: string | null };
-          };
-          const fileUrl = data.session?.fileUrl;
-          if (fileUrl) {
-            setArchiveUrls((prev) =>
-              prev.includes(fileUrl) ? prev : [fileUrl, ...prev]
-            );
-          }
-        })
-        .catch(() => {
-          /* Archive finalize is best-effort */
-        });
-    }
-  }, [clearPublishGraceTimer]);
+  }, [releaseDiscoverySelfSlot]);
 
   const startCamera = useCallback(async () => {
     setIsGoingLive(true);
     setCameraError(null);
-    setHlsReady(false);
-    hlsReadyRef.current = false;
-    setPlaybackHlsUrl(null);
-    clearPublishGraceTimer();
 
     const epoch = liveEpochRef.current + 1;
     liveEpochRef.current = epoch;
@@ -443,96 +382,50 @@ export function ImmersiveRoom({
       }
 
       streamRef.current = stream;
+      setSelfMainSlot(0);
+      shiftDiscoveryRightForSelf();
       setIsLive(true);
       setIsGoingLive(false);
       attachStreamToVideo(videoRef.current);
 
-      const useR2Chunks = room.id === PREVIEW_PRIMARY_ROOM_ID;
-
-      // Legacy MediaMTX grace timer — only when publishing via WHIP/HLS.
-      if (!useR2Chunks) {
-        publishGraceTimerRef.current = setTimeout(() => {
-          if (liveEpochRef.current !== epoch) return;
-          if (hlsReadyRef.current) return;
-          stopCamera();
-        }, PUBLISH_GRACE_MS);
-      }
-
       void (async () => {
         if (liveEpochRef.current !== epoch || !streamRef.current) return;
 
-        if (useR2Chunks) {
-          try {
-            const liveResponse = await fetch("/api/live/sessions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ roomId: room.id })
-            });
-            if (!liveResponse.ok || liveEpochRef.current !== epoch) {
-              if (liveEpochRef.current === epoch) {
-                stopCamera();
-                setCameraError("Could not start live session.");
-              }
-              return;
-            }
-            const liveData = (await liveResponse.json()) as {
-              session: LiveSessionView;
-            };
-            liveR2SessionIdRef.current = liveData.session.sessionId;
-
-            chunkRecorderRef.current?.stop();
-            chunkRecorderRef.current = startChunkRecorder({
-              stream: streamRef.current,
-              roomId: room.id,
-              sessionId: liveData.session.sessionId,
-              onError: (message) => {
-                console.warn("[preview-chunks]", message);
-              },
-              onUploaded: (info) => {
-                console.info("[preview-chunks] uploaded", info.key);
-              }
-            });
-          } catch {
-            if (liveEpochRef.current === epoch) {
-              stopCamera();
-              setCameraError("Could not start live session.");
-            }
-          }
-          return;
-        }
-
-        // Non-workout rooms: keep MediaMTX archive + WHIP until migrated.
         try {
-          const sessionResponse = await fetch("/api/archives", {
+          const liveResponse = await fetch("/api/live/sessions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ roomId: room.id })
           });
-          if (sessionResponse.ok && liveEpochRef.current === epoch) {
-            const sessionData = (await sessionResponse.json()) as {
-              session: { id: string };
-            };
-            sessionIdRef.current = sessionData.session.id;
-          }
-        } catch {
-          /* Archive session is best-effort */
-        }
-
-        if (liveEpochRef.current !== epoch || !streamRef.current) return;
-
-        try {
-          const publisher = await startWhipPublisher({
-            stream: streamRef.current,
-            whipEndpoint: whipUrl(room.id, user.id)
-          });
-          if (liveEpochRef.current !== epoch) {
-            await publisher.stop();
+          if (!liveResponse.ok || liveEpochRef.current !== epoch) {
+            if (liveEpochRef.current === epoch) {
+              stopCamera();
+              setCameraError("Could not start live session.");
+            }
             return;
           }
-          whipRef.current = publisher;
-          setPlaybackHlsUrl(hlsUrl(room.id, user.id));
+          const liveData = (await liveResponse.json()) as {
+            session: LiveSessionView;
+          };
+          liveR2SessionIdRef.current = liveData.session.sessionId;
+
+          chunkRecorderRef.current?.stop();
+          chunkRecorderRef.current = startChunkRecorder({
+            stream: streamRef.current,
+            roomId: room.id,
+            sessionId: liveData.session.sessionId,
+            onError: (message) => {
+              console.warn("[preview-chunks]", message);
+            },
+            onUploaded: (info) => {
+              console.info("[preview-chunks] uploaded", info.key);
+            }
+          });
         } catch {
-          /* Keep local preview; grace timer ends live if HLS never comes up */
+          if (liveEpochRef.current === epoch) {
+            stopCamera();
+            setCameraError("Could not start live session.");
+          }
         }
       })();
     } catch (error) {
@@ -550,27 +443,14 @@ export function ImmersiveRoom({
       }
     }
   }, [
-    PUBLISH_GRACE_MS,
     attachStreamToVideo,
-    clearPublishGraceTimer,
     onNeedSignInToGoLive,
     room.id,
+    shiftDiscoveryRightForSelf,
     stopCamera
   ]);
 
-  const handleHlsReady = useCallback(() => {
-    hlsReadyRef.current = true;
-    setHlsReady(true);
-    clearPublishGraceTimer();
-  }, [clearPublishGraceTimer]);
-
-  const discoveryEnabled =
-    room.id === PREVIEW_PRIMARY_ROOM_ID &&
-    tier !== "guest" &&
-    !staticPreviewOnly;
-
-  const emptyDiscoverySlots = () =>
-    Array.from({ length: LIVE_DISCOVERY_PAGE_SIZE }, () => null as LiveSessionView | null);
+  const discoveryEnabled = !staticPreviewOnly;
 
   const fetchEndedArchives = useCallback(
     async (options: {
@@ -609,6 +489,8 @@ export function ImmersiveRoom({
       const nextArchives = emptyDiscoverySlots();
       const usedSessionIds = new Set<string>();
       const usedUserIds = new Set<string>();
+      const reserveSelf = selfSlotReservedRef.current;
+      const fillStart = reserveSelf ? 1 : 0;
 
       for (const session of live) {
         if (!session) continue;
@@ -620,7 +502,7 @@ export function ImmersiveRoom({
       }
 
       // Keep existing archive assignments on still-empty live slots when possible.
-      for (let index = 0; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+      for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
         if (live[index]) continue;
         const existing = previousArchives[index];
         if (
@@ -635,7 +517,7 @@ export function ImmersiveRoom({
       }
 
       const emptyIndexes: number[] = [];
-      for (let index = 0; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+      for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
         if (!live[index] && !nextArchives[index]) {
           emptyIndexes.push(index);
         }
@@ -692,6 +574,7 @@ export function ImmersiveRoom({
       }
 
       const nextLive = [...liveSlotsRef.current];
+      if (selfSlotReservedRef.current && slotIndex === 0) return;
       if (nextLive[slotIndex]?.sessionId !== deadSessionId) return;
       nextLive[slotIndex] = replacement;
       setLiveSlots(nextLive);
@@ -735,14 +618,28 @@ export function ImmersiveRoom({
         const sessions = (data.sessions ?? []).filter(
           (session) => session.sessionId !== selfId
         );
-        const nextLive = Array.from(
-          { length: LIVE_DISCOVERY_PAGE_SIZE },
-          (_, index) => sessions[index] ?? null
-        );
+        const reserveSelf = selfSlotReservedRef.current;
+        const nextLive = emptyDiscoverySlots();
+        if (reserveSelf) {
+          sessions
+            .slice(0, LIVE_DISCOVERY_PAGE_SIZE - 1)
+            .forEach((session, index) => {
+              nextLive[index + 1] = session;
+            });
+        } else {
+          sessions
+            .slice(0, LIVE_DISCOVERY_PAGE_SIZE)
+            .forEach((session, index) => {
+              nextLive[index] = session;
+            });
+        }
         if (cancelled) return;
         setLiveSlots(nextLive);
 
-        const nextArchives = await fillArchiveSlots(nextLive);
+        const nextArchives = await fillArchiveSlots(
+          nextLive,
+          archiveSlotsRef.current
+        );
         if (cancelled) return;
         setArchiveSlots(nextArchives);
       } catch {
@@ -758,22 +655,24 @@ export function ImmersiveRoom({
 
   const liveSessionForSlot = useCallback(
     (slot: number) => {
-      if (useGuestYoutube || !discoveryEnabled) return null;
+      if (!discoveryEnabled) return null;
+      if (selfSlotReservedRef.current && slot === 0) return null;
       const session = liveSlots[slot];
       if (!session) return null;
       if (session.sessionId === liveR2SessionIdRef.current) return null;
       return session;
     },
-    [discoveryEnabled, liveSlots, useGuestYoutube]
+    [discoveryEnabled, liveSlots]
   );
 
   const archiveSessionForSlot = useCallback(
     (slot: number) => {
-      if (useGuestYoutube || !discoveryEnabled) return null;
+      if (!discoveryEnabled) return null;
+      if (selfSlotReservedRef.current && slot === 0) return null;
       if (liveSessionForSlot(slot)) return null;
       return archiveSlots[slot] ?? null;
     },
-    [archiveSlots, discoveryEnabled, liveSessionForSlot, useGuestYoutube]
+    [archiveSlots, discoveryEnabled, liveSessionForSlot]
   );
 
   const chunkPreviewForSlot = useCallback(
@@ -799,41 +698,6 @@ export function ImmersiveRoom({
     },
     [archiveSessionForSlot, liveSessionForSlot, replaceLiveSlot]
   );
-
-  useEffect(() => {
-    // Workout discovery uses ended live_sessions in R2; filesystem archives for other rooms.
-    if (discoveryEnabled || tier === "guest" || staticPreviewOnly) {
-      setArchiveUrls([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadArchives = async () => {
-      try {
-        const response = await fetch(
-          `/api/archives?roomId=${encodeURIComponent(room.id)}&limit=20`
-        );
-        if (!response.ok || cancelled) return;
-        const data = (await response.json()) as {
-          sessions?: { fileUrl?: string | null }[];
-        };
-        const urls = (data.sessions ?? [])
-          .map((session) => session.fileUrl)
-          .filter((url): url is string => Boolean(url));
-        if (!cancelled) {
-          setArchiveUrls(urls);
-        }
-      } catch {
-        /* optional */
-      }
-    };
-
-    void loadArchives();
-    return () => {
-      cancelled = true;
-    };
-  }, [discoveryEnabled, room.id, tier, staticPreviewOnly]);
 
   const toggleGoLive = () => {
     if (isLive || isGoingLive) {
@@ -968,9 +832,6 @@ export function ImmersiveRoom({
           <div className="live-rooms-immersive-pinned">
             {layout.main.map((feed, index) => {
               const isSelfSlot = isLive && index === selfMainSlot;
-              const showLocalPreview = isSelfSlot && !hlsReady;
-              const showLiveHls =
-                isSelfSlot && hlsReady && Boolean(playbackHlsUrl);
               const archiveSlot = index === 0 ? 0 : 1;
               const liveSession = isSelfSlot
                 ? null
@@ -981,58 +842,31 @@ export function ImmersiveRoom({
               const chunkPreview = isSelfSlot
                 ? null
                 : chunkPreviewForSlot(archiveSlot);
-              const archiveSrc =
-                isSelfSlot || chunkPreview
-                  ? null
-                  : archiveForSlot(archiveSlot);
               const tileLabel =
                 liveSession?.displayName?.trim() ||
                 archiveSession?.displayName?.trim() ||
                 feed.name;
+              const tileAuthor =
+                liveSession?.author ?? archiveSession?.author ?? null;
 
               return (
-                <button
-                  aria-label={
-                    isSelfSlot ? "Move your live feed" : `Focus ${tileLabel}`
-                  }
-                  className="live-rooms-preview-button live-rooms-immersive-pinned-tile"
+                <div
+                  aria-label={isSelfSlot ? "Your live feed" : tileLabel}
+                  className="live-rooms-preview-tile live-rooms-immersive-pinned-tile"
                   key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
-                  onClick={() => handlePreviewClick("main", index)}
-                  type="button"
+                  role="group"
                 >
                   {isSelfSlot ? (
                     <>
-                      {showLocalPreview ? (
-                        <video
-                          autoPlay
-                          className="live-rooms-featured-video"
-                          muted
-                          playsInline
-                          ref={attachStreamToVideo}
-                        />
-                      ) : null}
-                      {playbackHlsUrl ? (
-                        <LiveVideoPlayer
-                          className={`live-rooms-featured-hls${
-                            showLiveHls ? "" : " is-pending"
-                          }`}
-                          hlsUrl={playbackHlsUrl}
-                          label={showLiveHls ? "You" : undefined}
-                          muted
-                          onReady={handleHlsReady}
-                          suppressErrorDisplay
-                        />
-                      ) : null}
-                      {showLocalPreview ? (
-                        <span className="live-rooms-featured-label">You</span>
-                      ) : null}
+                      <video
+                        autoPlay
+                        className="live-rooms-featured-video"
+                        muted
+                        playsInline
+                        ref={attachStreamToVideo}
+                      />
+                      <span className="live-rooms-featured-label">You</span>
                     </>
-                  ) : useGuestYoutube ? (
-                    <YouTubePreviewEmbed
-                      paused={pauseIncoming}
-                      title={`${tileLabel} preview`}
-                      videoId={guestYoutubeForSlot(archiveSlot)}
-                    />
                   ) : chunkPreview ? (
                     <ChunkPreviewPlayer
                       className="live-rooms-featured-hls"
@@ -1042,14 +876,6 @@ export function ImmersiveRoom({
                       onDead={chunkPreview.onDead}
                       paused={pauseIncoming}
                       r2Folder={chunkPreview.r2Folder}
-                    />
-                  ) : archiveSrc ? (
-                    <LiveVideoPlayer
-                      className="live-rooms-featured-hls"
-                      loop
-                      muted
-                      paused={pauseIncoming}
-                      src={archiveSrc}
                     />
                   ) : (
                     <Image
@@ -1062,11 +888,13 @@ export function ImmersiveRoom({
                     />
                   )}
                   {!isSelfSlot ? (
-                    <span className="live-rooms-featured-label">
-                      {tileLabel}
-                    </span>
+                    <TileUserLabel
+                      author={tileAuthor}
+                      label={tileLabel}
+                      variant="featured"
+                    />
                   ) : null}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -1090,25 +918,19 @@ export function ImmersiveRoom({
                   liveSession?.displayName?.trim() ||
                   archiveSession?.displayName?.trim() ||
                   participant.name;
+                const tileAuthor =
+                  liveSession?.author ?? archiveSession?.author ?? null;
 
                 return (
                   <LiveTile
+                    author={tileAuthor}
                     chunkPreview={chunkPreview}
                     className="live-rooms-immersive-bottom-tile"
                     image={participant.image}
                     key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
                     label={tileLabel}
                     labelPosition="center"
-                    onClick={() => handlePreviewClick("bottom", index)}
                     sizes="(max-width: 960px) 50vw, 180px"
-                    videoSrc={
-                      useGuestYoutube || chunkPreview
-                        ? null
-                        : archiveForSlot(slot)
-                    }
-                    youtubeVideoId={
-                      useGuestYoutube ? guestYoutubeForSlot(slot) : null
-                    }
                     paused={pauseIncoming}
                   />
                 );
@@ -1128,24 +950,18 @@ export function ImmersiveRoom({
                 liveSession?.displayName?.trim() ||
                 archiveSession?.displayName?.trim() ||
                 participant.name;
+              const tileAuthor =
+                liveSession?.author ?? archiveSession?.author ?? null;
 
               return (
                 <LiveTile
+                  author={tileAuthor}
                   chunkPreview={chunkPreview}
                   className="live-rooms-immersive-rail-tile"
                   image={participant.image}
                   key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
                   label={tileLabel}
-                  onClick={() => handlePreviewClick("rail", index)}
                   sizes="200px"
-                  videoSrc={
-                    useGuestYoutube || chunkPreview
-                      ? null
-                      : archiveForSlot(slot)
-                  }
-                  youtubeVideoId={
-                    useGuestYoutube ? guestYoutubeForSlot(slot) : null
-                  }
                   paused={pauseIncoming}
                 />
               );

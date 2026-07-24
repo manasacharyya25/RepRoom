@@ -3,7 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode
+} from "react";
 import type { FeedAuthorPreview } from "@/lib/feed-posts";
 import { createClient } from "@/lib/supabase/client";
 import { followUser, isFollowing, unfollowUser } from "@/lib/social-api";
@@ -142,11 +148,16 @@ function MessageIcon() {
 export function FeedAuthorHoverCard({
   author,
   size = 32,
-  className
+  className,
+  children,
+  cardPlacement = "below"
 }: {
   author: FeedAuthorPreview;
   size?: number;
   className?: string;
+  /** Custom trigger (e.g. room tile name). Defaults to avatar button. */
+  children?: ReactNode;
+  cardPlacement?: "below" | "above";
 }) {
   const cardId = useId();
   const router = useRouter();
@@ -257,11 +268,13 @@ export function FeedAuthorHoverCard({
     }
   };
 
+  const hasCustomTrigger = Boolean(children);
+
   return (
     <div
       ref={rootRef}
-      className={`feed-author-hover${className ? ` ${className}` : ""}`}
-      style={{ width: size, height: size }}
+      className={`feed-author-hover${hasCustomTrigger ? " feed-author-hover--custom" : ""}${className ? ` ${className}` : ""}`}
+      style={hasCustomTrigger ? undefined : { width: size, height: size }}
       onMouseEnter={scheduleOpen}
       onMouseLeave={scheduleClose}
       onFocus={scheduleOpen}
@@ -271,37 +284,54 @@ export function FeedAuthorHoverCard({
         }
       }}
     >
-      <button
-        type="button"
-        className="feed-author-hover-trigger"
-        aria-describedby={open ? cardId : undefined}
-        aria-expanded={open}
-        aria-label={`${author.name} profile preview`}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen((value) => !value);
-        }}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        <span
-          className="feed-post-avatar"
-          style={{ width: size, height: size }}
+      {hasCustomTrigger ? (
+        <button
+          type="button"
+          className="feed-author-hover-trigger feed-author-hover-trigger--custom"
+          aria-describedby={open ? cardId : undefined}
+          aria-expanded={open}
+          aria-label={`${author.name} profile preview`}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((value) => !value);
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
         >
-          <Image
-            alt=""
-            className="feed-post-avatar-image"
-            fill
-            sizes={`${size}px`}
-            src={author.avatar}
-            unoptimized={isRemoteSrc(author.avatar)}
-          />
-        </span>
-      </button>
+          {children}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="feed-author-hover-trigger"
+          aria-describedby={open ? cardId : undefined}
+          aria-expanded={open}
+          aria-label={`${author.name} profile preview`}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((value) => !value);
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <span
+            className="feed-post-avatar"
+            style={{ width: size, height: size }}
+          >
+            <Image
+              alt=""
+              className="feed-post-avatar-image"
+              fill
+              sizes={`${size}px`}
+              src={author.avatar}
+              unoptimized={isRemoteSrc(author.avatar)}
+            />
+          </span>
+        </button>
+      )}
 
       {open ? (
         <div
           id={cardId}
-          className="feed-author-card"
+          className={`feed-author-card${cardPlacement === "above" ? " feed-author-card--above" : ""}`}
           role="dialog"
           aria-label={`${author.name} profile`}
           onClick={(event) => event.stopPropagation()}

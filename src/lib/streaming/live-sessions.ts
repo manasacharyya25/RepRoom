@@ -1,4 +1,11 @@
 import { PREVIEW_CHUNK_SECONDS } from "@/lib/streaming/preview-chunks";
+import { LIVE_IMAGES } from "@/lib/live-images";
+import type { FeedAuthorPreview } from "@/lib/feed-posts";
+import {
+  formatAgeRange,
+  formatCountry,
+  formatHoursWorked
+} from "@/lib/profile-labels";
 
 const DEFAULT_STALE_MULTIPLIER = 3;
 const MIN_STALE_SECONDS = 15;
@@ -33,6 +40,9 @@ export const LIVE_SESSION_STALE_SECONDS = parseStaleSeconds(
 /** Immersive room tile count (2 main + 4 bottom + 5 rail). */
 export const LIVE_DISCOVERY_PAGE_SIZE = 11;
 
+export const LIVE_SESSION_PROFILE_SELECT =
+  "id, display_name, username, avatar_url, age_range, country_code, goals(template_id, current_value, target_value)";
+
 export type LiveSessionStatus = "live" | "ended";
 
 export type LiveSessionRow = {
@@ -47,6 +57,28 @@ export type LiveSessionRow = {
   last_chunk_uploaded_at: string;
 };
 
+/** Rows moved out of live_sessions by the archive cron job. */
+export type ArchiveSessionRow = LiveSessionRow & {
+  archived_at?: string;
+  archive_reason?: "ended" | "stale" | string;
+};
+
+export type LiveSessionProfile = {
+  id?: string;
+  display_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+  age_range?: string | null;
+  country_code?: string | null;
+  goals?:
+    | {
+        template_id: string;
+        current_value: number | null;
+        target_value?: number | null;
+      }[]
+    | null;
+};
+
 export type LiveSessionView = {
   sessionId: string;
   userId: string;
@@ -57,7 +89,43 @@ export type LiveSessionView = {
   startedAt: string;
   displayName?: string | null;
   avatarUrl?: string | null;
+  author?: FeedAuthorPreview | null;
 };
+
+function hoursFromGoals(
+  goals:
+    | {
+        template_id: string;
+        current_value: number | null;
+      }[]
+    | null
+    | undefined
+) {
+  const row = goals?.find((goal) => goal.template_id === "hours_worked");
+  return Number(row?.current_value ?? 0);
+}
+
+export function authorFromLiveProfile(
+  userId: string,
+  profile?: LiveSessionProfile | null
+): FeedAuthorPreview {
+  const username = profile?.username?.trim() || null;
+  const name = profile?.display_name?.trim() || "Athlete";
+  const handle = username ? `@${username}` : "@athlete";
+  const avatar = profile?.avatar_url?.trim() || LIVE_IMAGES.participant4;
+
+  return {
+    id: userId,
+    name,
+    username,
+    handle,
+    avatar,
+    ageLabel: formatAgeRange(profile?.age_range),
+    countryLabel: formatCountry(profile?.country_code),
+    hoursLabel: formatHoursWorked(hoursFromGoals(profile?.goals)),
+    profileHref: username ? `/u/${encodeURIComponent(username)}` : null
+  };
+}
 
 export function liveSessionR2Folder(options: {
   roomId: string;
@@ -75,8 +143,9 @@ export function liveSessionR2Folder(options: {
 
 export function mapLiveSessionRow(
   row: LiveSessionRow,
-  profile?: { display_name?: string | null; avatar_url?: string | null } | null
+  profile?: LiveSessionProfile | null
 ): LiveSessionView {
+  const author = authorFromLiveProfile(row.user_id, profile);
   return {
     sessionId: row.session_id,
     userId: row.user_id,
@@ -86,7 +155,8 @@ export function mapLiveSessionRow(
     lastChunkUploadedAt: row.last_chunk_uploaded_at,
     startedAt: row.started_at,
     displayName: profile?.display_name ?? null,
-    avatarUrl: profile?.avatar_url ?? null
+    avatarUrl: profile?.avatar_url ?? null,
+    author
   };
 }
 

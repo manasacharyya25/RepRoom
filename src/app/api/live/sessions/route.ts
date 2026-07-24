@@ -4,9 +4,11 @@ import {
   decodeLiveCursor,
   encodeLiveCursor,
   LIVE_DISCOVERY_PAGE_SIZE,
+  LIVE_SESSION_PROFILE_SELECT,
   LIVE_SESSION_STALE_SECONDS,
   liveSessionR2Folder,
   mapLiveSessionRow,
+  type LiveSessionProfile,
   type LiveSessionRow
 } from "@/lib/streaming/live-sessions";
 import { createClient } from "@/lib/supabase/server";
@@ -59,21 +61,15 @@ export async function GET(request: Request) {
 
   const rows = (data ?? []) as LiveSessionRow[];
   const userIds = [...new Set(rows.map((row) => row.user_id))];
-  const profilesById = new Map<
-    string,
-    { display_name: string | null; avatar_url: string | null }
-  >();
+  const profilesById = new Map<string, LiveSessionProfile>();
 
   if (userIds.length > 0) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url")
+      .select(LIVE_SESSION_PROFILE_SELECT)
       .in("id", userIds);
-    for (const profile of profiles ?? []) {
-      profilesById.set(profile.id, {
-        display_name: profile.display_name,
-        avatar_url: profile.avatar_url
-      });
+    for (const profile of (profiles ?? []) as LiveSessionProfile[]) {
+      if (profile.id) profilesById.set(profile.id, profile);
     }
   }
 
