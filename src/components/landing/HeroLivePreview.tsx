@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HERO_PARTICIPANTS, LIVE_IMAGES } from "@/lib/live-images";
 import {
   hasLandingHeroVideos,
@@ -31,19 +31,35 @@ export function HeroLivePreview() {
   const [activeLabel, setActiveLabel] = useState<(typeof ROOM_TAGS)[number]["label"]>(
     "Workout"
   );
+  /** Client-only shuffle per room — avoids SSR/client Math.random mismatch. */
+  const [shuffledByRoom, setShuffledByRoom] = useState<
+    Partial<Record<RoomId, readonly string[]>>
+  >({});
 
   const room = useMemo(() => {
     const tag = ROOM_TAGS.find((item) => item.label === activeLabel) ?? ROOM_TAGS[0];
     return getRoomById(tag.roomId);
   }, [activeLabel]);
 
+  const orderedVideos = useMemo(
+    () => landingHeroVideosForRoom(room.id),
+    [room.id]
+  );
+
+  useEffect(() => {
+    setShuffledByRoom((prev) => {
+      if (prev[room.id]) return prev;
+      return {
+        ...prev,
+        [room.id]: shuffleItems(landingHeroVideosForRoom(room.id))
+      };
+    });
+  }, [room.id]);
+
   const coach = room.pinnedFeeds[0] ?? { name: "Coach", image: LIVE_IMAGES.main };
   const avatars = room.participants.slice(0, 5);
   const sidebar = room.sidebarParticipants.slice(0, 3);
-  const heroVideos = useMemo(
-    () => shuffleItems(landingHeroVideosForRoom(room.id)),
-    [room.id]
-  );
+  const heroVideos = shuffledByRoom[room.id] ?? orderedVideos;
   const useHeroVideos = hasLandingHeroVideos(room.id);
 
   return (
@@ -77,14 +93,15 @@ export function HeroLivePreview() {
         <div className="hero-mock-body">
           <div className="hero-mock-main">
             <div className="hero-mock-video">
-              {useHeroVideos ? (
+              {useHeroVideos && heroVideos[0] ? (
                 <video
+                  key={`${room.id}-main-${heroVideos[0]}`}
                   autoPlay
                   className="hero-mock-video-image"
                   loop
                   muted
                   playsInline
-                  preload="auto"
+                  preload="metadata"
                   src={heroVideos[0]}
                 />
               ) : (
@@ -120,34 +137,38 @@ export function HeroLivePreview() {
             </div>
           </div>
           <div className="hero-mock-sidebar">
-            {sidebar.map((participant, index) => (
-              <div
-                className="hero-mock-sidebar-tile"
-                key={`${room.id}-side-${participant.name}`}
-              >
-                {useHeroVideos ? (
-                  <video
-                    autoPlay
-                    className="hero-mock-sidebar-tile-image"
-                    loop
-                    muted
-                    playsInline
-                    preload="auto"
-                    src={heroVideos[index + 1]}
-                  />
-                ) : (
-                  <Image
-                    alt=""
-                    className="hero-mock-sidebar-tile-image"
-                    fill
-                    sizes="160px"
-                    src={participant.image}
-                  />
-                )}
-                <span className="hero-mock-live-badge">● Live</span>
-                <span className="hero-mock-tile-label">{participant.name}</span>
-              </div>
-            ))}
+            {sidebar.map((participant, index) => {
+              const videoSrc = heroVideos[index + 1];
+              return (
+                <div
+                  className="hero-mock-sidebar-tile"
+                  key={`${room.id}-side-${participant.name}`}
+                >
+                  {useHeroVideos && videoSrc ? (
+                    <video
+                      key={`${room.id}-side-${index}-${videoSrc}`}
+                      autoPlay
+                      className="hero-mock-sidebar-tile-image"
+                      loop
+                      muted
+                      playsInline
+                      preload="metadata"
+                      src={videoSrc}
+                    />
+                  ) : (
+                    <Image
+                      alt=""
+                      className="hero-mock-sidebar-tile-image"
+                      fill
+                      sizes="160px"
+                      src={participant.image}
+                    />
+                  )}
+                  <span className="hero-mock-live-badge">● Live</span>
+                  <span className="hero-mock-tile-label">{participant.name}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
