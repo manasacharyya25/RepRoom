@@ -15,12 +15,14 @@
     "@supabase/ssr": "^0.12.1",
     "@supabase/supabase-js": "^2.110.3",
     "@vercel/analytics": "^2.0.1",
+    "bcryptjs": "^3.0.3",
     "next": "^15.4.2",
     "react": "^19.1.0",
     "react-compare-slider": "^4.0.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^24.0.13",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

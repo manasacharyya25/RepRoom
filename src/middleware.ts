@@ -18,7 +18,11 @@ const WAITLIST_ALLOWED_PATHS = new Set([
   "/community-guidelines"
 ]);
 
-const WAITLIST_ALLOWED_PREFIXES = ["/api/waitlist"];
+const WAITLIST_ALLOWED_PREFIXES = [
+  "/api/waitlist",
+  "/onboard",
+  "/api/onboarding-record"
+];
 
 function isWaitlistAllowed(pathname: string): boolean {
   if (WAITLIST_ALLOWED_PATHS.has(pathname)) return true;
