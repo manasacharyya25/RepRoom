@@ -1285,6 +1285,137 @@ html:has(.landing) body::-webkit-scrollbar {
   }
 }
 
+.landing-nav-waitlist {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.landing-waitlist-strip {
+  width: 100%;
+  padding: 36px 28px;
+  margin-bottom: 50px;
+}
+
+.landing-waitlist-strip-inner {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.landing-waitlist-strip-inner h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.8vw, 1.75rem);
+  letter-spacing: -0.03em;
+}
+
+.landing-waitlist-strip-inner p {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.landing-waitlist-strip .waitlist-form {
+  margin-top: 4px;
+}
+
+.waitlist-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  width: min(420px, 100%);
+  margin-top: 20px;
+}
+
+.waitlist-form--large {
+  margin-top: 8px;
+}
+
+.waitlist-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.waitlist-field:focus-within {
+  outline: 2px solid rgba(255, 92, 43, 0.35);
+  outline-offset: 1px;
+}
+
+.waitlist-field-label {
+  flex-shrink: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.waitlist-field-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 1.1em;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.waitlist-field input[type="email"] {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 14px 0;
+  font: inherit;
+  outline: none;
+}
+
+.waitlist-field input[type="email"]::placeholder {
+  color: var(--text-muted);
+}
+
+.waitlist-submit {
+  width: 100%;
+}
+
+.waitlist-form .btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.waitlist-error,
+.waitlist-success {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.waitlist-error {
+  color: var(--danger);
+}
+
+.waitlist-success {
+  margin-top: 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .landing-waitlist-strip {
+    padding: 28px 16px;
+  }
+}
+
 .landing-cta-band {
   display: grid;
   place-items: center;

@@ -1,5 +1,6 @@
 import { LandingPage } from "@/components/landing/LandingPage";
+import { isWaitlistMode } from "@/lib/waitlist";
 
 export default function HomePage() {
-  return <LandingPage />;
+  return <LandingPage waitlistMode={isWaitlistMode()} />;
 }

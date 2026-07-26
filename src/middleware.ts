@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { isWaitlistMode } from "@/lib/waitlist";
 
 const AUTH_REQUIRED_PREFIXES = [
   "/profile",
@@ -10,9 +11,35 @@ const AUTH_REQUIRED_PREFIXES = [
 
 const GUEST_ALLOWED_PREFIXES = ["/rooms", "/feed"];
 
+const WAITLIST_ALLOWED_PATHS = new Set([
+  "/",
+  "/privacy",
+  "/terms",
+  "/community-guidelines"
+]);
+
+const WAITLIST_ALLOWED_PREFIXES = ["/api/waitlist"];
+
+function isWaitlistAllowed(pathname: string): boolean {
+  if (WAITLIST_ALLOWED_PATHS.has(pathname)) return true;
+  return WAITLIST_ALLOWED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const { supabase, supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
+
+  if (isWaitlistMode()) {
+    if (isWaitlistAllowed(pathname)) {
+      return supabaseResponse;
+    }
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = "/";
+    homeUrl.search = "";
+    return NextResponse.redirect(homeUrl);
+  }
 
   const requiresAuth = AUTH_REQUIRED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
