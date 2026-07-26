@@ -347,6 +347,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         onNeedSignInToGoLive={() => setUpgradeReason("go_live_auth")}
         onBroadcastRemaining={onBroadcastRemaining}
         onBroadcastLimitReached={onBroadcastLimitReached}
+        onRequestUpgrade={openPlanModal}
         staticPreviewOnly={limitReached}
         blurred={limitReached}
       />

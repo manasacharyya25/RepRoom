@@ -762,6 +762,130 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   margin: 0;
 }
 
+.live-rooms-messages-page {
+  grid-column: 1 / -1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(12, 12, 14, 0.72);
+  overflow: hidden;
+}
+
+.live-rooms-messages-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.live-rooms-messages-item {
+  display: grid;
+  gap: 6px;
+}
+
+.live-rooms-messages-top {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.live-rooms-messages-avatar {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.live-rooms-messages-author {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.live-rooms-messages-handle {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.live-rooms-messages-time {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.live-rooms-messages-text {
+  margin: 0;
+  padding-left: 50px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.live-rooms-messages-status,
+.live-rooms-messages-error {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.live-rooms-messages-error {
+  padding: 0 18px;
+  color: var(--danger);
+}
+
+.live-rooms-messages-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.live-rooms-messages-input {
+  resize: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.live-rooms-messages-input:focus {
+  outline: 2px solid rgba(255, 92, 43, 0.35);
+  outline-offset: 1px;
+}
+
+.live-rooms-messages-send {
+  align-self: end;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.live-rooms-messages-send:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.live-rooms-messages-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .live-rooms-discovery-loading-spinner {
   width: 36px;
   height: 36px;
@@ -1038,6 +1162,92 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 
 .live-rooms-tile-image {
   object-fit: cover;
+}
+
+.live-rooms-inactive-promo {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 10px 12px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.live-rooms-inactive-promo-blur {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 8, 10, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.live-rooms-inactive-promo-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.live-rooms-inactive-promo-eyebrow {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-rooms-inactive-promo-title {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.live-rooms-inactive-promo--featured .live-rooms-inactive-promo-title {
+  font-size: clamp(1.05rem, 1.8vw, 1.35rem);
+}
+
+.live-rooms-inactive-promo-line {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.live-rooms-inactive-promo--featured .live-rooms-inactive-promo-line {
+  font-size: 0.88rem;
+}
+
+.live-rooms-inactive-promo-cta {
+  pointer-events: auto;
+  margin-top: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.live-rooms-inactive-promo-cta:hover {
+  background: var(--accent-hover);
+}
+
+.live-rooms-inactive-promo--featured .live-rooms-inactive-promo-cta {
+  margin-top: 12px;
+  padding: 9px 16px;
+  font-size: 0.8rem;
 }
 
 .live-rooms-tile-label {

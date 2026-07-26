@@ -72,6 +72,119 @@ const MOBILE_VIEWPORT_QUERY = "(max-width: 960px)";
 /** Pinned (2) + bottom (2); rail is hidden on mobile. */
 const MOBILE_DISCOVERY_SLOT_COUNT = 4;
 
+type InactiveTilePromoAction = "go_live" | "upgrade";
+
+type InactiveTilePromo = {
+  id: string;
+  eyebrow?: string;
+  title: string;
+  lines: string[];
+  cta?: { label: string; action: InactiveTilePromoAction };
+};
+
+const INACTIVE_TILE_PROMOS: InactiveTilePromo[] = [
+  {
+    id: "spot",
+    title: "This spot could be yours.",
+    lines: [],
+    cta: { label: "Start broadcasting", action: "go_live" }
+  },
+  {
+    id: "challenge",
+    eyebrow: "Weekly Challenge",
+    title: "This Week",
+    lines: ["Complete", "5 Workouts", "Join 2,341 others"]
+  },
+  {
+    id: "stats",
+    eyebrow: "Community Stats",
+    title: "Today",
+    lines: ["842 workouts", "128 hours trained"]
+  },
+  {
+    id: "share",
+    eyebrow: "Share RhoQ",
+    title: "Workout Together",
+    lines: ["Invite a friend", "and stay accountable."]
+  },
+  {
+    id: "upgrade",
+    eyebrow: "Upgrade RhoQ",
+    title: "RhoQ Pro",
+    lines: [
+      "Unlimited broadcasts",
+      "Priority visibility",
+      "Exclusive badges"
+    ],
+    cta: { label: "Upgrade →", action: "upgrade" }
+  },
+  {
+    id: "sponsored",
+    eyebrow: "Sponsored",
+    title: "Protein Brand",
+    lines: ["20% OFF"]
+  },
+  {
+    id: "feature",
+    eyebrow: "Feature Creator",
+    title: "New Feature",
+    lines: ["Pin your favourite", "workout partners."]
+  }
+];
+
+function promoForSlot(slotIndex: number): InactiveTilePromo {
+  return INACTIVE_TILE_PROMOS[
+    ((slotIndex % INACTIVE_TILE_PROMOS.length) + INACTIVE_TILE_PROMOS.length) %
+      INACTIVE_TILE_PROMOS.length
+  ];
+}
+
+function InactiveTilePromoOverlay({
+  promo,
+  featured = false,
+  onGoLive,
+  onUpgrade
+}: {
+  promo: InactiveTilePromo;
+  featured?: boolean;
+  onGoLive?: () => void;
+  onUpgrade?: () => void;
+}) {
+  return (
+    <div
+      className={`live-rooms-inactive-promo${
+        featured ? " live-rooms-inactive-promo--featured" : ""
+      }`}
+    >
+      <div className="live-rooms-inactive-promo-blur" aria-hidden />
+      <div className="live-rooms-inactive-promo-copy">
+        {promo.eyebrow ? (
+          <p className="live-rooms-inactive-promo-eyebrow">{promo.eyebrow}</p>
+        ) : null}
+        <p className="live-rooms-inactive-promo-title">{promo.title}</p>
+        {promo.lines.map((line) => (
+          <p className="live-rooms-inactive-promo-line" key={line}>
+            {line}
+          </p>
+        ))}
+        {promo.cta ? (
+          <button
+            type="button"
+            className="live-rooms-inactive-promo-cta"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (promo.cta?.action === "go_live") onGoLive?.();
+              if (promo.cta?.action === "upgrade") onUpgrade?.();
+            }}
+          >
+            {promo.cta.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function useIsMobileViewport() {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -132,7 +245,10 @@ function LiveTile({
   author = null,
   priority = false,
   sizes,
-  paused
+  paused,
+  slotIndex = 0,
+  onGoLive,
+  onUpgrade
 }: {
   className?: string;
   image: string;
@@ -149,10 +265,16 @@ function LiveTile({
   priority?: boolean;
   sizes: string;
   paused?: boolean;
+  slotIndex?: number;
+  onGoLive?: () => void;
+  onUpgrade?: () => void;
 }) {
+  const inactive = !chunkPreview;
+  const promo = inactive ? promoForSlot(slotIndex) : null;
+
   return (
     <div
-      aria-label={label}
+      aria-label={promo ? promo.title : label}
       className={`live-rooms-preview-tile ${className ?? ""}`}
       role="group"
     >
@@ -176,11 +298,19 @@ function LiveTile({
           src={image}
         />
       )}
-      <TileUserLabel
-        author={author}
-        label={label}
-        labelPosition={labelPosition}
-      />
+      {promo ? (
+        <InactiveTilePromoOverlay
+          promo={promo}
+          onGoLive={onGoLive}
+          onUpgrade={onUpgrade}
+        />
+      ) : (
+        <TileUserLabel
+          author={author}
+          label={label}
+          labelPosition={labelPosition}
+        />
+      )}
     </div>
   );
 }
@@ -194,6 +324,7 @@ export function ImmersiveRoom({
   onNeedSignInToGoLive,
   onBroadcastRemaining,
   onBroadcastLimitReached,
+  onRequestUpgrade,
   staticPreviewOnly = false,
   blurred = false
 }: {
@@ -207,6 +338,7 @@ export function ImmersiveRoom({
   /** Free broadcast remaining after a flush or live tick. */
   onBroadcastRemaining?: (remainingSeconds: number | null) => void;
   onBroadcastLimitReached?: () => void;
+  onRequestUpgrade?: () => void;
   /** Force static images only — used when view limit hits. */
   staticPreviewOnly?: boolean;
   /** Blur the room UI under a limit modal. */
@@ -218,10 +350,10 @@ export function ImmersiveRoom({
     : LIVE_DISCOVERY_PAGE_SIZE;
   const discoverySlotCountRef = useRef(discoverySlotCount);
   discoverySlotCountRef.current = discoverySlotCount;
-  const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
-  const [liveSetIndex, setLiveSetIndex] = useState(0);
+  const liveSets = useMemo(() => getRoomLiveSets(room, 1), [room]);
+  const [roomPage, setRoomPage] = useState(0);
   const [layout, setLayout] = useState<RoomLiveSet>(() =>
-    cloneLiveSet(liveSets[0] ?? getRoomLiveSets(room)[0])
+    cloneLiveSet(liveSets[0] ?? getRoomLiveSets(room, 1)[0])
   );
   const [selfMainSlot, setSelfMainSlot] = useState<0 | 1>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -234,12 +366,22 @@ export function ImmersiveRoom({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [tabHidden, setTabHidden] = useState(false);
   const [viewTimerPercent, setViewTimerPercent] = useState<number | null>(null);
+  const [messages, setMessages] = useState<LobbyMessageView[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatLoading, setChatLoading] = useState(true);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunkRecorderRef = useRef<ChunkRecorder | null>(null);
   /** R2 live_sessions row id. */
   const liveR2SessionIdRef = useRef<string | null>(null);
   const liveEpochRef = useRef(0);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const profileCacheRef = useRef(
+    new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
+  );
+  const supabase = useMemo(() => createClient(), []);
   const [liveSlots, setLiveSlots] = useState<(LiveSessionView | null)[]>(() =>
     Array.from({ length: LIVE_DISCOVERY_PAGE_SIZE }, () => null)
   );
@@ -258,7 +400,9 @@ export function ImmersiveRoom({
   const broadcastBudgetRef = useRef<number | null>(null);
   const broadcastFlushedRef = useRef(0);
   const broadcastLimitNotifiedRef = useRef(false);
-  const activeSet = liveSets[liveSetIndex] ?? liveSets[0];
+  const activeSet = liveSets[0];
+  const ROOM_PAGE_COUNT = 2;
+  const onDiscoveryPage = roomPage === 0;
 
   const showViewTimer =
     tier === "guest" &&
@@ -319,7 +463,7 @@ export function ImmersiveRoom({
   useEffect(() => {
     setLayout(cloneLiveSet(activeSet));
     setSelfMainSlot(0);
-  }, [liveSetIndex, liveSets]);
+  }, [activeSet, liveSets]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -330,7 +474,7 @@ export function ImmersiveRoom({
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
-  const pauseIncoming = tabHidden;
+  const pauseIncoming = tabHidden || !onDiscoveryPage;
 
   const attachStreamToVideo = useCallback((video: HTMLVideoElement | null) => {
     videoRef.current = video;
@@ -343,12 +487,12 @@ export function ImmersiveRoom({
     });
   }, []);
 
-  const showPreviousSet = () => {
-    setLiveSetIndex((index) => (index - 1 + liveSets.length) % liveSets.length);
+  const showPreviousPage = () => {
+    setRoomPage((page) => (page - 1 + ROOM_PAGE_COUNT) % ROOM_PAGE_COUNT);
   };
 
-  const showNextSet = () => {
-    setLiveSetIndex((index) => (index + 1) % liveSets.length);
+  const showNextPage = () => {
+    setRoomPage((page) => (page + 1) % ROOM_PAGE_COUNT);
   };
 
   const stopCamera = useCallback(() => {
@@ -645,6 +789,114 @@ export function ImmersiveRoom({
 
   const discoveryEnabled = !staticPreviewOnly;
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setChatLoading(true);
+      setChatError(null);
+      try {
+        const rows = await listLobbyMessages(supabase);
+        if (cancelled) return;
+        setMessages(rows);
+        for (const row of rows) {
+          profileCacheRef.current.set(row.senderId, {
+            id: row.senderId,
+            display_name: row.author === "Athlete" ? null : row.author,
+            username: row.handle.startsWith("@")
+              ? row.handle.slice(1)
+              : row.handle,
+            avatar_url: row.avatar
+          });
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setChatError(
+            caught instanceof Error
+              ? caught.message
+              : "Could not load lobby chat."
+          );
+        }
+      } finally {
+        if (!cancelled) setChatLoading(false);
+      }
+    };
+
+    void load();
+
+    const channel = supabase
+      .channel(`lobby-chat-room-${room.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "lobby_messages"
+        },
+        (payload) => {
+          const row = payload.new as DbLobbyMessage;
+          void (async () => {
+            let profile = profileCacheRef.current.get(row.sender_id) ?? null;
+            if (!profile) {
+              try {
+                profile = await fetchLobbySenderProfile(
+                  supabase,
+                  row.sender_id
+                );
+                if (profile) {
+                  profileCacheRef.current.set(row.sender_id, profile);
+                }
+              } catch {
+                profile = null;
+              }
+            }
+
+            const view = mapDbLobbyMessageToView(row, profile);
+            setMessages((prev) => {
+              if (prev.some((message) => message.id === view.id)) return prev;
+              return [...prev, view];
+            });
+          })();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [room.id, supabase]);
+
+  useEffect(() => {
+    if (roomPage !== 1 || chatLoading) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, roomPage, chatLoading]);
+
+  const sendChatMessage = async () => {
+    const text = chatDraft.trim();
+    if (!text || chatSending) return;
+    if (tier === "guest") {
+      setChatError("Sign in to join the conversation.");
+      return;
+    }
+    setChatSending(true);
+    setChatError(null);
+    try {
+      const created = await sendLobbyMessage(supabase, text);
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === created.id)) return prev;
+        return [...prev, created];
+      });
+      setChatDraft("");
+    } catch (caught) {
+      setChatError(
+        caught instanceof Error ? caught.message : "Could not send message."
+      );
+    } finally {
+      setChatSending(false);
+    }
+  };
+
   const fetchEndedArchives = useCallback(
     async (options: {
       limit: number;
@@ -867,9 +1119,9 @@ export function ImmersiveRoom({
     liveSlots
   ]);
 
-  // While any tile is empty, re-check for new live sessions once a minute.
+  // While any tile is empty on the live page, re-check for new live sessions once a minute.
   useEffect(() => {
-    if (!discoveryEnabled || !hasEmptyDiscoveryTile) return;
+    if (!discoveryEnabled || !onDiscoveryPage || !hasEmptyDiscoveryTile) return;
 
     let cancelled = false;
     const EMPTY_TILE_POLL_MS = 60_000;
@@ -937,7 +1189,13 @@ export function ImmersiveRoom({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [discoveryEnabled, discoverySlotCount, hasEmptyDiscoveryTile, room.id]);
+  }, [
+    discoveryEnabled,
+    discoverySlotCount,
+    hasEmptyDiscoveryTile,
+    onDiscoveryPage,
+    room.id
+  ]);
 
   const liveSessionForSlot = useCallback(
     (slot: number) => {
@@ -993,6 +1251,11 @@ export function ImmersiveRoom({
     void startCamera();
   };
 
+  const startBroadcastFromPromo = () => {
+    if (isLive || isGoingLive || staticPreviewOnly) return;
+    void startCamera();
+  };
+
   useEffect(() => {
     const syncFullscreen = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -1034,14 +1297,14 @@ export function ImmersiveRoom({
           <button
             type="button"
             className="live-rooms-immersive-nav"
-            aria-label="Previous lives"
-            onClick={showPreviousSet}
+            aria-label="Previous page"
+            onClick={showPreviousPage}
           >
             &lt;
           </button>
           <h1 className="live-rooms-immersive-title">
-            {room.title}
-            {tier === "free" && remainingSeconds !== null ? (
+            {onDiscoveryPage ? room.title : "Messages"}
+            {onDiscoveryPage && tier === "free" && remainingSeconds !== null ? (
               <span className="live-rooms-immersive-quota">
                 {" "}
                 · {formatRemainingTime(remainingSeconds)} broadcast
@@ -1051,8 +1314,8 @@ export function ImmersiveRoom({
           <button
             type="button"
             className="live-rooms-immersive-nav"
-            aria-label="Next lives"
-            onClick={showNextSet}
+            aria-label="Next page"
+            onClick={showNextPage}
           >
             &gt;
           </button>
@@ -1114,7 +1377,93 @@ export function ImmersiveRoom({
       ) : null}
 
       <div className="live-rooms-immersive-body">
-        {!discoveryReady ? (
+        {!onDiscoveryPage ? (
+          <section className="live-rooms-messages-page" aria-label="Lobby messages">
+            <div className="live-rooms-messages-list">
+              {chatLoading ? (
+                <p className="live-rooms-messages-status">Loading messages…</p>
+              ) : null}
+              {!chatLoading && messages.length === 0 ? (
+                <p className="live-rooms-messages-status">
+                  No messages yet. Say hello to the lobby.
+                </p>
+              ) : null}
+              {messages.map((message) => (
+                <article className="live-rooms-messages-item" key={message.id}>
+                  <div className="live-rooms-messages-top">
+                    <span className="live-rooms-messages-avatar">
+                      <Image
+                        alt=""
+                        className="room-select-avatar-image"
+                        fill
+                        sizes="40px"
+                        src={message.avatar}
+                        unoptimized={isRemoteSrc(message.avatar)}
+                      />
+                    </span>
+                    <div>
+                      <p className="live-rooms-messages-author">
+                        {message.author}
+                      </p>
+                      <p className="live-rooms-messages-handle">
+                        {message.handle}
+                      </p>
+                    </div>
+                    <time
+                      className="live-rooms-messages-time"
+                      dateTime={message.createdAt}
+                    >
+                      {formatLobbyRelativeTime(message.createdAt)}
+                    </time>
+                  </div>
+                  <p className="live-rooms-messages-text">{message.text}</p>
+                </article>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+            {chatError ? (
+              <p className="live-rooms-messages-error">{chatError}</p>
+            ) : null}
+            <form
+              className="live-rooms-messages-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendChatMessage();
+              }}
+            >
+              <label className="sr-only" htmlFor="immersive-chat-input">
+                Type a message
+              </label>
+              <textarea
+                id="immersive-chat-input"
+                className="live-rooms-messages-input"
+                maxLength={LOBBY_MESSAGE_MAX_LENGTH}
+                onChange={(event) => setChatDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendChatMessage();
+                  }
+                }}
+                placeholder={
+                  tier === "guest"
+                    ? "Sign in to message the lobby…"
+                    : "Message the lobby…"
+                }
+                rows={2}
+                value={chatDraft}
+                disabled={chatSending || tier === "guest"}
+              />
+              <button
+                className="live-rooms-messages-send"
+                type="submit"
+                disabled={!chatDraft.trim() || chatSending || tier === "guest"}
+              >
+                {chatSending ? "…" : "Send"}
+              </button>
+            </form>
+          </section>
+        ) : !discoveryReady ? (
           <div
             className="live-rooms-discovery-loading"
             role="status"
@@ -1150,7 +1499,7 @@ export function ImmersiveRoom({
                 <div
                   aria-label={isSelfSlot ? "Your live feed" : tileLabel}
                   className="live-rooms-preview-tile live-rooms-immersive-pinned-tile"
-                  key={`pinned-${room.id}-${liveSetIndex}-${feed.name}-${index}`}
+                  key={`pinned-${room.id}-${feed.name}-${index}`}
                   role="group"
                 >
                   {isSelfSlot ? (
@@ -1175,16 +1524,24 @@ export function ImmersiveRoom({
                       r2Folder={chunkPreview.r2Folder}
                     />
                   ) : (
-                    <Image
-                      alt=""
-                      className="live-rooms-featured-image"
-                      fill
-                      priority={index === 0}
-                      sizes="(max-width: 960px) 50vw, 38vw"
-                      src={feed.image}
-                    />
+                    <>
+                      <Image
+                        alt=""
+                        className="live-rooms-featured-image"
+                        fill
+                        priority={index === 0}
+                        sizes="(max-width: 960px) 50vw, 38vw"
+                        src={feed.image}
+                      />
+                      <InactiveTilePromoOverlay
+                        featured
+                        promo={promoForSlot(archiveSlot)}
+                        onGoLive={startBroadcastFromPromo}
+                        onUpgrade={onRequestUpgrade}
+                      />
+                    </>
                   )}
-                  {!isSelfSlot ? (
+                  {!isSelfSlot && chunkPreview ? (
                     <TileUserLabel
                       author={tileAuthor}
                       label={tileLabel}
@@ -1224,10 +1581,13 @@ export function ImmersiveRoom({
                     chunkPreview={chunkPreview}
                     className="live-rooms-immersive-bottom-tile"
                     image={participant.image}
-                    key={`grid-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+                    key={`grid-${room.id}-${participant.name}-${index}`}
                     label={tileLabel}
                     labelPosition="center"
+                    onGoLive={startBroadcastFromPromo}
+                    onUpgrade={onRequestUpgrade}
                     sizes="(max-width: 960px) 50vw, 180px"
+                    slotIndex={slot}
                     paused={pauseIncoming}
                   />
                 );
@@ -1256,9 +1616,12 @@ export function ImmersiveRoom({
                   chunkPreview={chunkPreview}
                   className="live-rooms-immersive-rail-tile"
                   image={participant.image}
-                  key={`rail-${room.id}-${liveSetIndex}-${participant.name}-${index}`}
+                  key={`rail-${room.id}-${participant.name}-${index}`}
                   label={tileLabel}
+                  onGoLive={startBroadcastFromPromo}
+                  onUpgrade={onRequestUpgrade}
                   sizes="200px"
+                  slotIndex={slot}
                   paused={pauseIncoming}
                 />
               );
