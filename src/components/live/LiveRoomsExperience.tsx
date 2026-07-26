@@ -32,6 +32,7 @@ import {
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   getRoomLiveSets,
+  isRoomComingSoon,
   WORKOUT_ROOMS,
   type RoomLiveSet,
   type WorkoutRoom
@@ -68,6 +69,8 @@ function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
 }
 
 const MOBILE_VIEWPORT_QUERY = "(max-width: 960px)";
+/** Pinned (2) + bottom (2); rail is hidden on mobile. */
+const MOBILE_DISCOVERY_SLOT_COUNT = 4;
 
 function useIsMobileViewport() {
   const [isMobile, setIsMobile] = useState(false);
@@ -210,6 +213,11 @@ export function ImmersiveRoom({
   blurred?: boolean;
 }) {
   const isMobileViewport = useIsMobileViewport();
+  const discoverySlotCount = isMobileViewport
+    ? MOBILE_DISCOVERY_SLOT_COUNT
+    : LIVE_DISCOVERY_PAGE_SIZE;
+  const discoverySlotCountRef = useRef(discoverySlotCount);
+  discoverySlotCountRef.current = discoverySlotCount;
   const liveSets = useMemo(() => getRoomLiveSets(room), [room]);
   const [liveSetIndex, setLiveSetIndex] = useState(0);
   const [layout, setLayout] = useState<RoomLiveSet>(() =>
@@ -676,6 +684,7 @@ export function ImmersiveRoom({
       const usedUserIds = new Set<string>();
       const reserveSelf = selfSlotReservedRef.current;
       const fillStart = reserveSelf ? 1 : 0;
+      const slotCount = discoverySlotCountRef.current;
 
       for (const session of live) {
         if (!session) continue;
@@ -687,7 +696,7 @@ export function ImmersiveRoom({
       }
 
       // Keep existing archive assignments on still-empty live slots when possible.
-      for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+      for (let index = fillStart; index < slotCount; index++) {
         if (live[index]) continue;
         const existing = previousArchives[index];
         if (
@@ -702,7 +711,7 @@ export function ImmersiveRoom({
       }
 
       const emptyIndexes: number[] = [];
-      for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+      for (let index = fillStart; index < slotCount; index++) {
         if (!live[index] && !nextArchives[index]) {
           emptyIndexes.push(index);
         }
@@ -794,8 +803,9 @@ export function ImmersiveRoom({
 
     const loadDiscovery = async () => {
       try {
+        const slotCount = discoverySlotCountRef.current;
         const response = await fetch(
-          `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${LIVE_DISCOVERY_PAGE_SIZE}`
+          `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${slotCount}`
         );
         if (cancelled) return;
         if (response.ok) {
@@ -809,17 +819,13 @@ export function ImmersiveRoom({
           const reserveSelf = selfSlotReservedRef.current;
           const nextLive = emptyDiscoverySlots();
           if (reserveSelf) {
-            sessions
-              .slice(0, LIVE_DISCOVERY_PAGE_SIZE - 1)
-              .forEach((session, index) => {
-                nextLive[index + 1] = session;
-              });
+            sessions.slice(0, slotCount - 1).forEach((session, index) => {
+              nextLive[index + 1] = session;
+            });
           } else {
-            sessions
-              .slice(0, LIVE_DISCOVERY_PAGE_SIZE)
-              .forEach((session, index) => {
-                nextLive[index] = session;
-              });
+            sessions.slice(0, slotCount).forEach((session, index) => {
+              nextLive[index] = session;
+            });
           }
           if (cancelled) return;
           setLiveSlots(nextLive);
@@ -844,16 +850,22 @@ export function ImmersiveRoom({
     return () => {
       cancelled = true;
     };
-  }, [discoveryEnabled, fillArchiveSlots, room.id]);
+  }, [discoveryEnabled, discoverySlotCount, fillArchiveSlots, room.id]);
 
   const hasEmptyDiscoveryTile = useMemo(() => {
     if (!discoveryEnabled) return false;
     const fillStart = isLive ? 1 : 0;
-    for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+    for (let index = fillStart; index < discoverySlotCount; index++) {
       if (!liveSlots[index] && !archiveSlots[index]) return true;
     }
     return false;
-  }, [archiveSlots, discoveryEnabled, isLive, liveSlots]);
+  }, [
+    archiveSlots,
+    discoveryEnabled,
+    discoverySlotCount,
+    isLive,
+    liveSlots
+  ]);
 
   // While any tile is empty, re-check for new live sessions once a minute.
   useEffect(() => {
@@ -867,9 +879,10 @@ export function ImmersiveRoom({
       const archives = archiveSlotsRef.current;
       const reserveSelf = selfSlotReservedRef.current;
       const fillStart = reserveSelf ? 1 : 0;
+      const slotCount = discoverySlotCountRef.current;
 
       const emptyIndexes: number[] = [];
-      for (let index = fillStart; index < LIVE_DISCOVERY_PAGE_SIZE; index++) {
+      for (let index = fillStart; index < slotCount; index++) {
         if (!live[index] && !archives[index]) {
           emptyIndexes.push(index);
         }
@@ -878,7 +891,7 @@ export function ImmersiveRoom({
 
       try {
         const response = await fetch(
-          `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${LIVE_DISCOVERY_PAGE_SIZE}`
+          `/api/live/sessions?roomId=${encodeURIComponent(room.id)}&limit=${slotCount}`
         );
         if (!response.ok || cancelled) return;
         const data = (await response.json()) as {
@@ -924,7 +937,7 @@ export function ImmersiveRoom({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [discoveryEnabled, hasEmptyDiscoveryTile, room.id]);
+  }, [discoveryEnabled, discoverySlotCount, hasEmptyDiscoveryTile, room.id]);
 
   const liveSessionForSlot = useCallback(
     (slot: number) => {
@@ -1259,7 +1272,15 @@ export function ImmersiveRoom({
   );
 }
 
-function PrivateRoomComingSoonModal({ onClose }: { onClose: () => void }) {
+function ComingSoonModal({
+  title,
+  body,
+  onClose
+}: {
+  title: string;
+  body: string;
+  onClose: () => void;
+}) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -1286,11 +1307,8 @@ function PrivateRoomComingSoonModal({ onClose }: { onClose: () => void }) {
         aria-labelledby="room-coming-soon-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3 id="room-coming-soon-title">Coming Soon 🚀</h3>
-        <p>
-          Private Sessions will let trainers and gyms host invitation-only live
-          workouts, coaching sessions, and fitness classes.
-        </p>
+        <h3 id="room-coming-soon-title">{title}</h3>
+        <p>{body}</p>
         <p className="room-coming-soon-stay">Stay tuned.</p>
         <div className="room-coming-soon-actions">
           <button
@@ -1319,6 +1337,9 @@ export function LiveRoomsExperience() {
   const [messages, setMessages] = useState<LobbyMessageView[]>([]);
   const [chatMinimized, setChatMinimized] = useState(true);
   const [privateRoomModalOpen, setPrivateRoomModalOpen] = useState(false);
+  const [comingSoonRoomTitle, setComingSoonRoomTitle] = useState<string | null>(
+    null
+  );
   const [chatLoading, setChatLoading] = useState(true);
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -1505,8 +1526,9 @@ export function LiveRoomsExperience() {
 
           <div className="room-select-grid">
             {filteredRooms.map((room) => {
-              const locked = !canAccessRoom(tier, room.id);
-              if (locked) {
+              const comingSoon = isRoomComingSoon(room.id);
+              const guestLocked = !comingSoon && !canAccessRoom(tier, room.id);
+              if (comingSoon || guestLocked) {
                 return (
                   <div
                     className="room-select-card is-locked"
@@ -1523,15 +1545,30 @@ export function LiveRoomsExperience() {
                     </div>
                     <div className="room-select-card-body">
                       <strong>{room.title}</strong>
-                      <span>Locked</span>
+                      <span>{comingSoon ? "Coming soon" : "Locked"}</span>
                     </div>
                     <button
                       type="button"
                       className="room-select-card-lock"
-                      onClick={() => setUpgradeReason("locked_room")}
+                      onClick={() => {
+                        if (comingSoon) {
+                          setComingSoonRoomTitle(room.title);
+                          return;
+                        }
+                        setUpgradeReason("locked_room");
+                      }}
                     >
-                      <strong>Sign in to unlock</strong>
-                      <span>Guests can try {GUEST_ROOM_ID}</span>
+                      {comingSoon ? (
+                        <>
+                          <strong>Coming soon</strong>
+                          <span>Stay tuned</span>
+                        </>
+                      ) : (
+                        <>
+                          <strong>Sign in to unlock</strong>
+                          <span>Guests can try {GUEST_ROOM_ID}</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 );
@@ -1726,8 +1763,18 @@ export function LiveRoomsExperience() {
       </div>
 
       {privateRoomModalOpen ? (
-        <PrivateRoomComingSoonModal
+        <ComingSoonModal
+          title="Coming Soon"
+          body="Private Sessions will let trainers and gyms host invitation-only live workouts, coaching sessions, and fitness classes."
           onClose={() => setPrivateRoomModalOpen(false)}
+        />
+      ) : null}
+
+      {comingSoonRoomTitle ? (
+        <ComingSoonModal
+          title={`${comingSoonRoomTitle} — Coming Soon`}
+          body={`The ${comingSoonRoomTitle} room isn’t open yet. We’re building more live spaces — check back soon.`}
+          onClose={() => setComingSoonRoomTitle(null)}
         />
       ) : null}
 

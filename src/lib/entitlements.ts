@@ -1,3 +1,5 @@
+import { isRoomComingSoon } from "@/lib/rooms";
+
 export type Tier = "guest" | "free" | "premium";
 
 export type ProfilePlan = "free" | "premium";
@@ -25,6 +27,7 @@ export function getTier(options: {
 }
 
 export function canAccessRoom(tier: Tier, roomId: string): boolean {
+  if (isRoomComingSoon(roomId)) return false;
   if (tier === "guest") return roomId === GUEST_ROOM_ID;
   return true;
 }

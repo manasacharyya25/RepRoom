@@ -73,32 +73,32 @@ function avatarsForRoom(offset: number): LiveParticipant[] {
 
 export const WORKOUT_ROOMS: WorkoutRoom[] = [
   {
+    id: "workout",
+    icon: "💪",
+    name: "Workout",
+    title: "Workout",
+    description: "Lifts, conditioning, and form checks.",
+    liveCount: 38,
+    roomNumber: 1,
+    coverImage: LIVE_IMAGES.participant3,
+    pinnedFeeds: pinnedFeedsForRoom(2),
+    participants: avatarsForRoom(2),
+    sidebarParticipants: sidebarForRoom(1),
+    gridParticipants: gridForRoom(2)
+  },
+  {
     id: "yoga",
     icon: "🧘",
     name: "Yoga",
     title: "Yoga",
     description: "Stretch, breathe, and flow together.",
     liveCount: 28,
-    roomNumber: 1,
+    roomNumber: 2,
     coverImage: LIVE_IMAGES.participant2,
     pinnedFeeds: pinnedFeedsForRoom(1),
     participants: avatarsForRoom(1),
     sidebarParticipants: sidebarForRoom(2),
     gridParticipants: gridForRoom(1)
-  },
-  {
-    id: "cardio",
-    icon: "🏃",
-    name: "Cardio",
-    title: "Cardio",
-    description: "High-energy sweat sessions.",
-    liveCount: 41,
-    roomNumber: 2,
-    coverImage: LIVE_IMAGES.participant1,
-    pinnedFeeds: pinnedFeedsForRoom(4),
-    participants: avatarsForRoom(4),
-    sidebarParticipants: sidebarForRoom(3),
-    gridParticipants: gridForRoom(4)
   },
   {
     id: "zumba",
@@ -115,18 +115,18 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
     gridParticipants: gridForRoom(6)
   },
   {
-    id: "workout",
-    icon: "💪",
-    name: "Workout",
-    title: "Workout",
-    description: "Lifts, conditioning, and form checks.",
-    liveCount: 38,
+    id: "cardio",
+    icon: "🏃",
+    name: "Cardio",
+    title: "Cardio",
+    description: "High-energy sweat sessions.",
+    liveCount: 41,
     roomNumber: 4,
-    coverImage: LIVE_IMAGES.participant3,
-    pinnedFeeds: pinnedFeedsForRoom(2),
-    participants: avatarsForRoom(2),
-    sidebarParticipants: sidebarForRoom(1),
-    gridParticipants: gridForRoom(2)
+    coverImage: LIVE_IMAGES.participant1,
+    pinnedFeeds: pinnedFeedsForRoom(4),
+    participants: avatarsForRoom(4),
+    sidebarParticipants: sidebarForRoom(3),
+    gridParticipants: gridForRoom(4)
   },
   {
     id: "meditation",
@@ -146,11 +146,21 @@ export const WORKOUT_ROOMS: WorkoutRoom[] = [
 
 export const DEFAULT_ROOM_ID: RoomId = "workout";
 
-const ROOM_IDS = new Set<RoomId>([
-  "yoga",
+/** Rooms shown in the list but not joinable yet. */
+export const COMING_SOON_ROOM_IDS: ReadonlySet<RoomId> = new Set([
   "cardio",
-  "zumba",
+  "meditation"
+]);
+
+export function isRoomComingSoon(roomId: string): boolean {
+  return COMING_SOON_ROOM_IDS.has(roomId as RoomId);
+}
+
+const ROOM_IDS = new Set<RoomId>([
   "workout",
+  "yoga",
+  "zumba",
+  "cardio",
   "meditation"
 ]);
 
