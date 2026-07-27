@@ -157,9 +157,10 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
   };
 
   const onImageFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
+    // Snapshot before clearing — FileList is live and empties when value is reset.
+    const selected = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!files?.length) return;
+    if (!selected.length) return;
 
     const remainingSlots = 5 - libraryImages.length;
     if (remainingSlots <= 0) {
@@ -167,7 +168,7 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
       return;
     }
 
-    const toUpload = Array.from(files).slice(0, remainingSlots);
+    const toUpload = selected.slice(0, remainingSlots);
     setImageUploadBusy(true);
     setImageError(null);
 

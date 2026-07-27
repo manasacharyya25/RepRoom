@@ -32,9 +32,10 @@ export function heightToCm(input: {
 export function slugifyUsername(value: string) {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 20);
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^[_-]+|[_-]+$/g, "")
+    .slice(0, 32)
+    .replace(/[_-]+$/g, "");
 }
 
 export function stripCacheBust(url: string) {

@@ -21,7 +21,9 @@ const WAITLIST_ALLOWED_PATHS = new Set([
 const WAITLIST_ALLOWED_PREFIXES = [
   "/api/waitlist",
   "/onboard",
-  "/api/onboarding-record"
+  "/api/onboarding-record",
+  "/rhoq-admin",
+  "/api/rhoq-admin"
 ];
 
 function isWaitlistAllowed(pathname: string): boolean {

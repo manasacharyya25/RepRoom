@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { uploadImage } from "@/lib/media";
+import { compressImage, validateImageFile } from "@/lib/media/compress-image";
+import { IMAGE_PRESETS } from "@/lib/media/presets";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import type {
   CreatePostInput,
@@ -10,7 +11,6 @@ import type {
 } from "@/lib/types/post";
 import { COMMENT_MAX_LENGTH } from "@/lib/types/post";
 
-export const POSTS_BUCKET = "posts" as const;
 export const POSTS_PAGE_SIZE = 9;
 export const FEED_PAGE_SIZE = 100;
 
@@ -19,24 +19,33 @@ function clampProgress(value: number) {
 }
 
 async function uploadPostImage(
-  supabase: SupabaseClient,
-  userId: string,
   file: File,
   kind: "post" | "before" | "after"
 ) {
-  const path = `${userId}/${kind}-${Date.now()}.webp`;
+  const validationError = validateImageFile(file, "post");
+  if (validationError) {
+    throw new Error(validationError);
+  }
 
-  const { publicUrl } = await uploadImage(supabase, {
-    bucket: POSTS_BUCKET,
-    path,
-    file,
-    preset: "post",
-    compress: true,
-    validate: true,
-    upsert: true
+  const prepared = await compressImage(file, IMAGE_PRESETS.post);
+  const form = new FormData();
+  form.append("file", prepared, `post-${kind}.webp`);
+  form.append("kind", kind);
+
+  const response = await fetch("/api/posts/upload-image", {
+    method: "POST",
+    body: form
   });
+  const data = (await response.json().catch(() => null)) as {
+    publicUrl?: string;
+    error?: string;
+  } | null;
 
-  return publicUrl;
+  if (!response.ok || !data?.publicUrl) {
+    throw new Error(data?.error || "Could not upload image");
+  }
+
+  return data.publicUrl;
 }
 
 export type ListUserPostsPage = {
@@ -227,26 +236,16 @@ export async function createPost(
       throw new Error("Before and after photos are required.");
     }
     report(15);
-    beforeImageUrl = await uploadPostImage(
-      supabase,
-      userId,
-      input.beforeFile,
-      "before"
-    );
+    beforeImageUrl = await uploadPostImage(input.beforeFile, "before");
     report(45);
-    afterImageUrl = await uploadPostImage(
-      supabase,
-      userId,
-      input.afterFile,
-      "after"
-    );
+    afterImageUrl = await uploadPostImage(input.afterFile, "after");
     report(75);
   } else {
     if (!input.imageFile) {
       throw new Error("A photo is required for this post type.");
     }
     report(20);
-    imageUrl = await uploadPostImage(supabase, userId, input.imageFile, "post");
+    imageUrl = await uploadPostImage(input.imageFile, "post");
     report(75);
   }
 
