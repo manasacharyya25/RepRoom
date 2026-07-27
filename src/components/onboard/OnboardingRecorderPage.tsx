@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { BrandName, Logo } from "@/components/brand/Logo";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
@@ -12,6 +12,30 @@ import {
   startChunkRecorder,
   type ChunkRecorder
 } from "@/lib/streaming/chunk-recorder";
+import { OnboardingSessionPlayer } from "@/components/onboard/OnboardingSessionPlayer";
+
+type LibraryRecording = {
+  sessionId: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  lastChunkNumber: number;
+  r2Folder: string;
+};
+
+const GO_LIVE_AVOID_EXAMPLES = [
+  { src: "/images/onboard/avoid-1.png", alt: "Camera pointed at the ceiling; only the top of your head is visible" },
+  { src: "/images/onboard/avoid-2.png", alt: "Camera too close to equipment; workout not visible" },
+  { src: "/images/onboard/avoid-3.png", alt: "Person mostly out of frame with empty wall in view" },
+  { src: "/images/onboard/avoid-4.png", alt: "Low angle blocked by a bench; body not in frame" }
+] as const;
+
+type LibraryImage = {
+  imageId: string;
+  publicUrl: string | null;
+  originalFilename: string | null;
+  createdAt: string;
+};
 
 type StatusPayload = {
   authenticated?: boolean;
@@ -49,7 +73,14 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [elapsedLive, setElapsedLive] = useState(0);
+  const [recordings, setRecordings] = useState<LibraryRecording[]>([]);
+  const [libraryImages, setLibraryImages] = useState<LibraryImage[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [showGoLivePrep, setShowGoLivePrep] = useState(false);
 
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<ChunkRecorder | null>(null);
@@ -90,6 +121,92 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  const refreshLibrary = useCallback(async () => {
+    if (!authenticated) return;
+    setLibraryLoading(true);
+    try {
+      const response = await fetch("/api/onboarding-record/library");
+      const data = (await response.json().catch(() => null)) as {
+        recordings?: LibraryRecording[];
+        images?: LibraryImage[];
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        setImageError(data?.error ?? "Could not load your uploads.");
+        return;
+      }
+      setRecordings(data?.recordings ?? []);
+      setLibraryImages(data?.images ?? []);
+      setImageError(null);
+    } catch {
+      setImageError("Could not load your uploads.");
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, [authenticated]);
+
+  useEffect(() => {
+    if (authenticated) {
+      void refreshLibrary();
+    }
+  }, [authenticated, refreshLibrary]);
+
+  const onPickImages = () => {
+    imageInputRef.current?.click();
+  };
+
+  const onImageFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    event.target.value = "";
+    if (!files?.length) return;
+
+    const remainingSlots = 5 - libraryImages.length;
+    if (remainingSlots <= 0) {
+      setImageError("You can upload up to 5 images.");
+      return;
+    }
+
+    const toUpload = Array.from(files).slice(0, remainingSlots);
+    setImageUploadBusy(true);
+    setImageError(null);
+
+    for (const file of toUpload) {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("filename", file.name);
+      try {
+        const response = await fetch("/api/onboarding-record/images/upload", {
+          method: "POST",
+          body: form
+        });
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (!response.ok) {
+          setImageError(data?.error ?? "Could not upload image.");
+          break;
+        }
+      } catch {
+        setImageError("Could not upload image.");
+        break;
+      }
+    }
+
+    setImageUploadBusy(false);
+    await refreshLibrary();
+  };
+
+  const formatSessionWhen = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short"
+      });
+    } catch {
+      return iso;
+    }
+  };
 
   const flushUsage = useCallback(async () => {
     const started = startedAtRef.current;
@@ -165,7 +282,8 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
     }
 
     void refreshStatus();
-  }, [flushUsage, refreshStatus]);
+    void refreshLibrary();
+  }, [flushUsage, refreshLibrary, refreshStatus]);
 
   const startLive = useCallback(async () => {
     setIsGoingLive(true);
@@ -394,132 +512,267 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
               </div>
             ) : null}
 
-            <div
-              className={`onboard-recorder-preview${
-                isLive ? "" : " onboard-recorder-preview--idle"
-              }`}
-            >
-              <video
-                autoPlay
-                className="onboard-recorder-video"
-                muted
-                playsInline
-                ref={videoRef}
-              />
-              {!isLive ? (
-                <div className="onboard-recorder-idle">
-                  <p className="onboard-recorder-idle-pill">
-                    Your camera preview appears when you go live
-                  </p>
+            <div className="onboard-recorder-workspace">
+              <div className="onboard-recorder-workspace-main">
+                <div
+                  className={`onboard-recorder-preview${
+                    isLive ? "" : " onboard-recorder-preview--idle"
+                  }`}
+                >
+                  <video
+                    autoPlay
+                    className="onboard-recorder-video"
+                    muted
+                    playsInline
+                    ref={videoRef}
+                  />
+                  {!isLive ? (
+                    <div className="onboard-recorder-idle">
+                      <p className="onboard-recorder-idle-pill">
+                        Your camera preview appears when you go live
+                      </p>
 
-                  <aside className="onboard-recorder-tip onboard-recorder-tip--left">
-                    <p className="onboard-recorder-tip-title">
-                      Welcome aboard
-                    </p>
-                    <ul>
-                      <li>Find a comfortable space</li>
-                      <li>Face the camera</li>
-                      <li>Move like a normal workout</li>
-                    </ul>
-                  </aside>
+                      <aside className="onboard-recorder-tip onboard-recorder-tip--left">
+                        <p className="onboard-recorder-tip-title">
+                          Welcome aboard
+                        </p>
+                        <ul>
+                          <li>Find a comfortable space</li>
+                          <li>Face the camera</li>
+                          <li>Move like a normal workout</li>
+                        </ul>
+                      </aside>
 
-                  <aside className="onboard-recorder-tip onboard-recorder-tip--right">
-                    <p className="onboard-recorder-tip-title">
-                      Community ready
-                    </p>
-                    <p>
-                      This intro helps match you with people and rooms that fit
-                      how you train.
-                    </p>
-                  </aside>
+                      <aside className="onboard-recorder-tip onboard-recorder-tip--right">
+                        <p className="onboard-recorder-tip-title">
+                          Community ready
+                        </p>
+                        <p>
+                          This intro helps match you with people and rooms that
+                          fit how you train.
+                        </p>
+                      </aside>
 
-                  <div className="onboard-recorder-mock-room" aria-hidden>
-                    <div className="onboard-recorder-mock-chrome">
-                      <span className="onboard-recorder-mock-brand">
-                        Rho<span>Q</span>
-                      </span>
-                    </div>
-                    <div className="onboard-recorder-mock-tiles">
-                      <div className="onboard-recorder-mock-tile onboard-recorder-mock-tile--side">
-                        <Image
-                          alt=""
-                          fill
-                          sizes="140px"
-                          src={LIVE_IMAGES.participant2}
-                          unoptimized
-                        />
+                      <div className="onboard-recorder-mock-room" aria-hidden>
+                        <div className="onboard-recorder-mock-chrome">
+                          <span className="onboard-recorder-mock-brand">
+                            Rho<span>Q</span>
+                          </span>
+                        </div>
+                        <div className="onboard-recorder-mock-tiles">
+                          <div className="onboard-recorder-mock-tile onboard-recorder-mock-tile--side">
+                            <Image
+                              alt=""
+                              fill
+                              sizes="140px"
+                              src={LIVE_IMAGES.participant2}
+                              unoptimized
+                            />
+                          </div>
+                          <div className="onboard-recorder-mock-tile onboard-recorder-mock-tile--main">
+                            <Image
+                              alt=""
+                              fill
+                              sizes="220px"
+                              src={LIVE_IMAGES.participant1}
+                              unoptimized
+                            />
+                          </div>
+                          <div className="onboard-recorder-mock-tile onboard-recorder-mock-tile--side">
+                            <Image
+                              alt=""
+                              fill
+                              sizes="140px"
+                              src={LIVE_IMAGES.participant3}
+                              unoptimized
+                            />
+                          </div>
+                        </div>
+                        <div className="onboard-recorder-mock-bar">
+                          <span />
+                          <span />
+                          <span />
+                          <span className="onboard-recorder-mock-bar-end" />
+                        </div>
                       </div>
-                      <div className="onboard-recorder-mock-tile onboard-recorder-mock-tile--main">
-                        <Image
-                          alt=""
-                          fill
-                          sizes="220px"
-                          src={LIVE_IMAGES.participant1}
-                          unoptimized
-                        />
-                      </div>
-                      <div className="onboard-recorder-mock-tile onboard-recorder-mock-tile--side">
-                        <Image
-                          alt=""
-                          fill
-                          sizes="140px"
-                          src={LIVE_IMAGES.participant3}
-                          unoptimized
-                        />
-                      </div>
                     </div>
-                    <div className="onboard-recorder-mock-bar">
-                      <span />
-                      <span />
-                      <span />
-                      <span className="onboard-recorder-mock-bar-end" />
-                    </div>
-                  </div>
+                  ) : (
+                    <span
+                      className="onboard-recorder-live-badge"
+                      aria-live="polite"
+                    >
+                      LIVE {formatClock(elapsedLive)}
+                    </span>
+                  )}
                 </div>
+
+                <div className="onboard-recorder-meta">
+                  {cameraError ? (
+                    <p className="onboard-recorder-error" role="alert">
+                      {cameraError}
+                    </p>
+                  ) : null}
+                  {uploadError ? (
+                    <p className="onboard-recorder-error" role="alert">
+                      Upload: {uploadError}
+                    </p>
+                  ) : null}
+                </div>
+
+                <button
+                  className={`onboard-recorder-live-btn${
+                    isLive ? " onboard-recorder-live-btn--end" : ""
+                  }`}
+                  disabled={isGoingLive}
+                  onClick={() => {
+                    if (isLive) void stopLive();
+                    else setShowGoLivePrep(true);
+                  }}
+                  type="button"
+                >
+                  {!isLive && !isGoingLive ? (
+                    <span className="onboard-recorder-live-btn-icon" aria-hidden>
+                      ▶
+                    </span>
+                  ) : null}
+                  {isGoingLive ? "Starting…" : isLive ? "End Live" : "Go Live"}
+                </button>
+
+                {!isLive ? (
+                  <p className="onboard-recorder-hint">
+                    This workout becomes the first of many workouts in RhoQ
+                    Community, inspiring future members to discover and work
+                    alongside you.
+                  </p>
+                ) : null}
+              </div>
+
+              <aside className="onboard-recorder-photos" aria-label="Upload photos">
+                <div className="onboard-recorder-photos-head">
+                  <h3>Photos</h3>
+                  <p>
+                    Add up to 5 images (JPEG, PNG, or WebP).
+                  </p>
+                </div>
+                <input
+                  accept="image/jpeg,image/png,image/webp"
+                  className="onboard-recorder-photos-input"
+                  multiple
+                  onChange={(e) => void onImageFilesSelected(e)}
+                  ref={imageInputRef}
+                  type="file"
+                />
+                <div className="onboard-recorder-photos-grid">
+                  {libraryImages.map((img) => (
+                    <div className="onboard-recorder-photo-slot" key={img.imageId}>
+                      {img.publicUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          alt={img.originalFilename ?? "Uploaded photo"}
+                          className="onboard-recorder-photo-thumb"
+                          src={img.publicUrl}
+                        />
+                      ) : (
+                        <span className="onboard-recorder-muted">Saved</span>
+                      )}
+                    </div>
+                  ))}
+                  {Array.from({
+                    length: Math.max(
+                      0,
+                      5 - libraryImages.length
+                    )
+                  }).map((_, index) => (
+                    <button
+                      className="onboard-recorder-photo-slot onboard-recorder-photo-slot--add"
+                      disabled={imageUploadBusy}
+                      key={`empty-${index}`}
+                      onClick={onPickImages}
+                      type="button"
+                    >
+                      {imageUploadBusy ? "…" : "+"}
+                    </button>
+                  ))}
+                </div>
+                {imageError ? (
+                  <p className="onboard-recorder-error" role="alert">
+                    {imageError}
+                  </p>
+                ) : null}
+                <p className="onboard-recorder-photos-count">
+                  {libraryImages.length} / 5 uploaded
+                </p>
+              </aside>
+            </div>
+
+            <section className="onboard-recorder-library" aria-label="Your uploads">
+              <h3>Your uploads</h3>
+              {libraryLoading ? (
+                <p className="onboard-recorder-muted">Loading…</p>
               ) : (
-                <span className="onboard-recorder-live-badge" aria-live="polite">
-                  LIVE {formatClock(elapsedLive)}
-                </span>
+                <>
+                  <div className="onboard-recorder-library-block">
+                    <h4>Recordings</h4>
+                    {recordings.length === 0 ? (
+                      <p className="onboard-recorder-muted">
+                        No recordings yet. Go live to create your first session.
+                      </p>
+                    ) : (
+                      <ul className="onboard-recorder-recording-list">
+                        {recordings.map((rec) => (
+                          <li key={rec.sessionId}>
+                            <div className="onboard-recorder-recording-card">
+                              <div className="onboard-recorder-recording-player">
+                                <OnboardingSessionPlayer
+                                  lastChunkNumber={rec.lastChunkNumber}
+                                  r2Folder={rec.r2Folder}
+                                />
+                              </div>
+                              <div className="onboard-recorder-recording-meta">
+                                <p>
+                                  <strong>
+                                    {formatSessionWhen(rec.startedAt)}
+                                  </strong>
+                                </p>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="onboard-recorder-library-block">
+                    <h4>Photos</h4>
+                    {libraryImages.length === 0 ? (
+                      <p className="onboard-recorder-muted">
+                        No photos yet. Use the panel on the right to add images.
+                      </p>
+                    ) : (
+                      <ul className="onboard-recorder-image-list">
+                        {libraryImages.map((img) => (
+                          <li key={img.imageId}>
+                            <div className="onboard-recorder-image-card">
+                              {img.publicUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  alt={img.originalFilename ?? "Uploaded photo"}
+                                  className="onboard-recorder-image-card-thumb"
+                                  src={img.publicUrl}
+                                />
+                              ) : null}
+                              <p className="onboard-recorder-muted">
+                                {formatSessionWhen(img.createdAt)}
+                              </p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </>
               )}
-            </div>
-
-            <div className="onboard-recorder-meta">
-              {cameraError ? (
-                <p className="onboard-recorder-error" role="alert">
-                  {cameraError}
-                </p>
-              ) : null}
-              {uploadError ? (
-                <p className="onboard-recorder-error" role="alert">
-                  Upload: {uploadError}
-                </p>
-              ) : null}
-            </div>
-
-            <button
-              className={`onboard-recorder-live-btn${
-                isLive ? " onboard-recorder-live-btn--end" : ""
-              }`}
-              disabled={isGoingLive}
-              onClick={() => {
-                if (isLive) void stopLive();
-                else void startLive();
-              }}
-              type="button"
-            >
-              {!isLive && !isGoingLive ? (
-                <span className="onboard-recorder-live-btn-icon" aria-hidden>
-                  ▶
-                </span>
-              ) : null}
-              {isGoingLive ? "Starting…" : isLive ? "End Live" : "Go Live"}
-            </button>
-
-            {!isLive ? (
-              <p className="onboard-recorder-hint">
-                This workout becomes the first of many workouts in RhoQ Community , inspiring future members to discover and work alongside you.
-              </p>
-            ) : null}
+            </section>
           </div>
         )}
       </main>
@@ -527,6 +780,73 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
       <footer className="onboard-recorder-footer">
         <span>RhoQ · Work out together. Motivate each other.</span>
       </footer>
+
+      {showGoLivePrep ? (
+        <div
+          className="onboard-go-live-modal"
+          role="presentation"
+          onClick={() => setShowGoLivePrep(false)}
+        >
+          <div
+            aria-labelledby="onboard-go-live-modal-title"
+            aria-modal="true"
+            className="onboard-go-live-modal-card"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="onboard-go-live-modal-title">Before you go live</h2>
+            <p>
+              To give everyone the best workout experience, please make sure
+              your entire body is visible throughout the session. Before you
+              start, position your phone so you&apos;re fully in frame from
+              start to finish. A quick check before going live goes a long way!
+            </p>
+            <p className="onboard-go-live-modal-note">
+              Stay on this browser tab for the whole recording. Switching tabs or
+              minimizing the window can interrupt your stream.
+            </p>
+            <div className="onboard-go-live-modal-avoid">
+              <p className="onboard-go-live-modal-avoid-title">
+                Avoid scenes like these
+              </p>
+              <ul className="onboard-go-live-modal-avoid-grid">
+                {GO_LIVE_AVOID_EXAMPLES.map((example) => (
+                  <li key={example.src}>
+                    <Image
+                      alt={example.alt}
+                      className="onboard-go-live-modal-avoid-img"
+                      height={320}
+                      src={example.src}
+                      unoptimized
+                      width={180}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="onboard-go-live-modal-actions">
+              <button
+                className="onboard-go-live-modal-cancel"
+                onClick={() => setShowGoLivePrep(false)}
+                type="button"
+              >
+                Not yet
+              </button>
+              <button
+                className="onboard-go-live-modal-confirm"
+                disabled={isGoingLive}
+                onClick={() => {
+                  setShowGoLivePrep(false);
+                  void startLive();
+                }}
+                type="button"
+              >
+                {isGoingLive ? "Starting…" : "Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

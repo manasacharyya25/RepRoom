@@ -149,3 +149,28 @@ export function onboardingChunkKey(options: {
   const pad = String(Math.max(0, Math.floor(options.chunkIndex))).padStart(6, "0");
   return `${onboardingR2Folder(options.userId, options.sessionId)}/chunk_${pad}.webm`;
 }
+
+/** R2 folder for a user's onboarding photos (sibling to session subfolders). */
+export function onboardingImagesFolder(userId: string) {
+  const user = userId.trim().replace(/^\/+|\/+$/g, "");
+  if (!user) throw new Error("userId is required");
+  return `live/onboarding/${user}/images`;
+}
+
+export function onboardingImageKey(userId: string, imageId: string, ext: string) {
+  const safeExt = ext.replace(/^\./, "").toLowerCase();
+  if (!/^[a-z0-9]+$/.test(safeExt)) {
+    throw new Error("Invalid image extension");
+  }
+  return `${onboardingImagesFolder(userId)}/${imageId}.${safeExt}`;
+}
+
+const IMAGE_EXT_BY_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp"
+};
+
+export function imageExtensionForContentType(contentType: string) {
+  return IMAGE_EXT_BY_TYPE[contentType.trim().toLowerCase()] ?? null;
+}
