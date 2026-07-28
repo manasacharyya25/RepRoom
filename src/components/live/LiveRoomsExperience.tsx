@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { useEntitlements } from "@/components/auth/EntitlementsProvider";
@@ -71,6 +71,36 @@ function cloneLiveSet(set: RoomLiveSet): RoomLiveSet {
 const MOBILE_VIEWPORT_QUERY = "(max-width: 960px)";
 /** Pinned (2) + bottom (2); rail is hidden on mobile. */
 const MOBILE_DISCOVERY_SLOT_COUNT = 4;
+
+/** CSS grid-area names for discovery slots (flat stage — keeps players under one parent). */
+function discoveryGridArea(slot: number): string {
+  if (slot === 0) return "pin0";
+  if (slot === 1) return "pin1";
+  if (slot >= 2 && slot <= 5) return `bot${slot - 2}`;
+  return `rail${slot - 6}`;
+}
+
+function discoveryTileClassName(slot: number, promotable: boolean): string {
+  const region =
+    slot < 2
+      ? "live-rooms-immersive-pinned-tile"
+      : slot < 6
+        ? "live-rooms-immersive-bottom-tile"
+        : "live-rooms-immersive-rail-tile";
+  return `live-rooms-preview-tile ${region}${
+    promotable ? " is-promotable" : ""
+  }`;
+}
+
+function placeholderForDiscoverySlot(
+  layout: RoomLiveSet,
+  slot: number
+): { name: string; image: string } {
+  if (slot === 0) return layout.main[0];
+  if (slot === 1) return layout.main[1];
+  if (slot >= 2 && slot <= 5) return layout.bottom[slot - 2];
+  return layout.rail[Math.min(4, Math.max(0, slot - 6))];
+}
 
 type InactiveTilePromoAction = "go_live" | "upgrade";
 
@@ -236,81 +266,52 @@ function TileUserLabel({
   );
 }
 
-function LiveTile({
+function EmptyDiscoveryTile({
   className,
   image,
-  chunkPreview,
-  label,
-  labelPosition = "center",
-  author = null,
   priority = false,
   sizes,
-  paused,
   slotIndex = 0,
+  featured = false,
+  style,
   onGoLive,
   onUpgrade
 }: {
   className?: string;
   image: string;
-  /** Live or ended R2 chunk preview from discovery. */
-  chunkPreview?: {
-    r2Folder: string;
-    lastChunkNumber?: number;
-    mode?: "live" | "archive";
-    onDead?: () => void;
-  } | null;
-  label: string;
-  labelPosition?: "left" | "center";
-  author?: FeedAuthorPreview | null;
   priority?: boolean;
   sizes: string;
-  paused?: boolean;
   slotIndex?: number;
+  featured?: boolean;
+  style?: CSSProperties;
   onGoLive?: () => void;
   onUpgrade?: () => void;
 }) {
-  const inactive = !chunkPreview;
-  const promo = inactive ? promoForSlot(slotIndex) : null;
+  const promo = promoForSlot(slotIndex);
 
   return (
     <div
-      aria-label={promo ? promo.title : label}
+      aria-label={promo.title}
       className={`live-rooms-preview-tile ${className ?? ""}`}
       role="group"
+      style={style}
     >
-      {chunkPreview ? (
-        <ChunkPreviewPlayer
-          className="live-rooms-tile-video"
-          initialLastChunk={chunkPreview.lastChunkNumber}
-          mode={chunkPreview.mode}
-          onDead={chunkPreview.onDead}
-          paused={paused}
-          r2Folder={chunkPreview.r2Folder}
-          label={label}
-        />
-      ) : (
-        <Image
-          alt=""
-          className="live-rooms-tile-image"
-          fill
-          priority={priority}
-          sizes={sizes}
-          src={image}
-        />
-      )}
-      {promo ? (
-        <InactiveTilePromoOverlay
-          promo={promo}
-          onGoLive={onGoLive}
-          onUpgrade={onUpgrade}
-        />
-      ) : (
-        <TileUserLabel
-          author={author}
-          label={label}
-          labelPosition={labelPosition}
-        />
-      )}
+      <Image
+        alt=""
+        className={
+          featured ? "live-rooms-featured-image" : "live-rooms-tile-image"
+        }
+        fill
+        priority={priority}
+        sizes={sizes}
+        src={image}
+      />
+      <InactiveTilePromoOverlay
+        featured={featured}
+        promo={promo}
+        onGoLive={onGoLive}
+        onUpgrade={onUpgrade}
+      />
     </div>
   );
 }
@@ -1359,37 +1360,56 @@ export function ImmersiveRoom({
     [archiveSlots, discoveryEnabled, liveSessionForSlot]
   );
 
-  const chunkPreviewForSlot = useCallback(
-    (slot: number) => {
-      const live = liveSessionForSlot(slot);
-      if (live) {
-        return {
-          r2Folder: live.r2Folder,
-          lastChunkNumber: live.lastChunkNumber,
-          mode: "live" as const,
-          onDead: () => {
-            void replaceLiveSlot(slot, live.sessionId);
-          }
-        };
+  /** Swap a bottom/rail session into a pinned slot without remounting players. */
+  const promoteDiscoverySlot = useCallback(
+    (fromSlot: number) => {
+      if (fromSlot < 2) return;
+      if (fromSlot >= discoverySlotCountRef.current) return;
+
+      const pinnedTargets: number[] = [];
+      if (!(selfSlotReservedRef.current && selfMainSlot === 0)) {
+        pinnedTargets.push(0);
       }
-      const archive = archiveSessionForSlot(slot);
-      if (!archive) return null;
-      return {
-        r2Folder: archive.r2Folder,
-        lastChunkNumber: archive.lastChunkNumber,
-        mode: "archive" as const,
-        onDead: () => {
-          void replaceArchiveSlot(slot, archive.sessionId);
-        }
-      };
+      if (!(selfSlotReservedRef.current && selfMainSlot === 1)) {
+        pinnedTargets.push(1);
+      }
+      if (pinnedTargets.length === 0) return;
+
+      const occupied = (slot: number) =>
+        Boolean(liveSlotsRef.current[slot] || archiveSlotsRef.current[slot]);
+
+      const target =
+        pinnedTargets.find((slot) => !occupied(slot)) ?? pinnedTargets[0];
+      if (target === undefined || target === fromSlot) return;
+
+      const nextLive = [...liveSlotsRef.current];
+      const nextArchive = [...archiveSlotsRef.current];
+      const liveTmp = nextLive[fromSlot] ?? null;
+      nextLive[fromSlot] = nextLive[target] ?? null;
+      nextLive[target] = liveTmp;
+      const archiveTmp = nextArchive[fromSlot] ?? null;
+      nextArchive[fromSlot] = nextArchive[target] ?? null;
+      nextArchive[target] = archiveTmp;
+
+      liveSlotsRef.current = nextLive;
+      archiveSlotsRef.current = nextArchive;
+      setLiveSlots(nextLive);
+      setArchiveSlots(nextArchive);
     },
-    [
-      archiveSessionForSlot,
-      liveSessionForSlot,
-      replaceArchiveSlot,
-      replaceLiveSlot
-    ]
+    [selfMainSlot]
   );
+
+  const findLiveSlotBySessionId = useCallback((sessionId: string) => {
+    return liveSlotsRef.current.findIndex(
+      (session) => session?.sessionId === sessionId
+    );
+  }, []);
+
+  const findArchiveSlotBySessionId = useCallback((sessionId: string) => {
+    return archiveSlotsRef.current.findIndex(
+      (session) => session?.sessionId === sessionId
+    );
+  }, []);
 
   const toggleGoLive = () => {
     if (isLive || isGoingLive) {
@@ -1619,162 +1639,161 @@ export function ImmersiveRoom({
           </div>
         ) : (
           <>
-        <div className="live-rooms-immersive-main-column">
-          <div className="live-rooms-immersive-pinned">
-            {layout.main.map((feed, index) => {
-              const isSelfSlot = isLive && index === selfMainSlot;
-              const archiveSlot = index === 0 ? 0 : 1;
-              const liveSession = isSelfSlot
-                ? null
-                : liveSessionForSlot(archiveSlot);
-              const archiveSession = isSelfSlot
-                ? null
-                : archiveSessionForSlot(archiveSlot);
-              const chunkPreview = isSelfSlot
-                ? null
-                : chunkPreviewForSlot(archiveSlot);
-              const tileLabel =
-                liveSession?.displayName?.trim() ||
-                archiveSession?.displayName?.trim() ||
-                feed.name;
-              const tileAuthor =
-                liveSession?.author ?? archiveSession?.author ?? null;
-
-              return (
+            <div className="live-rooms-discovery-stage">
+              {isLive ? (
                 <div
-                  aria-label={isSelfSlot ? "Your live feed" : tileLabel}
+                  aria-label="Your live feed"
                   className="live-rooms-preview-tile live-rooms-immersive-pinned-tile"
-                  key={`pinned-${room.id}-${feed.name}-${index}`}
                   role="group"
+                  style={{
+                    gridArea: selfMainSlot === 0 ? "pin0" : "pin1"
+                  }}
                 >
-                  {isSelfSlot ? (
-                    <>
-                      <video
-                        autoPlay
-                        className="live-rooms-featured-video"
-                        muted
-                        playsInline
-                        ref={attachStreamToVideo}
-                      />
-                      <span className="live-rooms-featured-label">You</span>
-                    </>
-                  ) : chunkPreview ? (
-                    <ChunkPreviewPlayer
-                      className="live-rooms-featured-hls"
-                      initialLastChunk={chunkPreview.lastChunkNumber}
-                      label={tileLabel}
-                      mode={chunkPreview.mode}
-                      onDead={chunkPreview.onDead}
-                      paused={pauseIncoming}
-                      r2Folder={chunkPreview.r2Folder}
-                    />
-                  ) : (
-                    <>
-                      <Image
-                        alt=""
-                        className="live-rooms-featured-image"
-                        fill
-                        priority={index === 0}
-                        sizes="(max-width: 960px) 50vw, 38vw"
-                        src={feed.image}
-                      />
-                      <InactiveTilePromoOverlay
-                        featured
-                        promo={promoForSlot(archiveSlot)}
-                        onGoLive={startBroadcastFromPromo}
-                        onUpgrade={onRequestUpgrade}
-                      />
-                    </>
-                  )}
-                  {!isSelfSlot && chunkPreview ? (
-                    <TileUserLabel
-                      author={tileAuthor}
-                      label={tileLabel}
-                      labelPosition="left"
-                      variant="featured"
-                    />
-                  ) : null}
+                  <video
+                    autoPlay
+                    className="live-rooms-featured-video"
+                    muted
+                    playsInline
+                    ref={attachStreamToVideo}
+                  />
+                  <span className="live-rooms-featured-label">You</span>
                 </div>
-              );
-            })}
-          </div>
-          {cameraError ? (
-            <p className="live-rooms-camera-error" role="alert">
-              {cameraError}
-            </p>
-          ) : null}
+              ) : null}
 
-          <div className="live-rooms-immersive-bottom">
-            <div className="live-rooms-immersive-bottom-grid">
-              {(isMobileViewport
-                ? layout.bottom.slice(0, 2)
-                : layout.bottom
-              ).map((participant, index) => {
-                const slot = 2 + index;
-                const liveSession = liveSessionForSlot(slot);
-                const archiveSession = archiveSessionForSlot(slot);
-                const chunkPreview = chunkPreviewForSlot(slot);
-                const tileLabel =
-                  liveSession?.displayName?.trim() ||
-                  archiveSession?.displayName?.trim() ||
-                  participant.name;
-                const tileAuthor =
-                  liveSession?.author ?? archiveSession?.author ?? null;
-
+              {Array.from({ length: discoverySlotCount }, (_, slot) => {
+                if (isLive && slot === selfMainSlot) return null;
+                if (liveSessionForSlot(slot) || archiveSessionForSlot(slot)) {
+                  return null;
+                }
+                const placeholder = placeholderForDiscoverySlot(layout, slot);
+                const featured = slot < 2;
                 return (
-                  <LiveTile
-                    author={tileAuthor}
-                    chunkPreview={chunkPreview}
-                    className="live-rooms-immersive-bottom-tile"
-                    image={participant.image}
-                    key={`grid-${room.id}-${participant.name}-${index}`}
-                    label={tileLabel}
-                    labelPosition="center"
+                  <EmptyDiscoveryTile
+                    key={`empty-${slot}`}
+                    className={
+                      featured
+                        ? "live-rooms-immersive-pinned-tile"
+                        : slot < 6
+                          ? "live-rooms-immersive-bottom-tile"
+                          : "live-rooms-immersive-rail-tile"
+                    }
+                    featured={featured}
+                    image={placeholder.image}
                     onGoLive={startBroadcastFromPromo}
                     onUpgrade={onRequestUpgrade}
-                    sizes="(max-width: 960px) 50vw, 180px"
+                    priority={slot === 0}
+                    sizes={
+                      featured
+                        ? "(max-width: 960px) 50vw, 38vw"
+                        : slot < 6
+                          ? "(max-width: 960px) 50vw, 180px"
+                          : "200px"
+                    }
                     slotIndex={slot}
-                    paused={pauseIncoming}
+                    style={{ gridArea: discoveryGridArea(slot) }}
                   />
                 );
               })}
+
+              {Array.from({ length: discoverySlotCount }, (_, slot) => {
+                if (isLive && slot === selfMainSlot) return null;
+                const liveSession = liveSessionForSlot(slot);
+                const archiveSession = archiveSessionForSlot(slot);
+                const session = liveSession ?? archiveSession;
+                if (!session) return null;
+
+                const mode = liveSession ? ("live" as const) : ("archive" as const);
+                const featured = slot < 2;
+                const promotable = slot >= 2;
+                const tileLabel =
+                  session.displayName?.trim() ||
+                  placeholderForDiscoverySlot(layout, slot).name;
+                const tileAuthor = session.author ?? null;
+
+                return (
+                  <div
+                    aria-label={
+                      promotable
+                        ? `${tileLabel}. Activate to show in a large tile.`
+                        : tileLabel
+                    }
+                    className={discoveryTileClassName(slot, promotable)}
+                    key={session.sessionId}
+                    onClick={
+                      promotable
+                        ? (event) => {
+                            if (
+                              (event.target as HTMLElement).closest(
+                                ".live-rooms-tile-author-hover, .feed-author-card"
+                              )
+                            ) {
+                              return;
+                            }
+                            promoteDiscoverySlot(slot);
+                          }
+                        : undefined
+                    }
+                    onKeyDown={
+                      promotable
+                        ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              promoteDiscoverySlot(slot);
+                            }
+                          }
+                        : undefined
+                    }
+                    role={promotable ? "button" : "group"}
+                    style={{ gridArea: discoveryGridArea(slot) }}
+                    tabIndex={promotable ? 0 : undefined}
+                  >
+                    <ChunkPreviewPlayer
+                      className={
+                        featured
+                          ? "live-rooms-featured-hls"
+                          : "live-rooms-tile-video"
+                      }
+                      initialLastChunk={session.lastChunkNumber}
+                      label={tileLabel}
+                      mode={mode}
+                      onDead={() => {
+                        if (liveSession) {
+                          const currentSlot = findLiveSlotBySessionId(
+                            session.sessionId
+                          );
+                          if (currentSlot >= 0) {
+                            void replaceLiveSlot(currentSlot, session.sessionId);
+                          }
+                          return;
+                        }
+                        const currentSlot = findArchiveSlotBySessionId(
+                          session.sessionId
+                        );
+                        if (currentSlot >= 0) {
+                          void replaceArchiveSlot(
+                            currentSlot,
+                            session.sessionId
+                          );
+                        }
+                      }}
+                      paused={pauseIncoming}
+                      r2Folder={session.r2Folder}
+                    />
+                    <TileUserLabel
+                      author={tileAuthor}
+                      label={tileLabel}
+                      labelPosition={featured ? "left" : "center"}
+                      variant={featured ? "featured" : "tile"}
+                    />
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        </div>
-
-        {!isMobileViewport ? (
-          <div className="live-rooms-immersive-rail">
-            {layout.rail.map((participant, index) => {
-              const slot = 6 + index;
-              const liveSession = liveSessionForSlot(slot);
-              const archiveSession = archiveSessionForSlot(slot);
-              const chunkPreview = chunkPreviewForSlot(slot);
-              const tileLabel =
-                liveSession?.displayName?.trim() ||
-                archiveSession?.displayName?.trim() ||
-                participant.name;
-              const tileAuthor =
-                liveSession?.author ?? archiveSession?.author ?? null;
-
-              return (
-                <LiveTile
-                  author={tileAuthor}
-                  chunkPreview={chunkPreview}
-                  className="live-rooms-immersive-rail-tile"
-                  image={participant.image}
-                  key={`rail-${room.id}-${participant.name}-${index}`}
-                  label={tileLabel}
-                  labelPosition="center"
-                  onGoLive={startBroadcastFromPromo}
-                  onUpgrade={onRequestUpgrade}
-                  sizes="200px"
-                  slotIndex={slot}
-                  paused={pauseIncoming}
-                />
-              );
-            })}
-          </div>
-        ) : null}
+            {cameraError ? (
+              <p className="live-rooms-camera-error live-rooms-camera-error--stage" role="alert">
+                {cameraError}
+              </p>
+            ) : null}
           </>
         )}
       </div>

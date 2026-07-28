@@ -743,6 +743,7 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 }
 
 .live-rooms-immersive-body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -913,6 +914,44 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.live-rooms-discovery-stage {
+  grid-column: 1 / -1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
+    minmax(140px, 200px);
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  grid-template-areas:
+    "pin0 pin0 pin1 pin1 rail0"
+    "pin0 pin0 pin1 pin1 rail1"
+    "pin0 pin0 pin1 pin1 rail2"
+    "bot0 bot1 bot2 bot3 rail3"
+    "bot0 bot1 bot2 bot3 rail4";
+}
+
+.live-rooms-preview-tile.is-promotable {
+  cursor: pointer;
+}
+
+.live-rooms-preview-tile.is-promotable:focus-visible {
+  outline: 2px solid rgba(255, 92, 43, 0.85);
+  outline-offset: 2px;
+}
+
+.live-rooms-camera-error--stage {
+  grid-column: 1 / -1;
+  position: absolute;
+  left: 28px;
+  bottom: 28px;
+  z-index: 6;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .live-rooms-immersive-pinned {
@@ -1173,7 +1212,8 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 
 .live-rooms-immersive-rail:has(.feed-author-card),
 .live-rooms-immersive-bottom:has(.feed-author-card),
-.live-rooms-immersive-pinned:has(.feed-author-card) {
+.live-rooms-immersive-pinned:has(.feed-author-card),
+.live-rooms-discovery-stage:has(.feed-author-card) {
   overflow: visible;
   z-index: 20;
 }
@@ -1383,6 +1423,15 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 
   .live-rooms-immersive-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .live-rooms-discovery-stage {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.42fr);
+    grid-template-areas:
+      "pin0 pin1"
+      "pin0 pin1"
+      "bot0 bot1";
   }
 
   .live-rooms-immersive-action {
