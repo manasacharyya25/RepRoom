@@ -18,6 +18,8 @@ type SessionSourceRow = LiveSessionRow | ArchiveSessionRow;
  * Archived (and recently ended) sessions with uploaded chunks — fill empty discovery tiles.
  * Primary source: archive_sessions. Fallback: live_sessions still in the ended grace window
  * before the cron moves them.
+ *
+ * At most one session per user (newest first). Logged-in viewer is always excluded.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -45,8 +47,18 @@ export async function GET(request: Request) {
       .filter(Boolean)
   );
 
-  const fetchCap = Math.min(40, Math.max(limit + excludeSessions.size, limit));
   const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (user?.id) {
+    excludeUsers.add(user.id);
+  }
+
+  const fetchCap = Math.min(
+    80,
+    Math.max(limit * 4, limit + excludeSessions.size + excludeUsers.size)
+  );
 
   const [{ data: archived, error: archiveError }, { data: pendingEnded, error: pendingError }] =
     await Promise.all([
@@ -74,7 +86,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: archiveError.message }, { status: 500 });
   }
   if (pendingError) {
-    // Grace-window fallback is best-effort; still serve archive_sessions.
     console.warn("[live/sessions/archives] live ended fallback", pendingError);
   }
 
@@ -90,15 +101,23 @@ export async function GET(request: Request) {
     }
   }
 
-  const rows = [...byId.values()]
-    .sort((a, b) => {
-      const aEnded = a.ended_at ?? a.last_chunk_uploaded_at;
-      const bEnded = b.ended_at ?? b.last_chunk_uploaded_at;
-      const byEnded = bEnded.localeCompare(aEnded);
-      if (byEnded !== 0) return byEnded;
-      return b.last_chunk_uploaded_at.localeCompare(a.last_chunk_uploaded_at);
-    })
-    .slice(0, limit);
+  const sorted = [...byId.values()].sort((a, b) => {
+    const aEnded = a.ended_at ?? a.last_chunk_uploaded_at;
+    const bEnded = b.ended_at ?? b.last_chunk_uploaded_at;
+    const byEnded = bEnded.localeCompare(aEnded);
+    if (byEnded !== 0) return byEnded;
+    return b.last_chunk_uploaded_at.localeCompare(a.last_chunk_uploaded_at);
+  });
+
+  // One session per user (newest already first).
+  const byUser = new Map<string, SessionSourceRow>();
+  for (const row of sorted) {
+    if (!byUser.has(row.user_id)) {
+      byUser.set(row.user_id, row);
+    }
+  }
+
+  const rows = [...byUser.values()].slice(0, limit);
 
   const userIds = [...new Set(rows.map((row) => row.user_id))];
   const profilesById = new Map<string, LiveSessionProfile>();

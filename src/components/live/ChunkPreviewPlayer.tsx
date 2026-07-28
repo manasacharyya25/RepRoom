@@ -89,16 +89,22 @@ export function ChunkPreviewPlayer({
 
   const nextIndex = useCallback((current: number) => {
     if (modeRef.current === "archive") {
-      return current >= maxChunkRef.current ? 1 : current + 1;
+      if (current >= maxChunkRef.current) return current;
+      return current + 1;
     }
     return current + 1;
   }, []);
 
   const markDead = useCallback(() => {
-    if (modeRef.current === "archive" || deadReportedRef.current) return;
+    if (deadReportedRef.current) return;
     deadReportedRef.current = true;
     onDeadRef.current?.();
   }, []);
+
+  const markArchiveComplete = useCallback(() => {
+    if (modeRef.current !== "archive") return;
+    markDead();
+  }, [markDead]);
 
   const warmPreloads = useCallback(
     (afterIndex: number) => {
@@ -230,7 +236,11 @@ export function ChunkPreviewPlayer({
     if (!a || !b) return;
 
     const next =
-      mode === "archive" ? (start >= maxChunk ? 1 : start + 1) : start + 1;
+      mode === "archive"
+        ? start >= maxChunk
+          ? start
+          : start + 1
+        : start + 1;
     const startUrl = previewChunkUrlFromFolder(publicBase, r2Folder, start);
     const nextUrl = previewChunkUrlFromFolder(publicBase, r2Folder, next);
 
@@ -248,7 +258,7 @@ export function ChunkPreviewPlayer({
       warmIndex =
         mode === "archive"
           ? warmIndex >= maxChunk
-            ? 1
+            ? warmIndex
             : warmIndex + 1
           : warmIndex + 1;
     }
@@ -286,6 +296,16 @@ export function ChunkPreviewPlayer({
       const video = event.currentTarget as HTMLVideoElement;
       if (!isActive(video)) return;
       lastGoodAtRef.current = Date.now();
+
+      // Archive: one full pass through chunks 1..max, then hand off for rotation.
+      if (
+        modeRef.current === "archive" &&
+        playingIndexRef.current >= maxChunkRef.current
+      ) {
+        markArchiveComplete();
+        return;
+      }
+
       performSwap();
     };
 
@@ -326,6 +346,10 @@ export function ChunkPreviewPlayer({
       }
 
       if (modeRef.current === "archive") {
+        if (playingIndexRef.current >= maxChunkRef.current) {
+          markArchiveComplete();
+          return;
+        }
         playingIndexRef.current = nextIndex(playingIndexRef.current);
         performSwap();
         return;
@@ -359,7 +383,7 @@ export function ChunkPreviewPlayer({
         video.removeEventListener("error", onError);
       }
     };
-  }, [nextIndex, performSwap, prepareStandby, urlFor, warmPreloads, r2Folder]);
+  }, [markArchiveComplete, nextIndex, performSwap, prepareStandby, urlFor, warmPreloads, r2Folder]);
 
   useEffect(() => {
     if (mode === "archive") return;

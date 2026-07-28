@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { useEntitlements } from "@/components/auth/EntitlementsProvider";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { PremiumPlanModal } from "@/components/billing/PremiumPlanModal";
 import { ChunkPreviewPlayer } from "@/components/live/ChunkPreviewPlayer";
@@ -344,6 +345,9 @@ export function ImmersiveRoom({
   blurred?: boolean;
 }) {
   const isMobileViewport = useIsMobileViewport();
+  const { user: authUser } = useAuth();
+  const viewerUserIdRef = useRef<string | null>(authUser?.id ?? null);
+  viewerUserIdRef.current = authUser?.id ?? null;
   const discoverySlotCount = isMobileViewport
     ? MOBILE_DISCOVERY_SLOT_COUNT
     : LIVE_DISCOVERY_PAGE_SIZE;
@@ -394,6 +398,8 @@ export function ImmersiveRoom({
   liveSlotsRef.current = liveSlots;
   const archiveSlotsRef = useRef(archiveSlots);
   archiveSlotsRef.current = archiveSlots;
+  /** Archive sessions that finished a full replay this room visit — prefer others first. */
+  const playedArchiveSessionIdsRef = useRef(new Set<string>());
   const viewEndsAtRef = useRef<number | null>(null);
   const broadcastStartedAtRef = useRef<number | null>(null);
   const broadcastBudgetRef = useRef<number | null>(null);
@@ -402,6 +408,10 @@ export function ImmersiveRoom({
   const activeSet = liveSets[0];
   const ROOM_PAGE_COUNT = 2;
   const onDiscoveryPage = roomPage === 0;
+
+  useEffect(() => {
+    playedArchiveSessionIdsRef.current = new Set();
+  }, [room.id]);
 
   const showQuotaTimer =
     (tier === "guest" || tier === "free") &&
@@ -925,17 +935,29 @@ export function ImmersiveRoom({
       limit: number;
       excludeSessionIds: string[];
       excludeUserIds: string[];
+      /** When true, also skip sessions already fully replayed this visit. */
+      excludePlayed?: boolean;
     }) => {
       if (options.limit <= 0) return [] as LiveSessionView[];
+      const excludeSessionIds = [...options.excludeSessionIds];
+      if (options.excludePlayed) {
+        for (const id of playedArchiveSessionIdsRef.current) {
+          excludeSessionIds.push(id);
+        }
+      }
+      const excludeUserIds = [...options.excludeUserIds];
+      const viewerId = viewerUserIdRef.current;
+      if (viewerId) excludeUserIds.push(viewerId);
+
       const params = new URLSearchParams({
         roomId: room.id,
-        limit: String(options.limit)
+        limit: String(Math.max(options.limit * 3, options.limit))
       });
-      if (options.excludeSessionIds.length > 0) {
-        params.set("exclude", options.excludeSessionIds.join(","));
+      if (excludeSessionIds.length > 0) {
+        params.set("exclude", [...new Set(excludeSessionIds)].join(","));
       }
-      if (options.excludeUserIds.length > 0) {
-        params.set("excludeUsers", options.excludeUserIds.join(","));
+      if (excludeUserIds.length > 0) {
+        params.set("excludeUsers", [...new Set(excludeUserIds)].join(","));
       }
       const response = await fetch(
         `/api/live/sessions/archives?${params.toString()}`
@@ -952,14 +974,20 @@ export function ImmersiveRoom({
   const fillArchiveSlots = useCallback(
     async (
       live: (LiveSessionView | null)[],
-      previousArchives: (LiveSessionView | null)[] = emptyDiscoverySlots()
+      previousArchives: (LiveSessionView | null)[] = emptyDiscoverySlots(),
+      options?: { allowPlayed?: boolean }
     ) => {
+      const allowPlayed = options?.allowPlayed ?? false;
       const nextArchives = emptyDiscoverySlots();
       const usedSessionIds = new Set<string>();
       const usedUserIds = new Set<string>();
       const reserveSelf = selfSlotReservedRef.current;
       const fillStart = reserveSelf ? 1 : 0;
       const slotCount = discoverySlotCountRef.current;
+      const viewerId = viewerUserIdRef.current;
+      const played = playedArchiveSessionIdsRef.current;
+
+      if (viewerId) usedUserIds.add(viewerId);
 
       for (const session of live) {
         if (!session) continue;
@@ -970,19 +998,18 @@ export function ImmersiveRoom({
         usedSessionIds.add(liveR2SessionIdRef.current);
       }
 
-      // Keep existing archive assignments on still-empty live slots when possible.
+      // Keep existing archive assignments when still valid (one user per tile).
       for (let index = fillStart; index < slotCount; index++) {
         if (live[index]) continue;
         const existing = previousArchives[index];
-        if (
-          existing &&
-          !usedSessionIds.has(existing.sessionId) &&
-          !usedUserIds.has(existing.userId)
-        ) {
-          nextArchives[index] = existing;
-          usedSessionIds.add(existing.sessionId);
-          usedUserIds.add(existing.userId);
-        }
+        if (!existing) continue;
+        if (viewerId && existing.userId === viewerId) continue;
+        if (usedSessionIds.has(existing.sessionId)) continue;
+        if (usedUserIds.has(existing.userId)) continue;
+        if (!allowPlayed && played.has(existing.sessionId)) continue;
+        nextArchives[index] = existing;
+        usedSessionIds.add(existing.sessionId);
+        usedUserIds.add(existing.userId);
       }
 
       const emptyIndexes: number[] = [];
@@ -999,16 +1026,66 @@ export function ImmersiveRoom({
       const fetched = await fetchEndedArchives({
         limit: emptyIndexes.length,
         excludeSessionIds: [...usedSessionIds],
-        excludeUserIds: [...usedUserIds]
+        excludeUserIds: [...usedUserIds],
+        excludePlayed: !allowPlayed
       });
 
-      emptyIndexes.forEach((slotIndex, fetchIndex) => {
-        nextArchives[slotIndex] = fetched[fetchIndex] ?? null;
-      });
+      let fetchIndex = 0;
+      for (const slotIndex of emptyIndexes) {
+        while (fetchIndex < fetched.length) {
+          const candidate = fetched[fetchIndex];
+          fetchIndex += 1;
+          if (!candidate) continue;
+          if (viewerId && candidate.userId === viewerId) continue;
+          if (usedSessionIds.has(candidate.sessionId)) continue;
+          if (usedUserIds.has(candidate.userId)) continue;
+          if (!allowPlayed && played.has(candidate.sessionId)) continue;
+          nextArchives[slotIndex] = candidate;
+          usedSessionIds.add(candidate.sessionId);
+          usedUserIds.add(candidate.userId);
+          break;
+        }
+      }
+
+      // If unplayed pool is exhausted, allow replayed archives once.
+      if (!allowPlayed) {
+        const stillEmpty = emptyIndexes.some(
+          (index) => !live[index] && !nextArchives[index]
+        );
+        if (stillEmpty) {
+          return fillArchiveSlots(live, nextArchives, { allowPlayed: true });
+        }
+      }
 
       return nextArchives;
     },
     [fetchEndedArchives]
+  );
+
+  const replaceArchiveSlot = useCallback(
+    async (slotIndex: number, finishedSessionId: string) => {
+      if (!discoveryEnabled) return;
+      if (selfSlotReservedRef.current && slotIndex === 0) return;
+
+      playedArchiveSessionIdsRef.current.add(finishedSessionId);
+
+      const current = archiveSlotsRef.current[slotIndex];
+      if (!current || current.sessionId !== finishedSessionId) return;
+
+      const cleared = [...archiveSlotsRef.current];
+      cleared[slotIndex] = null;
+      archiveSlotsRef.current = cleared;
+      setArchiveSlots(cleared);
+
+      const nextArchives = await fillArchiveSlots(
+        liveSlotsRef.current,
+        cleared,
+        { allowPlayed: false }
+      );
+      archiveSlotsRef.current = nextArchives;
+      setArchiveSlots(nextArchives);
+    },
+    [discoveryEnabled, fillArchiveSlots]
   );
 
   const replaceLiveSlot = useCallback(
@@ -1037,6 +1114,25 @@ export function ImmersiveRoom({
             session?: LiveSessionView | null;
           };
           replacement = data.session ?? null;
+          const viewerId = viewerUserIdRef.current;
+          // Don't place a live session for a user already on another tile (or self).
+          if (replacement) {
+            const takenUsers = new Set(
+              liveSlotsRef.current
+                .filter(Boolean)
+                .map((session) => session!.userId)
+            );
+            for (const archive of archiveSlotsRef.current) {
+              if (archive) takenUsers.add(archive.userId);
+            }
+            if (viewerId) takenUsers.add(viewerId);
+            // Allow replacement onto this slot: remove the dead session's user from "taken"
+            const dead = liveSlotsRef.current[slotIndex];
+            if (dead) takenUsers.delete(dead.userId);
+            if (takenUsers.has(replacement.userId)) {
+              replacement = null;
+            }
+          }
         }
       } catch {
         replacement = null;
@@ -1047,17 +1143,20 @@ export function ImmersiveRoom({
       if (nextLive[slotIndex]?.sessionId !== deadSessionId) return;
       nextLive[slotIndex] = replacement;
       setLiveSlots(nextLive);
+      liveSlotsRef.current = nextLive;
 
       if (!replacement) {
         const nextArchives = await fillArchiveSlots(
           nextLive,
           archiveSlotsRef.current
         );
+        archiveSlotsRef.current = nextArchives;
         setArchiveSlots(nextArchives);
       } else {
         setArchiveSlots((prev) => {
           const next = [...prev];
           next[slotIndex] = null;
+          archiveSlotsRef.current = next;
           return next;
         });
       }
@@ -1176,10 +1275,17 @@ export function ImmersiveRoom({
         const selfId = liveR2SessionIdRef.current;
         const usedSessionIds = new Set<string>();
         const usedUserIds = new Set<string>();
+        const viewerId = viewerUserIdRef.current;
+        if (viewerId) usedUserIds.add(viewerId);
         for (const session of live) {
           if (!session) continue;
           usedSessionIds.add(session.sessionId);
           usedUserIds.add(session.userId);
+        }
+        for (const archive of archives) {
+          if (!archive) continue;
+          usedSessionIds.add(archive.sessionId);
+          usedUserIds.add(archive.userId);
         }
         if (selfId) usedSessionIds.add(selfId);
 
@@ -1198,6 +1304,16 @@ export function ImmersiveRoom({
 
         if (placed > 0 && !cancelled) {
           setLiveSlots(nextLive);
+          liveSlotsRef.current = nextLive;
+        }
+
+        const nextArchives = await fillArchiveSlots(
+          placed > 0 ? nextLive : live,
+          archives
+        );
+        if (!cancelled) {
+          archiveSlotsRef.current = nextArchives;
+          setArchiveSlots(nextArchives);
         }
       } catch {
         /* optional */
@@ -1215,6 +1331,7 @@ export function ImmersiveRoom({
   }, [
     discoveryEnabled,
     discoverySlotCount,
+    fillArchiveSlots,
     hasEmptyDiscoveryTile,
     onDiscoveryPage,
     room.id
@@ -1260,10 +1377,18 @@ export function ImmersiveRoom({
       return {
         r2Folder: archive.r2Folder,
         lastChunkNumber: archive.lastChunkNumber,
-        mode: "archive" as const
+        mode: "archive" as const,
+        onDead: () => {
+          void replaceArchiveSlot(slot, archive.sessionId);
+        }
       };
     },
-    [archiveSessionForSlot, liveSessionForSlot, replaceLiveSlot]
+    [
+      archiveSessionForSlot,
+      liveSessionForSlot,
+      replaceArchiveSlot,
+      replaceLiveSlot
+    ]
   );
 
   const toggleGoLive = () => {
@@ -1714,8 +1839,7 @@ export function LiveRoomsExperience() {
   const {
     tier,
     remainingSeconds,
-    setTier,
-    setRemainingSeconds
+    refreshStatus
   } = useEntitlements();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
@@ -1736,6 +1860,10 @@ export function LiveRoomsExperience() {
   const profileCacheRef = useRef(
     new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
   );
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
 
   useEffect(() => {
     if (tier !== "guest") {

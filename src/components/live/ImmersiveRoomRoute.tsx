@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useEntitlements } from "@/components/auth/EntitlementsProvider";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { PremiumPlanModal } from "@/components/billing/PremiumPlanModal";
 import { ImmersiveRoom } from "@/components/live/LiveRoomsExperience";
@@ -36,6 +37,7 @@ type StartOk = {
 
 export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
   const router = useRouter();
+  const { setRemainingSeconds, setTier, refreshStatus } = useEntitlements();
   const joinedAtRef = useRef(Date.now());
   const recordedRef = useRef(false);
   const fingerprintRef = useRef("");
@@ -111,8 +113,17 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
     void leaveAccess();
     void flushHours();
     void exitFullscreen();
-    router.push("/rooms");
-  }, [flushHours, leaveAccess, router, stopGuestTimer, stopHeartbeat]);
+    void refreshStatus().finally(() => {
+      router.push("/rooms");
+    });
+  }, [
+    flushHours,
+    leaveAccess,
+    refreshStatus,
+    router,
+    stopGuestTimer,
+    stopHeartbeat
+  ]);
 
   const showLimitModal = useCallback(
     (reason: UpgradeReason, tier: Tier = "guest") => {
@@ -128,12 +139,21 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
               quotaSeconds: tier === "guest" ? GUEST_VIEW_SECONDS : 0
             }
       );
+      setRemainingSeconds(0);
       setUpgradeReason(reason);
       void leaveAccess();
       void flushHours();
       void exitFullscreen();
+      void refreshStatus();
     },
-    [flushHours, leaveAccess, stopGuestTimer, stopHeartbeat]
+    [
+      flushHours,
+      leaveAccess,
+      refreshStatus,
+      setRemainingSeconds,
+      stopGuestTimer,
+      stopHeartbeat
+    ]
   );
 
   const startGuestViewTimer = useCallback(() => {
@@ -143,11 +163,12 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
       setAccess((prev) =>
         prev ? { ...prev, remainingSeconds: remaining } : prev
       );
+      setRemainingSeconds(remaining);
       if (remaining <= 0) {
         showLimitModal("guest_time", "guest");
       }
     }, 1000);
-  }, [showLimitModal, stopGuestTimer]);
+  }, [setRemainingSeconds, showLimitModal, stopGuestTimer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,6 +216,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         }
 
         const tier = data.tier ?? "guest";
+        setTier(tier);
 
         if (tier === "guest") {
           const remaining = getGuestViewRemainingSeconds();
@@ -204,6 +226,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
             remainingSeconds: remaining,
             quotaSeconds: GUEST_VIEW_SECONDS
           });
+          setRemainingSeconds(remaining);
           joinedAtRef.current = Date.now();
           recordedRef.current = false;
 
@@ -213,12 +236,14 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
             startGuestViewTimer();
           }
         } else {
+          const remaining = data.remainingSeconds ?? null;
           setAccess({
             allowed: true,
             tier,
-            remainingSeconds: data.remainingSeconds ?? null,
+            remainingSeconds: remaining,
             quotaSeconds: data.quotaSeconds ?? 0
           });
+          setRemainingSeconds(remaining);
           joinedAtRef.current = Date.now();
           recordedRef.current = false;
         }
@@ -257,6 +282,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
     const onPageHide = () => {
       void leaveAccess();
       void flushHours();
+      void refreshStatus();
     };
     window.addEventListener("pagehide", onPageHide);
 
@@ -267,11 +293,15 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
       window.removeEventListener("pagehide", onPageHide);
       void leaveAccess();
       void flushHours();
+      void refreshStatus();
     };
   }, [
     flushHours,
     leaveAccess,
+    refreshStatus,
     room.id,
+    setRemainingSeconds,
+    setTier,
     startGuestViewTimer,
     stopGuestTimer,
     stopHeartbeat
@@ -282,15 +312,21 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
     setPlanModalOpen(true);
   };
 
-  const onBroadcastRemaining = useCallback((remaining: number | null) => {
-    setAccess((prev) =>
-      prev ? { ...prev, remainingSeconds: remaining } : prev
-    );
-  }, []);
+  const onBroadcastRemaining = useCallback(
+    (remaining: number | null) => {
+      setAccess((prev) =>
+        prev ? { ...prev, remainingSeconds: remaining } : prev
+      );
+      setRemainingSeconds(remaining);
+    },
+    [setRemainingSeconds]
+  );
 
   const onBroadcastLimitReached = useCallback(() => {
+    setRemainingSeconds(0);
     setUpgradeReason("free_time");
-  }, []);
+    void refreshStatus();
+  }, [refreshStatus, setRemainingSeconds]);
 
   const limitReached = upgradeReason === "guest_time";
 
@@ -309,7 +345,9 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         <button
           type="button"
           className="upgrade-prompt-btn"
-          onClick={() => router.push("/rooms")}
+          onClick={() => {
+            void refreshStatus().finally(() => router.push("/rooms"));
+          }}
         >
           Back to rooms
         </button>
@@ -323,7 +361,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
           }
           onClose={() => {
             setUpgradeReason(null);
-            router.push("/rooms");
+            void refreshStatus().finally(() => router.push("/rooms"));
           }}
           onStubUpgrade={openPlanModal}
         />
@@ -362,7 +400,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
           const reason = upgradeReason;
           setUpgradeReason(null);
           if (reason === "go_live_auth" || reason === "free_time") return;
-          router.push("/rooms");
+          void refreshStatus().finally(() => router.push("/rooms"));
         }}
         onStubUpgrade={openPlanModal}
       />
