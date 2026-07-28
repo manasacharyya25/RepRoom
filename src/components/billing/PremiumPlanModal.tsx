@@ -59,7 +59,13 @@ export function PremiumPlanModal({
         const data = (await response.json().catch(() => null)) as
           | (Partial<DisplayPricing> & { ok?: boolean })
           | null;
-        if (cancelled || !response.ok || !data) return;
+        if (cancelled || !response.ok || !data) {
+          if (!cancelled) {
+            setPricing(FALLBACK_PRICING);
+            setHours(FALLBACK_PRICING.minHours);
+          }
+          return;
+        }
         const next: DisplayPricing = {
           market: data.market === "IN" ? "IN" : "WW",
           currency: data.currency?.trim() || FALLBACK_PRICING.currency,
@@ -89,7 +95,10 @@ export function PremiumPlanModal({
           Math.min(next.maxHours, Math.max(next.minHours, prev))
         );
       } catch {
-        /* keep fallback */
+        if (!cancelled) {
+          setPricing(FALLBACK_PRICING);
+          setHours(FALLBACK_PRICING.minHours);
+        }
       } finally {
         if (!cancelled) setPricingReady(true);
       }
@@ -119,6 +128,57 @@ export function PremiumPlanModal({
   }, [open, checkoutBusy, onClose]);
 
   if (!open && !checkoutBusy) return null;
+
+  if (checkoutBusy) {
+    return (
+      <div
+        className="checkout-loading-page"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-labelledby={titleId}
+      >
+        <div className="checkout-loading-inner">
+          <div className="checkout-loading-spinner" aria-hidden="true" />
+          <h2 id={titleId}>Taking you to checkout</h2>
+          <p>Hang tight — we&apos;re opening Dodo Payments securely.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pricingReady) {
+    return (
+      <div
+        className="premium-plan-backdrop"
+        role="presentation"
+        onClick={onClose}
+      >
+        <div
+          className="premium-plan-modal premium-plan-modal--loading"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-busy="true"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="premium-plan-close premium-plan-close--loading"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            ×
+          </button>
+          <div className="premium-plan-loading" role="status" aria-live="polite">
+            <div className="checkout-loading-spinner" aria-hidden="true" />
+            <h2 id={titleId}>Finding your prices</h2>
+            <p>Detecting your location…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const money = (amount: number) => formatDisplayMoney(amount, pricing.currency);
   const hourlyTotal = hours * pricing.hourlyRate;
@@ -150,24 +210,6 @@ export function PremiumPlanModal({
   }
 
   const marketLabel = pricing.market === "IN" ? "India" : "Worldwide";
-
-  if (checkoutBusy) {
-    return (
-      <div
-        className="checkout-loading-page"
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
-        aria-labelledby={titleId}
-      >
-        <div className="checkout-loading-inner">
-          <div className="checkout-loading-spinner" aria-hidden="true" />
-          <h2 id={titleId}>Taking you to checkout</h2>
-          <p>Hang tight — we&apos;re opening Dodo Payments securely.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -312,7 +354,7 @@ export function PremiumPlanModal({
 
         <div className="premium-plan-footer">
           <p className="premium-plan-total">
-            Total <strong>{pricingReady ? money(total) : "…"}</strong>
+            Total <strong>{money(total)}</strong>
           </p>
           {checkoutError ? (
             <p className="premium-plan-error" role="alert">

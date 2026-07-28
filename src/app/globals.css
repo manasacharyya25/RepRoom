@@ -100,3 +100,109 @@ button {
   color: var(--text-muted);
   font-size: 1.05rem;
 }
+
+.app-route-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: min(52vh, 420px);
+  padding: 32px 20px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.app-route-loading--inline {
+  min-height: 120px;
+  padding: 12px 0 28px;
+}
+
+.app-route-loading p {
+  margin: 0;
+}
+
+.app-route-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--accent);
+  animation: app-route-loading-spin 0.75s linear infinite;
+}
+
+@keyframes app-route-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.profile-page--skeleton {
+  pointer-events: none;
+}
+
+.profile-skeleton-block {
+  border-radius: 14px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.09),
+    rgba(255, 255, 255, 0.04)
+  );
+  background-size: 200% 100%;
+  animation: profile-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.profile-skeleton-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  margin-bottom: 14px;
+}
+
+.profile-skeleton-line {
+  height: 14px;
+  width: 70%;
+  margin-bottom: 10px;
+}
+
+.profile-skeleton-line--short {
+  width: 40%;
+}
+
+.profile-skeleton-line--medium {
+  width: 55%;
+}
+
+.profile-skeleton-panel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.profile-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.profile-skeleton-card {
+  height: 88px;
+}
+
+@keyframes profile-skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .profile-skeleton-grid {
+    grid-template-columns: 1fr;
+  }
+}

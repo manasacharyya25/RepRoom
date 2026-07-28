@@ -1,13 +1,11 @@
 import { notFound, redirect } from "next/navigation";
-import { ImmersiveRoomRoute } from "@/components/live/ImmersiveRoomRoute";
+import { ImmersiveRoomLoader } from "@/components/live/ImmersiveRoomLoader";
 import {
   getRoomById,
   isRoomComingSoon,
   isRoomId,
   WORKOUT_ROOMS
 } from "@/lib/rooms";
-import "@/app/landing.css";
-import "@/app/live-rooms.css";
 
 type RoomPageProps = {
   params: Promise<{ roomId: string }>;
@@ -25,5 +23,5 @@ export default async function RoomPage({ params }: RoomPageProps) {
   if (isRoomComingSoon(roomId)) redirect("/rooms");
 
   const room = getRoomById(roomId);
-  return <ImmersiveRoomRoute room={room} />;
+  return <ImmersiveRoomLoader room={room} />;
 }

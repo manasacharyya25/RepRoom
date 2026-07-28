@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/live-rooms.css";
-import { AppNav } from "@/components/nav/AppNav";
 import { useEntitlements } from "@/components/auth/EntitlementsProvider";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { PremiumPlanModal } from "@/components/billing/PremiumPlanModal";
@@ -1863,9 +1862,7 @@ export function LiveRoomsExperience() {
   };
 
   return (
-    <div className="room-select-page">
-      <AppNav variant="rooms" />
-
+    <>
       <div
         className={`room-select-shell${
           chatMinimized || tier === "guest" ? " is-chat-minimized" : ""
@@ -2163,6 +2160,6 @@ export function LiveRoomsExperience() {
         open={planModalOpen}
         onClose={() => setPlanModalOpen(false)}
       />
-    </div>
+    </>
   );
 }

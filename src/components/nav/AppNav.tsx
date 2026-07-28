@@ -21,6 +21,9 @@ import "@/app/notifications.css";
 async function signOutAndRedirect(router: ReturnType<typeof useRouter>) {
   const supabase = createClient();
   await supabase.auth.signOut();
+  await fetch("/api/onboarding/clear-cookie", { method: "POST" }).catch(
+    () => null
+  );
   router.replace("/login");
   router.refresh();
 }

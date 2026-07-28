@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import {
+  clearOnboardingCompleteCookie,
+  ONBOARDING_COMPLETE_COOKIE,
+  readOnboardingCompleteCookie,
+  setOnboardingCompleteCookie
+} from "@/lib/onboarding-status-cookie";
 import { isWaitlistMode } from "@/lib/waitlist";
 
 const AUTH_REQUIRED_PREFIXES = [
@@ -66,18 +72,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (!user) {
+    if (request.cookies.has(ONBOARDING_COMPLETE_COOKIE)) {
+      clearOnboardingCompleteCookie(supabaseResponse);
+    }
+  }
+
   let onboardingComplete = true;
 
   if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("onboarding_completed_at")
-      .eq("id", user.id)
-      .maybeSingle();
+    if (await readOnboardingCompleteCookie(request, user.id)) {
+      onboardingComplete = true;
+    } else {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarding_completed_at")
+        .eq("id", user.id)
+        .maybeSingle();
 
-    onboardingComplete = Boolean(profile?.onboarding_completed_at);
-    if (!profile) {
-      onboardingComplete = false;
+      onboardingComplete = Boolean(profile?.onboarding_completed_at);
+      if (!profile) {
+        onboardingComplete = false;
+      }
+
+      if (onboardingComplete) {
+        await setOnboardingCompleteCookie(supabaseResponse, user.id);
+      } else {
+        clearOnboardingCompleteCookie(supabaseResponse);
+      }
     }
   }
 

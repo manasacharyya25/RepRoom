@@ -1,44 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { CommunityFeed } from "@/components/feed/CommunityFeed";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
-import { AppNav } from "@/components/nav/AppNav";
 import { GUEST_FEED_LIMIT, type UpgradeReason } from "@/lib/entitlements";
-import { createClient } from "@/lib/supabase/client";
-import "@/app/landing.css";
-import "@/app/feed.css";
-import "@/app/billing.css";
 
 export default function FeedPage() {
-  const [ready, setReady] = useState(false);
-  const [isGuest, setIsGuest] = useState(true);
+  const { authReady, isSignedIn } = useAuth();
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(
     null
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const supabase = createClient();
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
-      if (!cancelled) {
-        setIsGuest(!user);
-        setReady(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const isGuest = !isSignedIn;
 
   return (
-    <div className="feed-page">
-      <AppNav variant="feed" />
+    <>
       <main className="feed-page-main">
-        {ready ? (
+        {authReady ? (
           <CommunityFeed
             allowComments={!isGuest}
             enableLoadMore={!isGuest}
@@ -49,7 +27,10 @@ export default function FeedPage() {
             onUpgradeRequest={(reason) => setUpgradeReason(reason)}
           />
         ) : (
-          <p className="feed-posts-status">Loading feed…</p>
+          <div className="app-route-loading" role="status" aria-live="polite">
+            <div className="app-route-loading-spinner" aria-hidden="true" />
+            <p>Loading feed…</p>
+          </div>
         )}
       </main>
       <UpgradePrompt
@@ -57,6 +38,6 @@ export default function FeedPage() {
         reason={upgradeReason ?? "guest_feed_action"}
         onClose={() => setUpgradeReason(null)}
       />
-    </div>
+    </>
   );
 }

@@ -232,6 +232,10 @@ export function OnboardingPage() {
         skipped
       });
 
+      await fetch("/api/onboarding/complete-cookie", { method: "POST" }).catch(
+        () => null
+      );
+
       router.replace("/rooms");
       router.refresh();
     } catch (caught) {
