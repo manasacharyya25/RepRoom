@@ -991,7 +991,7 @@ export function OnboardingPage() {
                 {saving
                   ? "Saving…"
                   : stepIndex >= STEPS.length - 1
-                    ? "Enter Satara"
+                    ? "Enter RhoQ"
                     : "Continue"}
               </button>
             </div>
