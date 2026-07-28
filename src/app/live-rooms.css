@@ -104,6 +104,99 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
   box-shadow: 0 0 0 3px rgba(255, 92, 43, 0.12);
 }
 
+.pwa-install-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 92, 43, 0.28);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 92, 43, 0.14), rgba(255, 92, 43, 0.04)),
+    var(--surface);
+}
+
+.pwa-install-banner-copy {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.pwa-install-banner-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.pwa-install-banner-text {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.pwa-install-ios-steps {
+  margin: 10px 0 0;
+  padding-left: 1.15rem;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.pwa-install-ios-steps li + li {
+  margin-top: 4px;
+}
+
+.pwa-install-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pwa-install-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pwa-install-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.pwa-install-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.pwa-install-dismiss {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pwa-install-dismiss:hover {
+  color: var(--text);
+}
+
 .room-select-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

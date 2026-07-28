@@ -14,6 +14,7 @@ import { FeedAuthorHoverCard } from "@/components/feed/FeedAuthorHoverCard";
 import type { FeedAuthorPreview } from "@/lib/feed-posts";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import "@/app/billing.css";
+import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import {
   canAccessRoom,
   formatRemainingTime,
@@ -2028,6 +2029,7 @@ export function LiveRoomsExperience() {
         }`}
       >
         <div className="room-select-main">
+          <PwaInstallButton />
           <label className="room-select-search">
             <span className="sr-only">Filter rooms</span>
             <input
