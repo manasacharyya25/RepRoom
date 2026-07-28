@@ -15,7 +15,9 @@ const WAITLIST_ALLOWED_PATHS = new Set([
   "/",
   "/privacy",
   "/terms",
-  "/community-guidelines"
+  "/community-guidelines",
+  "/sitemap.xml",
+  "/robots.txt"
 ]);
 
 const WAITLIST_ALLOWED_PREFIXES = [
