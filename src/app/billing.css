@@ -90,12 +90,6 @@
   text-decoration: underline;
 }
 
-.live-rooms-immersive-quota {
-  font-weight: 600;
-  color: var(--text-muted);
-  font-size: 0.85em;
-}
-
 .room-select-card.is-locked {
   position: relative;
   pointer-events: auto;

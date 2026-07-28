@@ -240,7 +240,7 @@ function LiveTile({
   image,
   chunkPreview,
   label,
-  labelPosition = "left",
+  labelPosition = "center",
   author = null,
   priority = false,
   sizes,
@@ -403,16 +403,29 @@ export function ImmersiveRoom({
   const ROOM_PAGE_COUNT = 2;
   const onDiscoveryPage = roomPage === 0;
 
-  const showViewTimer =
-    tier === "guest" &&
+  const showQuotaTimer =
+    (tier === "guest" || tier === "free") &&
     quotaSeconds > 0 &&
     remainingSeconds !== null &&
     remainingSeconds >= 0;
 
   useEffect(() => {
-    if (!showViewTimer) {
+    if (!showQuotaTimer) {
       viewEndsAtRef.current = null;
       setViewTimerPercent(null);
+      return;
+    }
+
+    const depleting = tier === "guest" || (tier === "free" && isLive);
+
+    if (!depleting) {
+      viewEndsAtRef.current = null;
+      setViewTimerPercent(
+        Math.max(
+          0,
+          Math.min(100, (remainingSeconds / quotaSeconds) * 100)
+        )
+      );
       return;
     }
 
@@ -430,7 +443,7 @@ export function ImmersiveRoom({
     tick();
     const id = window.setInterval(tick, 200);
     return () => window.clearInterval(id);
-  }, [showViewTimer, remainingSeconds, quotaSeconds]);
+  }, [showQuotaTimer, remainingSeconds, quotaSeconds, tier, isLive]);
 
   const emptyDiscoverySlots = () =>
     Array.from(
@@ -1314,12 +1327,6 @@ export function ImmersiveRoom({
           </button>
           <h1 className="live-rooms-immersive-title">
             {onDiscoveryPage ? room.title : "Messages"}
-            {onDiscoveryPage && tier === "free" && remainingSeconds !== null ? (
-              <span className="live-rooms-immersive-quota">
-                {" "}
-                · {formatRemainingTime(remainingSeconds)} broadcast
-              </span>
-            ) : null}
           </h1>
           <button
             type="button"
@@ -1368,23 +1375,26 @@ export function ImmersiveRoom({
             Leave Room
           </button>
         </div>
-      </header>
-
-      {viewTimerPercent !== null ? (
-        <div
-          className="live-rooms-view-timer"
-          role="progressbar"
-          aria-label="Guest view time remaining"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(viewTimerPercent)}
-        >
+        {viewTimerPercent !== null ? (
           <div
-            className="live-rooms-view-timer-fill"
-            style={{ width: `${viewTimerPercent}%` }}
-          />
-        </div>
-      ) : null}
+            className="live-rooms-view-timer"
+            role="progressbar"
+            aria-label={
+              tier === "guest"
+                ? "Guest view time remaining"
+                : "Broadcast time remaining"
+            }
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(viewTimerPercent)}
+          >
+            <div
+              className="live-rooms-view-timer-fill"
+              style={{ width: `${viewTimerPercent}%` }}
+            />
+          </div>
+        ) : null}
+      </header>
 
       <div className="live-rooms-immersive-body">
         {!onDiscoveryPage ? (
@@ -1555,6 +1565,7 @@ export function ImmersiveRoom({
                     <TileUserLabel
                       author={tileAuthor}
                       label={tileLabel}
+                      labelPosition="left"
                       variant="featured"
                     />
                   ) : null}
@@ -1628,6 +1639,7 @@ export function ImmersiveRoom({
                   image={participant.image}
                   key={`rail-${room.id}-${participant.name}-${index}`}
                   label={tileLabel}
+                  labelPosition="center"
                   onGoLive={startBroadcastFromPromo}
                   onUpgrade={onRequestUpgrade}
                   sizes="200px"
@@ -1891,8 +1903,6 @@ export function LiveRoomsExperience() {
                 Go Premium
               </button>
             </p>
-          ) : tier === "premium" ? (
-            <p className="room-select-quota">Unlimited broadcast</p>
           ) : null}
 
           <div className="room-select-grid">

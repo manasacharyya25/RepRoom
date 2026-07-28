@@ -352,6 +352,27 @@ export function FeedAuthorHoverCard({
               <p className="feed-author-card-name">{author.name}</p>
               <p className="feed-author-card-handle">{author.handle}</p>
             </div>
+          </div>
+
+          <div className="feed-author-card-footer">
+            {metrics.length > 0 ? (
+              <ul className="feed-author-card-meta">
+                {metrics.map((metric) => (
+                  <li
+                    key={metric.key}
+                    className="feed-author-card-metric"
+                    aria-label={`${metric.label}: ${metric.value}`}
+                  >
+                    <span className="feed-author-card-metric-icon" aria-hidden>
+                      {metric.icon}
+                    </span>
+                    <span>{metric.value}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="feed-author-card-footer-spacer" aria-hidden />
+            )}
             <div className="feed-author-card-actions">
               {!isSelf ? (
                 <>
@@ -410,23 +431,6 @@ export function FeedAuthorHoverCard({
               )}
             </div>
           </div>
-
-          {metrics.length > 0 ? (
-            <ul className="feed-author-card-meta">
-              {metrics.map((metric) => (
-                <li
-                  key={metric.key}
-                  className="feed-author-card-metric"
-                  aria-label={`${metric.label}: ${metric.value}`}
-                >
-                  <span className="feed-author-card-metric-icon" aria-hidden>
-                    {metric.icon}
-                  </span>
-                  <span>{metric.value}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </div>
       ) : null}
     </div>

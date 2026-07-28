@@ -928,9 +928,13 @@ html:has(.landing) body::-webkit-scrollbar {
 
 .feed-author-card-top {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
+}
+
+.feed-author-card-copy {
+  min-width: 0;
 }
 
 .feed-author-card-avatar {
@@ -947,6 +951,9 @@ html:has(.landing) body::-webkit-scrollbar {
   font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .feed-author-card-handle {
@@ -954,6 +961,22 @@ html:has(.landing) body::-webkit-scrollbar {
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-author-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.feed-author-card-footer-spacer {
+  flex: 1;
+  min-width: 0;
 }
 
 .feed-author-card-actions {
@@ -961,6 +984,7 @@ html:has(.landing) body::-webkit-scrollbar {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .feed-author-card-profile-btn {
@@ -1006,9 +1030,10 @@ html:has(.landing) body::-webkit-scrollbar {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
+  min-width: 0;
 }
 
 .feed-author-card-metric {
