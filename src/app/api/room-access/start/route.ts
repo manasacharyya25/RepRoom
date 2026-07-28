@@ -50,8 +50,15 @@ export async function POST(request: Request) {
 
   // Broadcast remaining for signed-in users (viewing is not metered).
   if (ctx.userId) {
-    quotaSeconds = ctx.quotaSeconds;
-    if (ctx.metersBroadcast) {
+    if (ctx.meterMode === "premium_silent_daily") {
+      remainingSeconds = null;
+      quotaSeconds = 0;
+    } else if (ctx.meterMode === "credit_bank") {
+      remainingSeconds = ctx.creditSeconds;
+      secondsUsed = 0;
+      quotaSeconds = ctx.creditSeconds;
+    } else if (ctx.meterMode === "free_daily") {
+      quotaSeconds = ctx.quotaSeconds;
       const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
       remainingSeconds = usage.remainingSeconds;
       secondsUsed = usage.secondsUsed;
@@ -100,7 +107,8 @@ export async function POST(request: Request) {
       remainingSeconds,
       secondsUsed,
       quotaSeconds,
-      metersBroadcast: ctx.metersBroadcast,
+      creditSeconds: ctx.creditSeconds,
+      metersBroadcast: ctx.metersBroadcastUx,
       guestId: ctx.guestId
     },
     { headers: responseHeaders }

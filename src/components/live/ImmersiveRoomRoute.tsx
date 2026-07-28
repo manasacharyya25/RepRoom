@@ -330,7 +330,6 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         <PremiumPlanModal
           open={planModalOpen}
           onClose={() => setPlanModalOpen(false)}
-          onContinue={() => setPlanModalOpen(false)}
         />
       </div>
     );
@@ -370,7 +369,6 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
       <PremiumPlanModal
         open={planModalOpen}
         onClose={() => setPlanModalOpen(false)}
-        onContinue={() => setPlanModalOpen(false)}
       />
     </div>
   );

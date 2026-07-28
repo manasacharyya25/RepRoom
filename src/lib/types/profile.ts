@@ -29,6 +29,7 @@ export type Profile = {
   website_url: string | null;
   onboarding_completed_at: string | null;
   plan: "free" | "premium";
+  broadcast_credit_seconds?: number;
   created_at: string;
   updated_at: string;
 };

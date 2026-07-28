@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import {
-  addUsageSeconds,
-  getUsage,
+  applyBroadcastSeconds,
   resolveAccessContext
 } from "@/lib/room-access";
 import { createClient } from "@/lib/supabase/server";
 
-/** Report broadcast (Go Live) seconds for the signed-in free user. */
+/** Report broadcast (Go Live) seconds for the signed-in user. */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     fingerprint?: string;
@@ -18,41 +17,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!ctx.metersBroadcast) {
-    return NextResponse.json({
-      ok: true,
-      tier: ctx.tier,
-      remainingSeconds: null,
-      secondsUsed: 0,
-      exhausted: false
-    });
-  }
-
   const seconds = Math.min(
     600,
     Math.max(0, Math.round(body?.seconds ?? 0))
   );
 
   const supabase = await createClient();
-  const usage =
-    seconds > 0
-      ? await addUsageSeconds(
-          supabase,
-          ctx.subjectKey,
-          seconds,
-          ctx.quotaSeconds
-        )
-      : await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
-
-  const exhausted =
-    usage.remainingSeconds !== null && usage.remainingSeconds <= 0;
+  const result = await applyBroadcastSeconds(supabase, ctx, seconds);
 
   return NextResponse.json({
     ok: true,
     tier: ctx.tier,
-    remainingSeconds: usage.remainingSeconds,
-    secondsUsed: usage.secondsUsed,
-    exhausted,
-    reason: exhausted ? "free_time" : null
+    plan: ctx.plan,
+    remainingSeconds: result.remainingSeconds,
+    secondsUsed: result.secondsUsed,
+    creditSeconds: result.creditSeconds,
+    metersBroadcast: ctx.metersBroadcastUx,
+    exhausted: result.exhaustedUx,
+    serverStop: result.serverStop,
+    reason: result.exhaustedUx ? "free_time" : null
   });
 }

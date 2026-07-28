@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { guestCookieHeaderValue } from "@/lib/guest-identity";
-import { getUsage, resolveAccessContext } from "@/lib/room-access";
+import {
+  applyBroadcastSeconds,
+  resolveAccessContext
+} from "@/lib/room-access";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -14,8 +17,7 @@ export async function GET(request: Request) {
     headers.set("Set-Cookie", guestCookieHeaderValue(ctx.guestId));
   }
 
-  // Guests: view quota is browser-local only.
-  if (ctx.tier === "guest") {
+  if (ctx.tier === "guest" || ctx.meterMode === "none") {
     return NextResponse.json(
       {
         tier: ctx.tier,
@@ -23,6 +25,7 @@ export async function GET(request: Request) {
         remainingSeconds: null,
         secondsUsed: 0,
         quotaSeconds: 0,
+        creditSeconds: 0,
         metersBroadcast: false,
         guestId: ctx.guestId
       },
@@ -30,7 +33,7 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!ctx.metersBroadcast) {
+  if (ctx.meterMode === "premium_silent_daily") {
     return NextResponse.json(
       {
         tier: ctx.tier,
@@ -38,6 +41,7 @@ export async function GET(request: Request) {
         remainingSeconds: null,
         secondsUsed: 0,
         quotaSeconds: 0,
+        creditSeconds: ctx.creditSeconds,
         metersBroadcast: false,
         guestId: ctx.guestId
       },
@@ -46,16 +50,18 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createClient();
-  const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
+  const result = await applyBroadcastSeconds(supabase, ctx, 0);
 
   return NextResponse.json(
     {
       tier: ctx.tier,
       plan: ctx.plan,
-      remainingSeconds: usage.remainingSeconds,
-      secondsUsed: usage.secondsUsed,
-      quotaSeconds: ctx.quotaSeconds,
-      metersBroadcast: true,
+      remainingSeconds: result.remainingSeconds,
+      secondsUsed: result.secondsUsed,
+      quotaSeconds:
+        ctx.meterMode === "credit_bank" ? ctx.creditSeconds : ctx.quotaSeconds,
+      creditSeconds: result.creditSeconds,
+      metersBroadcast: ctx.metersBroadcastUx,
       guestId: ctx.guestId
     },
     { headers }

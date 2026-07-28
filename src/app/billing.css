@@ -366,17 +366,101 @@
   margin-left: auto;
 }
 
-@media (max-width: 520px) {
-  .premium-plan-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
+.premium-plan-error {
+  margin: 0;
+  flex: 1 1 100%;
+  color: #ff8a7a;
+  font-size: 0.9rem;
+}
 
-  .premium-plan-actions {
-    margin-left: 0;
-  }
+.checkout-loading-page {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 20%, rgba(255, 92, 43, 0.14), transparent 55%),
+    var(--bg, #0c0c0e);
+  color: var(--text, #f4f4f5);
+}
 
-  .premium-plan-actions .upgrade-prompt-btn {
-    flex: 1;
+.checkout-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  max-width: 360px;
+}
+
+.checkout-loading-inner h2 {
+  margin: 8px 0 0;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+
+.checkout-loading-inner p {
+  margin: 0;
+  color: var(--text-muted, rgba(244, 244, 245, 0.72));
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.checkout-loading-spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent, #ff5c2b);
+  animation: checkout-loading-spin 0.75s linear infinite;
+}
+
+@keyframes checkout-loading-spin {
+  to {
+    transform: rotate(360deg);
   }
+}
+
+.billing-success {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(255, 92, 43, 0.12), transparent 55%),
+    var(--bg);
+  color: var(--text);
+}
+
+.billing-success-nav {
+  padding: 20px 24px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.billing-success-main {
+  flex: 1;
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 24px 64px;
+}
+
+.billing-success-main h1 {
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+}
+
+.billing-success-main p {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.billing-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }

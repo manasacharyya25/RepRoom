@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   broadcastQuotaSeconds,
   getTier,
-  metersBroadcast,
+  resolveBroadcastMeterMode,
+  type BroadcastMeterMode,
   type ProfilePlan,
   type Tier
 } from "@/lib/entitlements";
@@ -22,11 +23,16 @@ export type AccessContext = {
   guestId: string | null;
   deviceHash: string;
   ipHash: string;
-  /** Broadcast quota for free users; 0 = unlimited (premium) or N/A (guest). */
+  /** Daily quota used with room_usage_daily when meter mode is free/premium daily. */
   quotaSeconds: number;
   plan: ProfilePlan | null;
-  /** Free users meter Go Live time against the DB quota. */
-  metersBroadcast: boolean;
+  creditSeconds: number;
+  meterMode: BroadcastMeterMode;
+  /**
+   * Whether the client should show remaining time / upgrade UX.
+   * False for premium (silent cap) and guests.
+   */
+  metersBroadcastUx: boolean;
 };
 
 export async function resolveAccessContext(
@@ -44,11 +50,21 @@ export async function resolveAccessContext(
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("plan, broadcast_credit_seconds")
       .eq("id", user.id)
       .maybeSingle();
     const plan = (profile?.plan as ProfilePlan | undefined) ?? "free";
+    const creditSeconds = Math.max(
+      0,
+      Number(profile?.broadcast_credit_seconds ?? 0)
+    );
     const tier = getTier({ userId: user.id, plan });
+    const meterMode = resolveBroadcastMeterMode({ tier, creditSeconds });
+    const quotaSeconds =
+      meterMode === "free_daily" || meterMode === "premium_silent_daily"
+        ? broadcastQuotaSeconds(tier)
+        : 0;
+
     return {
       tier,
       subjectKey: subjectKeyForUser(user.id),
@@ -56,9 +72,11 @@ export async function resolveAccessContext(
       guestId: null,
       deviceHash,
       ipHash,
-      quotaSeconds: broadcastQuotaSeconds(tier),
+      quotaSeconds,
       plan,
-      metersBroadcast: metersBroadcast(tier)
+      creditSeconds,
+      meterMode,
+      metersBroadcastUx: meterMode === "free_daily" || meterMode === "credit_bank"
     };
   }
 
@@ -77,7 +95,9 @@ export async function resolveAccessContext(
     ipHash,
     quotaSeconds: 0,
     plan: null,
-    metersBroadcast: false
+    creditSeconds: 0,
+    meterMode: "none",
+    metersBroadcastUx: false
   };
 }
 
@@ -124,5 +144,96 @@ export async function addUsageSeconds(
           ? null
           : 0
         : Number(row.remaining_seconds)
+  };
+}
+
+export async function burnBroadcastCredits(
+  supabase: SupabaseClient,
+  userId: string,
+  seconds: number
+) {
+  const { data, error } = await supabase.rpc("broadcast_credit_burn", {
+    p_user_id: userId,
+    p_seconds: seconds
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    creditSeconds: Number(row?.credit_seconds ?? 0),
+    burned: Number(row?.burned ?? 0)
+  };
+}
+
+/**
+ * Apply broadcast seconds for the current access context.
+ * Returns UX-facing remaining/exhausted plus serverStop for silent premium cap.
+ */
+export async function applyBroadcastSeconds(
+  supabase: SupabaseClient,
+  ctx: AccessContext,
+  seconds: number
+): Promise<{
+  remainingSeconds: number | null;
+  secondsUsed: number;
+  creditSeconds: number;
+  exhaustedUx: boolean;
+  serverStop: boolean;
+}> {
+  const add = Math.max(0, Math.round(seconds));
+
+  if (ctx.meterMode === "none" || !ctx.userId) {
+    return {
+      remainingSeconds: null,
+      secondsUsed: 0,
+      creditSeconds: ctx.creditSeconds,
+      exhaustedUx: false,
+      serverStop: false
+    };
+  }
+
+  if (ctx.meterMode === "credit_bank") {
+    const result =
+      add > 0
+        ? await burnBroadcastCredits(supabase, ctx.userId, add)
+        : { creditSeconds: ctx.creditSeconds, burned: 0 };
+    return {
+      remainingSeconds: result.creditSeconds,
+      secondsUsed: 0,
+      creditSeconds: result.creditSeconds,
+      exhaustedUx: result.creditSeconds <= 0,
+      serverStop: result.creditSeconds <= 0
+    };
+  }
+
+  // free_daily or premium_silent_daily
+  const usage =
+    add > 0
+      ? await addUsageSeconds(
+          supabase,
+          ctx.subjectKey,
+          add,
+          ctx.quotaSeconds
+        )
+      : await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);
+
+  const over =
+    usage.remainingSeconds !== null && usage.remainingSeconds <= 0;
+
+  if (ctx.meterMode === "premium_silent_daily") {
+    return {
+      remainingSeconds: null,
+      secondsUsed: usage.secondsUsed,
+      creditSeconds: ctx.creditSeconds,
+      exhaustedUx: false,
+      serverStop: over
+    };
+  }
+
+  return {
+    remainingSeconds: usage.remainingSeconds,
+    secondsUsed: usage.secondsUsed,
+    creditSeconds: ctx.creditSeconds,
+    exhaustedUx: over,
+    serverStop: over
   };
 }

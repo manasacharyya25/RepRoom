@@ -13,6 +13,8 @@ export const GUEST_ROOM_SECONDS = GUEST_VIEW_SECONDS;
 export const FREE_BROADCAST_SECONDS = 30 * 60;
 /** @deprecated Use FREE_BROADCAST_SECONDS */
 export const FREE_ROOM_SECONDS = FREE_BROADCAST_SECONDS;
+/** Premium subscription silent daily hard-stop (UX still shows unlimited). */
+export const PREMIUM_DAILY_BROADCAST_SECONDS = 60 * 60;
 export const GUEST_FEED_LIMIT = 100;
 export const ROOM_HEARTBEAT_SECONDS = 20;
 export const ACTIVE_SESSION_STALE_SECONDS = 120;
@@ -33,17 +35,23 @@ export function canAccessRoom(tier: Tier, roomId: string): boolean {
 }
 
 /**
- * Daily broadcast quota seconds. `0` means unlimited.
- * Free: 30m while live. Premium: unlimited. Guests cannot broadcast.
+ * Daily broadcast quota seconds for room_usage_daily.
+ * Free: 30m. Premium: 1h silent cap. Guests: N/A (0).
+ * Credit-bank users do not use this path while credits remain.
  */
 export function broadcastQuotaSeconds(tier: Tier): number {
   if (tier === "free") return FREE_BROADCAST_SECONDS;
+  if (tier === "premium") return PREMIUM_DAILY_BROADCAST_SECONDS;
   return 0;
 }
 
-/** Whether this tier meters Go Live time against a daily broadcast quota. */
+/**
+ * Whether Go Live time is metered for this tier.
+ * Premium is metered server-side (silent 1h/day) but UX hides exhaustion.
+ * Free is metered with upgrade UX. Credit bank is handled separately.
+ */
 export function metersBroadcast(tier: Tier): boolean {
-  return tier === "free";
+  return tier === "free" || tier === "premium";
 }
 
 export function formatRemainingTime(remainingSeconds: number | null): string {
@@ -65,3 +73,19 @@ export type UpgradeReason =
   | "go_live_auth"
   | "free_time"
   | "soft_upgrade";
+
+export type BroadcastMeterMode =
+  | "none"
+  | "free_daily"
+  | "credit_bank"
+  | "premium_silent_daily";
+
+export function resolveBroadcastMeterMode(options: {
+  tier: Tier;
+  creditSeconds: number;
+}): BroadcastMeterMode {
+  if (options.tier === "guest") return "none";
+  if (options.tier === "premium") return "premium_silent_daily";
+  if (options.creditSeconds > 0) return "credit_bank";
+  return "free_daily";
+}

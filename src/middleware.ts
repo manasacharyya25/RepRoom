@@ -23,7 +23,9 @@ const WAITLIST_ALLOWED_PREFIXES = [
   "/onboard",
   "/api/onboarding-record",
   "/rhoq-admin",
-  "/api/rhoq-admin"
+  "/api/rhoq-admin",
+  "/api/billing",
+  "/billing"
 ];
 
 function isWaitlistAllowed(pathname: string): boolean {

@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  broadcastQuotaSeconds,
-  getTier,
-  metersBroadcast,
-  type ProfilePlan
-} from "@/lib/entitlements";
 import { isRoomId } from "@/lib/rooms";
-import { getUsage } from "@/lib/room-access";
+import { applyBroadcastSeconds, resolveAccessContext } from "@/lib/room-access";
 import {
   decodeLiveCursor,
   encodeLiveCursor,
@@ -19,7 +13,6 @@ import {
   type LiveSessionRow
 } from "@/lib/streaming/live-sessions";
 import { createClient } from "@/lib/supabase/server";
-import { subjectKeyForUser } from "@/lib/guest-identity";
 
 export const runtime = "nodejs";
 
@@ -119,28 +112,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid room" }, { status: 400 });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("plan")
-    .eq("id", user.id)
-    .maybeSingle();
-  const plan = (profile?.plan as ProfilePlan | undefined) ?? "free";
-  const tier = getTier({ userId: user.id, plan });
+  const ctx = await resolveAccessContext("");
+  if (ctx.userId !== user.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  if (metersBroadcast(tier)) {
-    const quota = broadcastQuotaSeconds(tier);
-    const usage = await getUsage(
-      supabase,
-      subjectKeyForUser(user.id),
-      quota
-    );
-    if (usage.remainingSeconds !== null && usage.remainingSeconds <= 0) {
+  // Block start when free quota or credits are exhausted (not for premium silent cap UX).
+  if (ctx.meterMode === "free_daily" || ctx.meterMode === "credit_bank") {
+    const probe = await applyBroadcastSeconds(supabase, ctx, 0);
+    if (probe.serverStop || probe.exhaustedUx) {
       return NextResponse.json(
         {
-          error: "Broadcast time used up for today",
+          error: "Broadcast time used up",
           reason: "free_time",
           remainingSeconds: 0
         },
+        { status: 403 }
+      );
+    }
+  }
+
+  // Premium silent: already over daily 1h → refuse start without upgrade reason.
+  if (ctx.meterMode === "premium_silent_daily") {
+    const probe = await applyBroadcastSeconds(supabase, ctx, 0);
+    if (probe.serverStop) {
+      return NextResponse.json(
+        { error: "Daily broadcast limit reached", reason: "premium_daily_cap" },
         { status: 403 }
       );
     }

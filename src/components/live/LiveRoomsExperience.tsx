@@ -529,7 +529,7 @@ export function ImmersiveRoom({
       });
     }
 
-    if (tier === "free" && broadcastStartedAt !== null) {
+    if ((tier === "free" || tier === "premium") && broadcastStartedAt !== null) {
       const elapsed = Math.max(
         0,
         Math.round((Date.now() - broadcastStartedAt) / 1000)
@@ -553,6 +553,7 @@ export function ImmersiveRoom({
             const data = (await response.json()) as {
               remainingSeconds?: number | null;
               exhausted?: boolean;
+              serverStop?: boolean;
             };
             onBroadcastRemaining?.(
               data.remainingSeconds === undefined
@@ -577,7 +578,7 @@ export function ImmersiveRoom({
   ]);
 
   const flushBroadcastProgress = useCallback(async () => {
-    if (tier !== "free") return;
+    if (tier !== "free" && tier !== "premium") return;
     const started = broadcastStartedAtRef.current;
     const budget = broadcastBudgetRef.current;
     if (started === null) return;
@@ -606,6 +607,7 @@ export function ImmersiveRoom({
       const data = (await response.json()) as {
         remainingSeconds?: number | null;
         exhausted?: boolean;
+        serverStop?: boolean;
       };
       onBroadcastRemaining?.(
         data.remainingSeconds === undefined ? null : data.remainingSeconds
@@ -616,6 +618,9 @@ export function ImmersiveRoom({
           broadcastLimitNotifiedRef.current = true;
           onBroadcastLimitReached?.();
         }
+      } else if (data.serverStop) {
+        // Premium silent daily cap — stop broadcast without upgrade UX.
+        stopCamera();
       }
     } catch {
       broadcastFlushedRef.current = Math.max(
@@ -660,10 +665,11 @@ export function ImmersiveRoom({
       }
 
       streamRef.current = stream;
-      if (tier === "free") {
+      if (tier === "free" || tier === "premium") {
         broadcastLimitNotifiedRef.current = false;
         broadcastFlushedRef.current = 0;
-        broadcastBudgetRef.current = remainingSeconds;
+        broadcastBudgetRef.current =
+          tier === "premium" ? null : remainingSeconds;
         broadcastStartedAtRef.current = Date.now();
       }
       setSelfMainSlot(0);
@@ -691,6 +697,9 @@ export function ImmersiveRoom({
                 if (err?.reason === "free_time") {
                   onBroadcastRemaining?.(0);
                   onBroadcastLimitReached?.();
+                  return;
+                }
+                if (err?.reason === "premium_daily_cap") {
                   return;
                 }
               }
@@ -749,13 +758,15 @@ export function ImmersiveRoom({
   ]);
 
   useEffect(() => {
-    if (!isLive || tier !== "free") return;
+    if (!isLive || (tier !== "free" && tier !== "premium")) return;
     if (broadcastStartedAtRef.current === null) return;
 
     const tick = () => {
       const started = broadcastStartedAtRef.current;
       const budget = broadcastBudgetRef.current;
-      if (started === null || budget === null) return;
+      if (started === null) return;
+      // Premium: no local countdown (UX unlimited); server flush enforces silent cap.
+      if (budget === null) return;
       const elapsed = (Date.now() - started) / 1000;
       const left = Math.max(0, budget - elapsed);
       onBroadcastRemaining?.(Math.ceil(left));
@@ -2151,7 +2162,6 @@ export function LiveRoomsExperience() {
       <PremiumPlanModal
         open={planModalOpen}
         onClose={() => setPlanModalOpen(false)}
-        onContinue={() => setPlanModalOpen(false)}
       />
     </div>
   );
