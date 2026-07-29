@@ -6,7 +6,8 @@ import { Logo } from "@/components/brand/Logo";
 const LEGAL_LINKS = [
   { href: "/community-guidelines", label: "Community Guidelines" },
   { href: "/privacy", label: "Privacy Policy" },
-  { href: "/terms", label: "Terms of Service" }
+  { href: "/terms", label: "Terms of Service" },
+  { href: "/credits", label: "Credits" }
 ] as const;
 
 type LegalPageProps = {

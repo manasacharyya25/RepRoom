@@ -84,6 +84,16 @@
   line-height: 1.65;
 }
 
+.legal-main a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-main a:hover {
+  color: var(--accent);
+}
+
 .legal-main p {
   margin: 0 0 12px;
 }

@@ -48,6 +48,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: "yearly",
       priority: 0.3
+    },
+    {
+      url: `${base}/credits`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3
     }
   ];
 
