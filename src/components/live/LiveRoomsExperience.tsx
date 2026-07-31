@@ -80,6 +80,18 @@ function discoveryGridArea(slot: number): string {
   return `rail${slot - 6}`;
 }
 
+/** Fisher–Yates shuffle (mutates and returns the same array). Used to randomize
+ *  session order before serial tile fill so the first tile changes each refresh. */
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = items[i];
+    items[i] = items[j];
+    items[j] = tmp;
+  }
+  return items;
+}
+
 function discoveryTileClassName(slot: number, promotable: boolean): string {
   const region =
     slot < 2
@@ -1024,12 +1036,14 @@ export function ImmersiveRoom({
         return nextArchives;
       }
 
-      const fetched = await fetchEndedArchives({
-        limit: emptyIndexes.length,
-        excludeSessionIds: [...usedSessionIds],
-        excludeUserIds: [...usedUserIds],
-        excludePlayed: !allowPlayed
-      });
+      const fetched = shuffleInPlace(
+        await fetchEndedArchives({
+          limit: emptyIndexes.length,
+          excludeSessionIds: [...usedSessionIds],
+          excludeUserIds: [...usedUserIds],
+          excludePlayed: !allowPlayed
+        })
+      );
 
       let fetchIndex = 0;
       for (const slotIndex of emptyIndexes) {
@@ -1188,20 +1202,18 @@ export function ImmersiveRoom({
             sessions?: LiveSessionView[];
           };
           const selfId = liveR2SessionIdRef.current;
-          const sessions = (data.sessions ?? []).filter(
-            (session) => session.sessionId !== selfId
+          const sessions = shuffleInPlace(
+            (data.sessions ?? []).filter(
+              (session) => session.sessionId !== selfId
+            )
           );
           const reserveSelf = selfSlotReservedRef.current;
           const nextLive = emptyDiscoverySlots();
-          if (reserveSelf) {
-            sessions.slice(0, slotCount - 1).forEach((session, index) => {
-              nextLive[index + 1] = session;
-            });
-          } else {
-            sessions.slice(0, slotCount).forEach((session, index) => {
-              nextLive[index] = session;
-            });
-          }
+          const fillStart = reserveSelf ? 1 : 0;
+          const capacity = slotCount - fillStart;
+          sessions.slice(0, capacity).forEach((session, index) => {
+            nextLive[fillStart + index] = session;
+          });
           if (cancelled) return;
           setLiveSlots(nextLive);
 
@@ -1292,7 +1304,7 @@ export function ImmersiveRoom({
 
         const nextLive = [...live];
         let placed = 0;
-        for (const session of data.sessions ?? []) {
+        for (const session of shuffleInPlace([...(data.sessions ?? [])])) {
           if (placed >= emptyIndexes.length) break;
           if (usedSessionIds.has(session.sessionId)) continue;
           if (usedUserIds.has(session.userId)) continue;
