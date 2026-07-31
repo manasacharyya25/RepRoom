@@ -12,7 +12,7 @@ import type {
 import { COMMENT_MAX_LENGTH } from "@/lib/types/post";
 
 export const POSTS_PAGE_SIZE = 9;
-export const FEED_PAGE_SIZE = 100;
+export const FEED_PAGE_SIZE = 10;
 
 function clampProgress(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));

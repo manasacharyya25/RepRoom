@@ -15,7 +15,7 @@ export const FREE_BROADCAST_SECONDS = 30 * 60;
 export const FREE_ROOM_SECONDS = FREE_BROADCAST_SECONDS;
 /** Premium subscription silent daily hard-stop (UX still shows unlimited). */
 export const PREMIUM_DAILY_BROADCAST_SECONDS = 60 * 60;
-export const GUEST_FEED_LIMIT = 100;
+export const GUEST_FEED_LIMIT = 6;
 export const ROOM_HEARTBEAT_SECONDS = 20;
 export const ACTIVE_SESSION_STALE_SECONDS = 120;
 

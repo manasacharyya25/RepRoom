@@ -648,14 +648,14 @@ export function CommunityFeed({
           ))}
         </div>
 
-        {guestLimit && !loading && posts.length > 0 ? (
+        {guestLimit && !loading && posts.length >= guestLimit ? (
           <div className="feed-load-more">
             <button
               type="button"
               className="feed-load-more-btn"
               onClick={() => onUpgradeRequest?.("guest_feed_end")}
             >
-              Sign in for the full feed
+              Load more
             </button>
           </div>
         ) : null}

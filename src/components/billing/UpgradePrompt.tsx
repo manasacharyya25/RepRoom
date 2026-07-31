@@ -27,7 +27,7 @@ const COPY: Record<
   },
   guest_feed_end: {
     title: "See the full feed",
-    body: "You’re at the guest preview limit. Sign in for the complete community access.",
+    body: "You’re at the guest preview limit. Sign in for the complete community feed.",
     primary: "Sign in",
     primaryHref: "/login?next=/feed"
   },
