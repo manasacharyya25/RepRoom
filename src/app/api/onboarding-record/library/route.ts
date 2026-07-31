@@ -3,6 +3,7 @@ import {
   onboardingR2Folder,
   readOnboardingSession
 } from "@/lib/onboarding-recorder";
+import { normalizeAvailableChunks } from "@/lib/streaming/list-archive-chunks";
 import { publicObjectUrl } from "@/lib/streaming/r2";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 
@@ -28,7 +29,7 @@ export async function GET() {
       admin
         .from("onboarding_recorder_sessions")
         .select(
-          "session_id, status, started_at, ended_at, last_chunk_number, last_chunk_uploaded_at"
+          "session_id, status, started_at, ended_at, last_chunk_number, last_chunk_uploaded_at, available_chunks"
         )
         .eq("recorder_id", auth.recorderId)
         .gt("last_chunk_number", 0)
@@ -58,6 +59,7 @@ export async function GET() {
       endedAt: (row.ended_at as string | null) ?? null,
       lastChunkNumber: row.last_chunk_number as number,
       lastChunkUploadedAt: (row.last_chunk_uploaded_at as string | null) ?? null,
+      availableChunks: normalizeAvailableChunks(row.available_chunks),
       r2Folder: onboardingR2Folder(auth.recorderId, row.session_id as string),
       previewUrl: publicObjectUrl(
         `${onboardingR2Folder(auth.recorderId, row.session_id as string)}/chunk_000001.webm`

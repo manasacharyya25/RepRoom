@@ -4,10 +4,25 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react
 import { previewChunkUrlFromFolder } from "@/lib/streaming/preview-chunks";
 
 const PRELOAD_AHEAD = 4;
+/** Contiguous skip/error attempts before resolving the real chunk list from R2. */
+const SKIP_BEFORE_RESOLVE = 2;
 
 type OnboardingSessionPlayerProps = {
   r2Folder: string;
   lastChunkNumber: number;
+  /** Required to resolve/persist available_chunks after contiguous playback fails. */
+  sessionId?: string;
+  /** Preloaded from DB when already discovered. */
+  availableChunks?: number[] | null;
+  /**
+   * Where to resolve chunks on failure.
+   * onboarding → /api/onboarding-record/chunks
+   * admin → /api/rhoq-admin/recorders/{recorderId}/chunks
+   */
+  chunksResolve?:
+    | { kind: "onboarding" }
+    | { kind: "admin"; recorderId: string }
+    | null;
   className?: string;
 };
 
@@ -32,34 +47,76 @@ function assignChunkSrc(
   video.src = url;
 }
 
+function contiguousPlaylist(lastChunkNumber: number) {
+  const max = Math.max(1, Math.floor(lastChunkNumber));
+  return Array.from({ length: max }, (_, index) => index + 1);
+}
+
+function bootVideos(
+  publicBase: string,
+  r2Folder: string,
+  list: number[],
+  videoA: HTMLVideoElement,
+  videoB: HTMLVideoElement
+) {
+  if (list.length === 0) return;
+  const startChunk = list[0]!;
+  const nextChunk = list[1] ?? startChunk;
+  assignChunkSrc(
+    videoA,
+    previewChunkUrlFromFolder(publicBase, r2Folder, startChunk),
+    startChunk
+  );
+  assignChunkSrc(
+    videoB,
+    previewChunkUrlFromFolder(publicBase, r2Folder, nextChunk),
+    nextChunk
+  );
+  videoA.pause();
+  videoB.pause();
+}
+
 /** Muted archive playback: no controls, auto-advance chunks, preload 4 ahead. */
 export function OnboardingSessionPlayer({
   r2Folder,
   lastChunkNumber,
+  sessionId,
+  availableChunks = null,
+  chunksResolve = null,
   className
 }: OnboardingSessionPlayerProps) {
   const publicBase = getPublicBaseUrl();
-  const maxChunk = Math.max(1, Math.floor(lastChunkNumber));
 
   const videoARef = useRef<HTMLVideoElement | null>(null);
   const videoBRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const preloadRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const activeSlotRef = useRef<0 | 1>(0);
-  const playingIndexRef = useRef(1);
+  const playingPosRef = useRef(0);
   const swapGenerationRef = useRef(0);
-  const maxChunkRef = useRef(maxChunk);
   const folderRef = useRef(r2Folder);
   const baseRef = useRef(publicBase);
+  const playlistRef = useRef<number[]>([]);
+  const skipFailsRef = useRef(0);
+  const resolveAttemptedRef = useRef(false);
+  const userStartedRef = useRef(false);
+  const performSwapRef = useRef<() => void>(() => undefined);
 
-  maxChunkRef.current = maxChunk;
   folderRef.current = r2Folder;
   baseRef.current = publicBase;
 
+  const [playlist, setPlaylist] = useState<number[]>(() =>
+    availableChunks && availableChunks.length > 0
+      ? availableChunks
+      : contiguousPlaylist(lastChunkNumber)
+  );
   const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
   const [showPlayOverlay, setShowPlayOverlay] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const userStartedRef = useRef(false);
+  const [resolving, setResolving] = useState(false);
+  const [bootKey, setBootKey] = useState(0);
+
+  playlistRef.current = playlist;
 
   const urlFor = useCallback((chunkIndex: number) => {
     const base = baseRef.current;
@@ -67,25 +124,26 @@ export function OnboardingSessionPlayer({
     return previewChunkUrlFromFolder(base, folderRef.current, chunkIndex);
   }, []);
 
-  const nextIndex = useCallback((current: number) => {
-    const max = maxChunkRef.current;
-    if (current >= max) return max;
-    return current + 1;
+  const chunkAt = useCallback((pos: number) => {
+    const list = playlistRef.current;
+    if (pos < 0 || pos >= list.length) return null;
+    return list[pos] ?? null;
   }, []);
 
   const warmPreloads = useCallback(
-    (afterIndex: number) => {
-      let index = afterIndex + 1;
-      for (let i = 0; i < PRELOAD_AHEAD && index <= maxChunkRef.current; i++) {
+    (afterPos: number) => {
+      let pos = afterPos + 1;
+      for (let i = 0; i < PRELOAD_AHEAD; i++) {
+        const chunk = chunkAt(pos);
         const el = preloadRefs.current[i];
-        const url = urlFor(index);
-        if (el && url) {
-          assignChunkSrc(el, url, index);
+        const url = chunk !== null ? urlFor(chunk) : null;
+        if (el && chunk !== null && url) {
+          assignChunkSrc(el, url, chunk);
         }
-        index += 1;
+        pos += 1;
       }
     },
-    [urlFor]
+    [chunkAt, urlFor]
   );
 
   const prepareStandby = useCallback(
@@ -97,22 +155,53 @@ export function OnboardingSessionPlayer({
     [urlFor]
   );
 
+  const resolveChunkList = useCallback(async () => {
+    if (!sessionId || !chunksResolve || resolveAttemptedRef.current) {
+      return false;
+    }
+    resolveAttemptedRef.current = true;
+    setResolving(true);
+    try {
+      const url =
+        chunksResolve.kind === "onboarding"
+          ? `/api/onboarding-record/chunks?sessionId=${encodeURIComponent(sessionId)}`
+          : `/api/rhoq-admin/recorders/${encodeURIComponent(chunksResolve.recorderId)}/chunks?sessionId=${encodeURIComponent(sessionId)}`;
+      const response = await fetch(url);
+      const data = (await response.json().catch(() => null)) as {
+        chunks?: number[];
+      } | null;
+      if (!response.ok || !data?.chunks?.length) {
+        return false;
+      }
+      skipFailsRef.current = 0;
+      playlistRef.current = data.chunks;
+      setPlaylist(data.chunks);
+      setBootKey((key) => key + 1);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setResolving(false);
+    }
+  }, [chunksResolve, sessionId]);
+
   const performSwap = useCallback(() => {
     const a = videoARef.current;
     const b = videoBRef.current;
     if (!a || !b) return;
 
-    const current = playingIndexRef.current;
-    const max = maxChunkRef.current;
-    if (current >= max) {
+    const currentPos = playingPosRef.current;
+    const list = playlistRef.current;
+    if (currentPos >= list.length - 1) {
       (activeSlotRef.current === 0 ? a : b).pause();
       return;
     }
 
     const active = activeSlotRef.current === 0 ? a : b;
     const standby = activeSlotRef.current === 0 ? b : a;
-    const next = nextIndex(current);
-    if (next === current) {
+    const nextPos = currentPos + 1;
+    const nextChunk = list[nextPos];
+    if (nextChunk === undefined) {
       active.pause();
       return;
     }
@@ -121,6 +210,7 @@ export function OnboardingSessionPlayer({
 
     const finishSwap = () => {
       if (generation !== swapGenerationRef.current) return;
+      skipFailsRef.current = 0;
       if (userStartedRef.current) {
         void standby.play().catch(() => undefined);
       }
@@ -128,31 +218,34 @@ export function OnboardingSessionPlayer({
       const newSlot = (activeSlotRef.current === 0 ? 1 : 0) as 0 | 1;
       activeSlotRef.current = newSlot;
       setActiveSlot(newSlot);
-      playingIndexRef.current = next;
+      playingPosRef.current = nextPos;
 
-      const following = nextIndex(next);
-      if (following !== next) {
+      const following = list[nextPos + 1];
+      if (following !== undefined) {
         prepareStandby(active, following);
       }
-      warmPreloads(next);
+      warmPreloads(nextPos);
     };
 
     if (
-      standby.dataset.chunkIndex === String(next) &&
+      standby.dataset.chunkIndex === String(nextChunk) &&
       standby.readyState >= 2
     ) {
       finishSwap();
       return;
     }
 
-    prepareStandby(standby, next);
+    prepareStandby(standby, nextChunk);
 
     let attempts = 0;
-    const maxAttempts = 12;
+    const maxAttempts = 8;
 
     const onReady = () => {
       if (generation !== swapGenerationRef.current) return false;
-      if (standby.dataset.chunkIndex !== String(next) || standby.readyState < 2) {
+      if (
+        standby.dataset.chunkIndex !== String(nextChunk) ||
+        standby.readyState < 2
+      ) {
         return false;
       }
       finishSwap();
@@ -173,42 +266,58 @@ export function OnboardingSessionPlayer({
       attempts += 1;
       if (attempts < maxAttempts) return;
       window.clearInterval(poll);
-      // Skip missing chunk and try the following one.
-      playingIndexRef.current = next;
-      const skipTo = nextIndex(next);
-      if (skipTo !== next) {
-        prepareStandby(standby, skipTo);
-        warmPreloads(next);
-        performSwap();
-      }
-    }, 500);
-  }, [nextIndex, prepareStandby, urlFor, warmPreloads]);
 
+      skipFailsRef.current += 1;
+      if (
+        skipFailsRef.current >= SKIP_BEFORE_RESOLVE &&
+        !resolveAttemptedRef.current
+      ) {
+        void resolveChunkList();
+        return;
+      }
+
+      playingPosRef.current = nextPos;
+      const skipChunk = list[nextPos + 1];
+      if (skipChunk !== undefined) {
+        prepareStandby(standby, skipChunk);
+        warmPreloads(nextPos);
+        performSwapRef.current();
+      }
+    }, 400);
+  }, [prepareStandby, resolveChunkList, warmPreloads]);
+
+  performSwapRef.current = performSwap;
+
+  // Reset playlist when the recording identity changes.
+  useEffect(() => {
+    const initial =
+      availableChunks && availableChunks.length > 0
+        ? availableChunks
+        : contiguousPlaylist(lastChunkNumber);
+    resolveAttemptedRef.current = Boolean(
+      availableChunks && availableChunks.length > 0
+    );
+    skipFailsRef.current = 0;
+    playlistRef.current = initial;
+    setPlaylist(initial);
+    setBootKey((key) => key + 1);
+  }, [r2Folder, lastChunkNumber, availableChunks]);
+
+  // Load A/B sources whenever bootKey changes (identity or resolved list).
   useEffect(() => {
     if (!publicBase) return;
-
     userStartedRef.current = false;
     setShowPlayOverlay(true);
     swapGenerationRef.current += 1;
-    playingIndexRef.current = 1;
+    playingPosRef.current = 0;
     activeSlotRef.current = 0;
     setActiveSlot(0);
 
     const a = videoARef.current;
     const b = videoBRef.current;
     if (!a || !b) return;
-
-    const start = 1;
-    const next = maxChunk > 1 ? 2 : 1;
-    const startUrl = previewChunkUrlFromFolder(publicBase, r2Folder, start);
-    const nextUrl = previewChunkUrlFromFolder(publicBase, r2Folder, next);
-
-    assignChunkSrc(a, startUrl, start);
-    assignChunkSrc(b, nextUrl, next);
-
-    a.pause();
-    b.pause();
-  }, [publicBase, r2Folder, maxChunk]);
+    bootVideos(publicBase, r2Folder, playlistRef.current, a, b);
+  }, [publicBase, r2Folder, bootKey]);
 
   const handlePlayerClick = () => {
     const a = videoARef.current;
@@ -219,8 +328,16 @@ export function OnboardingSessionPlayer({
     if (!userStartedRef.current) {
       userStartedRef.current = true;
       setShowPlayOverlay(false);
-      warmPreloads(playingIndexRef.current);
-      void active.play().catch(() => undefined);
+      warmPreloads(playingPosRef.current);
+      void active.play().catch(() => {
+        if (!resolveAttemptedRef.current) {
+          void resolveChunkList().then((ok) => {
+            if (!ok) performSwapRef.current();
+          });
+        } else {
+          performSwapRef.current();
+        }
+      });
       return;
     }
 
@@ -233,7 +350,9 @@ export function OnboardingSessionPlayer({
     }
   };
 
-  const togglePlayerFullscreen = async (event: MouseEvent<HTMLButtonElement>) => {
+  const togglePlayerFullscreen = async (
+    event: MouseEvent<HTMLButtonElement>
+  ) => {
     event.stopPropagation();
     const el = containerRef.current;
     if (!el) return;
@@ -277,15 +396,45 @@ export function OnboardingSessionPlayer({
       performSwap();
     };
 
+    const onError = (event: Event) => {
+      const video = event.currentTarget as HTMLVideoElement;
+      if (!isActive(video)) return;
+      if (!userStartedRef.current) return;
+
+      skipFailsRef.current += 1;
+      if (
+        skipFailsRef.current >= SKIP_BEFORE_RESOLVE &&
+        !resolveAttemptedRef.current
+      ) {
+        void resolveChunkList().then((ok) => {
+          if (!ok) performSwap();
+        });
+        return;
+      }
+      performSwap();
+    };
+
     for (const video of [a, b]) {
       video.addEventListener("ended", onEnded);
+      video.addEventListener("error", onError);
     }
     return () => {
       for (const video of [a, b]) {
         video.removeEventListener("ended", onEnded);
+        video.removeEventListener("error", onError);
       }
     };
-  }, [performSwap]);
+  }, [performSwap, resolveChunkList, bootKey]);
+
+  // After resolve rebuilds sources, resume if the user already started.
+  useEffect(() => {
+    if (!userStartedRef.current) return;
+    if (!resolveAttemptedRef.current) return;
+    const a = videoARef.current;
+    if (!a) return;
+    setShowPlayOverlay(false);
+    void a.play().catch(() => undefined);
+  }, [bootKey]);
 
   if (!publicBase || lastChunkNumber < 1) {
     return (
@@ -339,7 +488,7 @@ export function OnboardingSessionPlayer({
       />
       {showPlayOverlay ? (
         <span aria-hidden className="onboard-session-player-play-icon">
-          ▶
+          {resolving ? "…" : "▶"}
         </span>
       ) : null}
       <video

@@ -1748,6 +1748,9 @@ export function ImmersiveRoom({
                     tabIndex={promotable ? 0 : undefined}
                   >
                     <ChunkPreviewPlayer
+                      availableChunks={
+                        mode === "archive" ? session.availableChunks : null
+                      }
                       className={
                         featured
                           ? "live-rooms-featured-hls"
@@ -1778,6 +1781,9 @@ export function ImmersiveRoom({
                       }}
                       paused={pauseIncoming}
                       r2Folder={session.r2Folder}
+                      sessionId={
+                        mode === "archive" ? session.sessionId : undefined
+                      }
                     />
                     <TileUserLabel
                       author={tileAuthor}

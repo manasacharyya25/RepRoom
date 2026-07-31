@@ -17,6 +17,10 @@ type ChunkPreviewPlayerProps = {
    * archive — loop chunks 1..initialLastChunk from an ended session.
    */
   mode?: "live" | "archive";
+  /** Pre-resolved playable chunk indices (archive). */
+  availableChunks?: number[] | null;
+  /** Archive session id — used to list+persist chunks when contiguous playback fails. */
+  sessionId?: string;
   paused?: boolean;
   className?: string;
   label?: string;
@@ -49,6 +53,8 @@ export function ChunkPreviewPlayer({
   r2Folder,
   initialLastChunk = 0,
   mode = "live",
+  availableChunks = null,
+  sessionId,
   paused = false,
   className,
   label,
@@ -67,6 +73,13 @@ export function ChunkPreviewPlayer({
   const deadReportedRef = useRef(false);
   const onDeadRef = useRef(onDead);
   onDeadRef.current = onDead;
+  const archiveSkipFailsRef = useRef(0);
+  const archiveResolveAttemptedRef = useRef(false);
+  const playlistRef = useRef<number[] | null>(
+    mode === "archive" && availableChunks && availableChunks.length > 0
+      ? availableChunks
+      : null
+  );
 
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -78,8 +91,30 @@ export function ChunkPreviewPlayer({
   folderRef.current = r2Folder;
   const baseRef = useRef(publicBase);
   baseRef.current = publicBase;
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
   const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
+  const [archivePlaylist, setArchivePlaylist] = useState<number[] | null>(
+    () =>
+      mode === "archive" && availableChunks && availableChunks.length > 0
+        ? availableChunks
+        : null
+  );
+
+  useEffect(() => {
+    if (mode !== "archive") {
+      playlistRef.current = null;
+      setArchivePlaylist(null);
+      archiveResolveAttemptedRef.current = false;
+      return;
+    }
+    if (availableChunks && availableChunks.length > 0) {
+      playlistRef.current = availableChunks;
+      setArchivePlaylist(availableChunks);
+      archiveResolveAttemptedRef.current = true;
+    }
+  }, [mode, availableChunks, r2Folder]);
 
   const urlFor = useCallback((chunkIndex: number) => {
     const base = baseRef.current;
@@ -89,10 +124,46 @@ export function ChunkPreviewPlayer({
 
   const nextIndex = useCallback((current: number) => {
     if (modeRef.current === "archive") {
+      const list = playlistRef.current;
+      if (list && list.length > 0) {
+        const at = list.indexOf(current);
+        if (at < 0) return list[0]!;
+        if (at >= list.length - 1) return current;
+        return list[at + 1]!;
+      }
       if (current >= maxChunkRef.current) return current;
       return current + 1;
     }
     return current + 1;
+  }, []);
+
+  const archiveEndChunk = useCallback(() => {
+    const list = playlistRef.current;
+    if (list && list.length > 0) return list[list.length - 1]!;
+    return maxChunkRef.current;
+  }, []);
+
+  const resolveArchiveChunks = useCallback(async () => {
+    if (modeRef.current !== "archive") return false;
+    if (archiveResolveAttemptedRef.current) return false;
+    const id = sessionIdRef.current?.trim();
+    if (!id) return false;
+    archiveResolveAttemptedRef.current = true;
+    try {
+      const response = await fetch(
+        `/api/live/sessions/archive-chunks?sessionId=${encodeURIComponent(id)}`
+      );
+      const data = (await response.json().catch(() => null)) as {
+        chunks?: number[];
+      } | null;
+      if (!response.ok || !data?.chunks?.length) return false;
+      playlistRef.current = data.chunks;
+      setArchivePlaylist(data.chunks);
+      archiveSkipFailsRef.current = 0;
+      return true;
+    } catch {
+      return false;
+    }
   }, []);
 
   const markDead = useCallback(() => {
@@ -207,6 +278,14 @@ export function ChunkPreviewPlayer({
 
       window.clearInterval(poll);
       if (modeRef.current === "archive") {
+        archiveSkipFailsRef.current += 1;
+        if (
+          archiveSkipFailsRef.current >= 2 &&
+          !archiveResolveAttemptedRef.current
+        ) {
+          void resolveArchiveChunks();
+          return;
+        }
         // Skip missing archive chunk; keep last frame until the following one is ready.
         playingIndexRef.current = next;
         prepareStandby(standby, nextIndex(next));
@@ -215,17 +294,23 @@ export function ChunkPreviewPlayer({
       }
       // Live: keep last frame; stale watchdog handles death if tip never arrives.
     }, 500);
-  }, [nextIndex, prepareStandby, urlFor, warmPreloads]);
+  }, [nextIndex, prepareStandby, resolveArchiveChunks, urlFor, warmPreloads]);
 
   // Boot / reset when stream identity changes (not on pause).
   useEffect(() => {
     if (!publicBase) return;
 
+    const list = playlistRef.current;
     const start =
-      mode === "archive" ? 1 : Math.max(1, maxChunk - LIVE_TIP_LAG);
+      mode === "archive"
+        ? list && list.length > 0
+          ? list[0]!
+          : 1
+        : Math.max(1, maxChunk - LIVE_TIP_LAG);
 
     deadReportedRef.current = false;
     lastGoodAtRef.current = Date.now();
+    archiveSkipFailsRef.current = 0;
     swapGenerationRef.current += 1;
     playingIndexRef.current = start;
     activeSlotRef.current = 0;
@@ -237,9 +322,9 @@ export function ChunkPreviewPlayer({
 
     const next =
       mode === "archive"
-        ? start >= maxChunk
+        ? nextIndex(start) === start
           ? start
-          : start + 1
+          : nextIndex(start)
         : start + 1;
     const startUrl = previewChunkUrlFromFolder(publicBase, r2Folder, start);
     const nextUrl = previewChunkUrlFromFolder(publicBase, r2Folder, next);
@@ -257,19 +342,31 @@ export function ChunkPreviewPlayer({
       }
       warmIndex =
         mode === "archive"
-          ? warmIndex >= maxChunk
+          ? nextIndex(warmIndex) === warmIndex
             ? warmIndex
-            : warmIndex + 1
+            : nextIndex(warmIndex)
           : warmIndex + 1;
     }
 
     if (!pausedRef.current) {
-      void a.play().catch(() => {});
+      void a.play().catch(() => {
+        if (mode === "archive" && !archiveResolveAttemptedRef.current) {
+          void resolveArchiveChunks();
+        }
+      });
     } else {
       a.pause();
     }
     b.pause();
-  }, [publicBase, r2Folder, mode, maxChunk]);
+  }, [
+    publicBase,
+    r2Folder,
+    mode,
+    maxChunk,
+    archivePlaylist,
+    nextIndex,
+    resolveArchiveChunks
+  ]);
 
   // Pause / resume active element only.
   useEffect(() => {
@@ -297,10 +394,10 @@ export function ChunkPreviewPlayer({
       if (!isActive(video)) return;
       lastGoodAtRef.current = Date.now();
 
-      // Archive: one full pass through chunks 1..max, then hand off for rotation.
+      // Archive: one full pass through playlist / 1..max, then hand off for rotation.
       if (
         modeRef.current === "archive" &&
-        playingIndexRef.current >= maxChunkRef.current
+        playingIndexRef.current >= archiveEndChunk()
       ) {
         markArchiveComplete();
         return;
@@ -346,8 +443,16 @@ export function ChunkPreviewPlayer({
       }
 
       if (modeRef.current === "archive") {
-        if (playingIndexRef.current >= maxChunkRef.current) {
+        if (playingIndexRef.current >= archiveEndChunk()) {
           markArchiveComplete();
+          return;
+        }
+        archiveSkipFailsRef.current += 1;
+        if (
+          archiveSkipFailsRef.current >= 2 &&
+          !archiveResolveAttemptedRef.current
+        ) {
+          void resolveArchiveChunks();
           return;
         }
         playingIndexRef.current = nextIndex(playingIndexRef.current);
@@ -383,7 +488,17 @@ export function ChunkPreviewPlayer({
         video.removeEventListener("error", onError);
       }
     };
-  }, [markArchiveComplete, nextIndex, performSwap, prepareStandby, urlFor, warmPreloads, r2Folder]);
+  }, [
+    archiveEndChunk,
+    markArchiveComplete,
+    nextIndex,
+    performSwap,
+    prepareStandby,
+    resolveArchiveChunks,
+    urlFor,
+    warmPreloads,
+    r2Folder
+  ]);
 
   useEffect(() => {
     if (mode === "archive") return;

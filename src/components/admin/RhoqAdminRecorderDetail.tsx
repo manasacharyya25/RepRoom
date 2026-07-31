@@ -23,6 +23,7 @@ type Recording = {
   endedAt: string | null;
   lastChunkNumber: number;
   r2Folder: string;
+  availableChunks?: number[] | null;
 };
 
 type LibraryImage = {
@@ -352,8 +353,15 @@ export function RhoqAdminRecorderDetail({
                       </label>
                       <div className="rhoq-admin-player onboard-recorder-recording-player">
                         <OnboardingSessionPlayer
+                          availableChunks={row.availableChunks}
+                          chunksResolve={
+                            row.status === "ended"
+                              ? { kind: "admin", recorderId }
+                              : null
+                          }
                           lastChunkNumber={row.lastChunkNumber}
                           r2Folder={row.r2Folder}
+                          sessionId={row.sessionId}
                         />
                       </div>
                     </li>

@@ -6,6 +6,9 @@ import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
+
 export async function GET(request: Request) {
   if (!isAdminConfigured()) {
     return NextResponse.json(
@@ -21,8 +24,40 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const archived = searchParams.get("archived") === "1";
+  const pageRaw = Number(searchParams.get("page") ?? 1);
+  const limitRaw = Number(searchParams.get("limit") ?? DEFAULT_PAGE_SIZE);
+  const page =
+    Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1;
+  const limit = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(
+      1,
+      Number.isFinite(limitRaw) ? Math.floor(limitRaw) : DEFAULT_PAGE_SIZE
+    )
+  );
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
   const admin = createAdminClient();
+
+  let countQuery = admin
+    .from("onboarding_recorders")
+    .select("id", { count: "exact", head: true });
+  countQuery = archived
+    ? countQuery.not("promoted_at", "is", null)
+    : countQuery.is("promoted_at", null);
+
+  const { count: totalCount, error: countError } = await countQuery;
+  if (countError) {
+    console.error("[rhoq-admin/recorders count]", countError);
+    return NextResponse.json(
+      { error: "Could not load recorders" },
+      { status: 500 }
+    );
+  }
+
+  const total = totalCount ?? 0;
+
   let query = admin
     .from("onboarding_recorders")
     .select(
@@ -31,7 +66,8 @@ export async function GET(request: Request) {
     .order(archived ? "promoted_at" : "created_at", {
       ascending: false,
       nullsFirst: false
-    });
+    })
+    .range(from, to);
 
   query = archived
     ? query.not("promoted_at", "is", null)
@@ -41,7 +77,10 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error("[rhoq-admin/recorders]", error);
-    return NextResponse.json({ error: "Could not load recorders" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Could not load recorders" },
+      { status: 500 }
+    );
   }
 
   const ids = (recorders ?? []).map((row) => row.id as string);
@@ -71,9 +110,15 @@ export async function GET(request: Request) {
     }
   }
 
+  const hasMore = from + (recorders?.length ?? 0) < total;
+
   return NextResponse.json({
     ok: true,
     archived,
+    page,
+    limit,
+    total,
+    hasMore,
     recorders: (recorders ?? []).map((row) => ({
       id: row.id as string,
       username: (row.username as string).toLowerCase(),

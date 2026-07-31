@@ -130,13 +130,14 @@ export async function POST(request: Request) {
     ended_at: string | null;
     last_chunk_number: number;
     last_chunk_uploaded_at: string | null;
+    available_chunks: number[] | null;
   }[] = [];
 
   if (sessionIds.length > 0) {
     const { data, error } = await admin
       .from("onboarding_recorder_sessions")
       .select(
-        "session_id, started_at, ended_at, last_chunk_number, last_chunk_uploaded_at"
+        "session_id, started_at, ended_at, last_chunk_number, last_chunk_uploaded_at, available_chunks"
       )
       .eq("recorder_id", recorderId)
       .in("session_id", sessionIds)
@@ -228,6 +229,7 @@ export async function POST(request: Request) {
       last_chunk_number: session.last_chunk_number,
       last_chunk_uploaded_at:
         session.last_chunk_uploaded_at ?? session.ended_at ?? now,
+      available_chunks: session.available_chunks,
       created_at: session.started_at ?? now,
       updated_at: now,
       archived_at: now,

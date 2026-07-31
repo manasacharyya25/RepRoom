@@ -295,6 +295,27 @@
   margin: 0 0 16px;
 }
 
+.rhoq-admin-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.rhoq-admin-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rhoq-admin-pagination-page {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .rhoq-admin-tab {
   border: 1px solid var(--border-strong);
   border-radius: 999px;

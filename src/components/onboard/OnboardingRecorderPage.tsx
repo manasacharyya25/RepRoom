@@ -21,6 +21,7 @@ type LibraryRecording = {
   endedAt: string | null;
   lastChunkNumber: number;
   r2Folder: string;
+  availableChunks?: number[] | null;
 };
 
 const GO_LIVE_AVOID_EXAMPLES = [
@@ -725,8 +726,15 @@ export function OnboardingRecorderPage({ username }: OnboardingRecorderPageProps
                             <div className="onboard-recorder-recording-card">
                               <div className="onboard-recorder-recording-player">
                                 <OnboardingSessionPlayer
+                                  availableChunks={rec.availableChunks}
+                                  chunksResolve={
+                                    rec.status === "ended"
+                                      ? { kind: "onboarding" }
+                                      : null
+                                  }
                                   lastChunkNumber={rec.lastChunkNumber}
                                   r2Folder={rec.r2Folder}
+                                  sessionId={rec.sessionId}
                                 />
                               </div>
                               <div className="onboard-recorder-recording-meta">

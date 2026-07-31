@@ -6,6 +6,7 @@ import {
   formatCountry,
   formatHoursWorked
 } from "@/lib/profile-labels";
+import { normalizeAvailableChunks } from "@/lib/streaming/list-archive-chunks";
 
 const DEFAULT_STALE_MULTIPLIER = 3;
 const MIN_STALE_SECONDS = 15;
@@ -55,6 +56,7 @@ export type LiveSessionRow = {
   ended_at: string | null;
   last_chunk_number: number;
   last_chunk_uploaded_at: string;
+  available_chunks?: number[] | null;
 };
 
 /** Rows moved out of live_sessions by the archive cron job. */
@@ -87,6 +89,7 @@ export type LiveSessionView = {
   lastChunkNumber: number;
   lastChunkUploadedAt: string;
   startedAt: string;
+  availableChunks?: number[] | null;
   displayName?: string | null;
   avatarUrl?: string | null;
   author?: FeedAuthorPreview | null;
@@ -154,6 +157,7 @@ export function mapLiveSessionRow(
     lastChunkNumber: row.last_chunk_number,
     lastChunkUploadedAt: row.last_chunk_uploaded_at,
     startedAt: row.started_at,
+    availableChunks: normalizeAvailableChunks(row.available_chunks),
     displayName: profile?.display_name ?? null,
     avatarUrl: profile?.avatar_url ?? null,
     author
