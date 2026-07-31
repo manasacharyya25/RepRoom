@@ -19,6 +19,27 @@ import {
   listFeedPosts
 } from "@/lib/posts-api";
 
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = items[i];
+    items[i] = items[j];
+    items[j] = tmp;
+  }
+  return items;
+}
+
+/** Oldest `created_at` among loaded posts — for keyset paging (not display order). */
+function oldestCreatedAtIso(posts: FeedPost[]): string | null {
+  let oldest: string | null = null;
+  for (const post of posts) {
+    const stamp = post.createdAtIso;
+    if (!stamp) continue;
+    if (!oldest || stamp < oldest) oldest = stamp;
+  }
+  return oldest;
+}
+
 function isRemoteSrc(src: string) {
   return (
     src.startsWith("http://") ||
@@ -512,7 +533,7 @@ export function CommunityFeed({
 
   useEffect(() => {
     if (live) return;
-    setPosts(initialPosts);
+    setPosts(shuffleInPlace([...initialPosts]));
     setLoading(false);
     setHasMore(false);
     setLoadError(null);
@@ -534,7 +555,9 @@ export function CommunityFeed({
         if (cancelled) return;
         const liked = new Set(page.likedPostIds);
         setPosts(
-          page.posts.map((row) => mapFeedRowToPost(row, liked.has(row.id)))
+          shuffleInPlace(
+            page.posts.map((row) => mapFeedRowToPost(row, liked.has(row.id)))
+          )
         );
         setHasMore(guestLimit ? false : page.hasMore);
       } catch (error) {
@@ -585,18 +608,19 @@ export function CommunityFeed({
     setLoadError(null);
     try {
       const supabase = createClient();
-      const oldest = posts[posts.length - 1];
       const page = await listFeedPosts(supabase, {
         limit: FEED_PAGE_SIZE,
-        before: oldest.createdAtIso ?? null
+        before: oldestCreatedAtIso(posts)
       });
 
       setPosts((prev) => {
         const seen = new Set(prev.map((post) => post.id));
         const liked = new Set(page.likedPostIds);
-        const next = page.posts
-          .map((row) => mapFeedRowToPost(row, liked.has(row.id)))
-          .filter((post) => !seen.has(post.id));
+        const next = shuffleInPlace(
+          page.posts
+            .map((row) => mapFeedRowToPost(row, liked.has(row.id)))
+            .filter((post) => !seen.has(post.id))
+        );
         return [...prev, ...next];
       });
       setHasMore(page.hasMore);

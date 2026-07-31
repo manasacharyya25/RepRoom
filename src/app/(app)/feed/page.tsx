@@ -5,6 +5,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { CommunityFeed } from "@/components/feed/CommunityFeed";
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { GUEST_FEED_LIMIT, type UpgradeReason } from "@/lib/entitlements";
+import "@/app/feed.css";
 
 export default function FeedPage() {
   const { authReady, isSignedIn } = useAuth();

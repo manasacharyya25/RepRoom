@@ -57,7 +57,7 @@ html:has(.feed-page) body::-webkit-scrollbar {
   color: var(--text-muted);
 }
 
-.feed-page-panel {
+.feed-page .feed-page-panel.feed-mock {
   max-height: none;
   min-height: calc(100vh - 120px);
   background: transparent;
@@ -67,7 +67,7 @@ html:has(.feed-page) body::-webkit-scrollbar {
   overflow: visible;
 }
 
-.feed-page-panel .feed-mock-posts {
+.feed-page .feed-page-panel .feed-mock-posts {
   column-count: 3;
   overflow: visible;
   padding: 16px;
@@ -213,7 +213,7 @@ html:has(.feed-page) body::-webkit-scrollbar {
   flex-shrink: 0;
 }
 
-.feed-page-panel .feed-load-more {
+.feed-page .feed-page-panel .feed-load-more {
   border-top: none;
 }
 
@@ -572,7 +572,7 @@ html:has(.feed-page) body::-webkit-scrollbar {
 }
 
 @media (max-width: 960px) {
-  .feed-page-panel .feed-mock-posts {
+  .feed-page .feed-page-panel .feed-mock-posts {
     column-count: 2;
   }
 
@@ -603,7 +603,7 @@ html:has(.feed-page) body::-webkit-scrollbar {
     padding: 8px 16px 32px;
   }
 
-  .feed-page-panel .feed-mock-posts {
+  .feed-page .feed-page-panel .feed-mock-posts {
     column-count: 1;
   }
 

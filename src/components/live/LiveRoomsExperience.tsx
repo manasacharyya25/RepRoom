@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import "@/app/landing.css";
 import "@/app/live-rooms.css";
 import { useEntitlements } from "@/components/auth/EntitlementsProvider";
 import { useAuth } from "@/components/auth/AuthProvider";
