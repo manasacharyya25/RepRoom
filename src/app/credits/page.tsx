@@ -3,7 +3,7 @@ import { LegalPage } from "@/components/legal/LegalPage";
 export const metadata = {
   title: "Credits — RhoQ",
   description:
-    "Attribution for third-party videos and icons used on RhoQ, including Pexels and Flaticon creators."
+    "Attribution for third-party videos, photos, and icons used on RhoQ, including Pexels and Flaticon creators."
 };
 
 const WORKOUT_VIDEOS = [
@@ -67,6 +67,29 @@ const ZUMBA_VIDEOS = [
   }
 ] as const;
 
+const ROOM_PHOTOS = [
+  {
+    creator: "Ketut Subiyanto",
+    href: "https://www.pexels.com/photo/man-weightlifting-in-gym-4853333/"
+  },
+  {
+    creator: "Vitaly Gariev",
+    href: "https://www.pexels.com/photo/group-yoga-session-outdoors-in-fall-park-36715606/"
+  },
+  {
+    creator: "Kampus Production",
+    href: "https://www.pexels.com/photo/women-dancing-and-having-fun-8957662/"
+  },
+  {
+    creator: "William Choquette",
+    href: "https://www.pexels.com/photo/an-on-treadmill-1954524/"
+  },
+  {
+    creator: "Cup of Couple",
+    href: "https://www.pexels.com/photo/a-man-and-woman-sitting-on-a-grassland-6962536/"
+  }
+] as const;
+
 const FLATICON_CREDITS = [
   {
     label: "Room icons",
@@ -107,12 +130,31 @@ function VideoCreditList({
   );
 }
 
+function PhotoCreditList({
+  items
+}: {
+  items: readonly { creator: string; href: string }[];
+}) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.href}>
+          Photo by {item.creator}:{" "}
+          <a href={item.href} rel="noopener noreferrer" target="_blank">
+            {item.href}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function CreditsPage() {
   return (
-    <LegalPage path="/credits" title="Credits" updated="July 29, 2026">
+    <LegalPage path="/credits" title="Credits" updated="July 31, 2026">
       <p>
-        Some landing videos and UI icons on RhoQ come from third-party creators.
-        We thank them for their work.
+        Some landing videos, room photos, and UI icons on RhoQ come from
+        third-party creators. We thank them for their work.
       </p>
 
       <h2>Videos — Workout</h2>
@@ -124,8 +166,11 @@ export default function CreditsPage() {
       <h2>Videos — Zumba</h2>
       <VideoCreditList items={ZUMBA_VIDEOS} />
 
+      <h2>Photos — Rooms</h2>
+      <PhotoCreditList items={ROOM_PHOTOS} />
+
       <p>
-        Videos hosted on{" "}
+        Videos and photos hosted on{" "}
         <a
           href="https://www.pexels.com"
           rel="noopener noreferrer"

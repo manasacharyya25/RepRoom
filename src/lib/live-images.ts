@@ -1,5 +1,5 @@
 /** Bump when replacing files under public/images/live to invalidate next/image cache. */
-const IMAGE_CACHE_VERSION = "4";
+const IMAGE_CACHE_VERSION = "7";
 
 function liveImage(path: string) {
   return `${path}?v=${IMAGE_CACHE_VERSION}`;
@@ -18,6 +18,10 @@ export const LIVE_IMAGES = {
   sidebar1: liveImage("/images/live/sidebar-1.png"),
   sidebar2: liveImage("/images/live/sidebar-2.jpg"),
   sidebar3: liveImage("/images/live/sidebar-3.png"),
+  yogaCover: liveImage("/images/live/yoga-cover.png"),
+  zumbaCover: liveImage("/images/live/zumba-cover.png"),
+  cardioCover: liveImage("/images/live/cardio-cover.png"),
+  meditationCover: liveImage("/images/live/meditation-cover.png"),
   transformBefore: liveImage("/images/landing/transform-before.png"),
   transformAfter: liveImage("/images/landing/transform-after.png"),
   pumpCheck: liveImage("/images/landing/pump-check.png"),
@@ -45,9 +49,9 @@ export const HERO_SIDEBAR_LIVE = [
 ];
 
 export const ROOM_LIVE_IMAGES: Record<string, string> = {
-  yoga: LIVE_IMAGES.participant2,
+  yoga: LIVE_IMAGES.yogaCover,
   workout: LIVE_IMAGES.participant3,
-  cardio: LIVE_IMAGES.participant1,
-  zumba: LIVE_IMAGES.main,
-  meditation: LIVE_IMAGES.participant4
+  cardio: LIVE_IMAGES.cardioCover,
+  zumba: LIVE_IMAGES.zumbaCover,
+  meditation: LIVE_IMAGES.meditationCover
 };
