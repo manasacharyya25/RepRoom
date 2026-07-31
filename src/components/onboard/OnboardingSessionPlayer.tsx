@@ -18,10 +18,12 @@ type OnboardingSessionPlayerProps = {
    * Where to resolve chunks on failure.
    * onboarding → /api/onboarding-record/chunks
    * admin → /api/rhoq-admin/recorders/{recorderId}/chunks
+   * live-archive → /api/live/sessions/archive-chunks
    */
   chunksResolve?:
     | { kind: "onboarding" }
     | { kind: "admin"; recorderId: string }
+    | { kind: "live-archive" }
     | null;
   className?: string;
 };
@@ -165,7 +167,9 @@ export function OnboardingSessionPlayer({
       const url =
         chunksResolve.kind === "onboarding"
           ? `/api/onboarding-record/chunks?sessionId=${encodeURIComponent(sessionId)}`
-          : `/api/rhoq-admin/recorders/${encodeURIComponent(chunksResolve.recorderId)}/chunks?sessionId=${encodeURIComponent(sessionId)}`;
+          : chunksResolve.kind === "live-archive"
+            ? `/api/live/sessions/archive-chunks?sessionId=${encodeURIComponent(sessionId)}`
+            : `/api/rhoq-admin/recorders/${encodeURIComponent(chunksResolve.recorderId)}/chunks?sessionId=${encodeURIComponent(sessionId)}`;
       const response = await fetch(url);
       const data = (await response.json().catch(() => null)) as {
         chunks?: number[];

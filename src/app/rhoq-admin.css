@@ -316,6 +316,158 @@
   font-weight: 600;
 }
 
+.rhoq-admin-code {
+  font-size: 0.78rem;
+}
+
+.rhoq-admin-path-cell {
+  max-width: 280px;
+}
+
+.rhoq-admin-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.rhoq-admin-danger-btn {
+  border: 1px solid rgba(255, 77, 77, 0.45);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: rgba(255, 77, 77, 0.12);
+  color: #ff8a80;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rhoq-admin-danger-btn:hover:not(:disabled) {
+  background: rgba(255, 77, 77, 0.22);
+}
+
+.rhoq-admin-danger-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.rhoq-admin-archive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rhoq-admin-archive-card {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: 14px 18px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rhoq-admin-archive-preview {
+  min-height: 160px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0a0a0c;
+}
+
+.rhoq-admin-archive-preview .rhoq-admin-player,
+.rhoq-admin-archive-preview .onboard-session-player {
+  width: 100%;
+  height: 100%;
+  min-height: 160px;
+}
+
+.rhoq-admin-archive-play {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 160px;
+  border: none;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 92, 43, 0.18), transparent 55%),
+    #111;
+  color: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.rhoq-admin-archive-play:hover:not(:disabled) {
+  color: #fff;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 92, 43, 0.28), transparent 55%),
+    #151518;
+}
+
+.rhoq-admin-archive-play:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rhoq-admin-archive-play-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 92, 43, 0.92);
+  color: #fff;
+  font-size: 1rem;
+  padding-left: 3px;
+}
+
+.rhoq-admin-archive-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rhoq-admin-archive-meta p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.rhoq-admin-archive-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.rhoq-admin-archive-path-row .rhoq-admin-path {
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-all;
+}
+
+.rhoq-admin-archive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .rhoq-admin-archive-card {
+    grid-template-columns: 1fr;
+  }
+}
+
 .rhoq-admin-tab {
   border: 1px solid var(--border-strong);
   border-radius: 999px;

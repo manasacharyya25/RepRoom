@@ -18,6 +18,7 @@ type RhoqAdminShellProps = {
 
 const NAV = [
   { href: "/rhoq-admin", label: "Onboard", match: "exact" as const },
+  { href: "/rhoq-admin/archives", label: "Archives", match: "prefix" as const },
   { href: "/rhoq-admin/waitlist", label: "Waitlist", match: "prefix" as const }
 ];
 
@@ -89,7 +90,8 @@ export function RhoqAdminShell({ children, wide }: RhoqAdminShellProps) {
       return (
         pathname === "/rhoq-admin" ||
         (pathname.startsWith("/rhoq-admin/") &&
-          !pathname.startsWith("/rhoq-admin/waitlist"))
+          !pathname.startsWith("/rhoq-admin/waitlist") &&
+          !pathname.startsWith("/rhoq-admin/archives"))
       );
     }
     if (match === "exact") {
