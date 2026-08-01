@@ -1,7 +1,21 @@
+export type LobbyMessageType = "text" | "workout_log";
+
+export type WorkoutLogMessagePayload = {
+  exerciseName: string;
+  set: number | null;
+  reps: string | null;
+  weight: string | null;
+  durationSeconds: number | null;
+  planDayIndex: number | null;
+  loggedOn: string;
+};
+
 export type DbLobbyMessage = {
   id: string;
   sender_id: string;
   body: string;
+  message_type: LobbyMessageType;
+  payload: Record<string, unknown>;
   created_at: string;
 };
 
@@ -19,6 +33,8 @@ export type LobbyMessageView = {
   handle: string;
   avatar: string;
   text: string;
+  messageType: LobbyMessageType;
+  payload: WorkoutLogMessagePayload | null;
   createdAt: string;
 };
 

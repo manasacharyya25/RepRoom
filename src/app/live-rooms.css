@@ -1583,3 +1583,300 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 .room-coming-soon-btn:hover {
   background: var(--accent-hover);
 }
+
+/* Workout accept prompt (Go Live) */
+.live-workout-accept-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(6, 8, 12, 0.72);
+}
+
+.live-workout-accept-modal {
+  width: min(420px, 100%);
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 20px 18px 16px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.live-workout-accept-modal h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.live-workout-accept-modal p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.live-workout-accept-session {
+  color: var(--text) !important;
+  font-weight: 700;
+  font-size: 1rem !important;
+}
+
+.live-workout-accept-meta {
+  margin-top: 4px !important;
+  font-size: 0.8rem !important;
+}
+
+.live-workout-accept-exercises {
+  margin: 12px 0 0;
+  padding: 0 0 0 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.live-workout-accept-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.live-workout-accept-primary,
+.live-workout-accept-secondary {
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.86rem;
+  padding: 10px 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.live-workout-accept-primary {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+}
+
+.live-workout-accept-secondary {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+
+/* Structured workout log composer + cards */
+.live-rooms-messages-composer-wrap,
+.room-select-chat-composer-wrap {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.live-rooms-messages-composer-modes,
+.room-select-chat-composer-modes {
+  display: inline-flex;
+  gap: 4px;
+  width: fit-content;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+}
+
+.live-rooms-messages-composer-mode,
+.room-select-chat-composer-mode {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.live-rooms-messages-composer-mode.is-active,
+.room-select-chat-composer-mode.is-active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+
+.live-rooms-messages-composer-wrap .live-rooms-messages-composer,
+.room-select-chat-composer-wrap .room-select-chat-composer {
+  border-top: 0;
+  padding: 0;
+}
+
+.live-rooms-messages-log-form,
+.room-select-chat-log-form {
+  display: grid;
+  gap: 8px;
+}
+
+.live-rooms-messages-log-grid,
+.room-select-chat-log-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.live-rooms-messages-log-field,
+.room-select-chat-log-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.live-rooms-messages-log-field span,
+.room-select-chat-log-field span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.live-rooms-messages-log-field input,
+.room-select-chat-log-field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.live-rooms-workout-log,
+.room-select-workout-log {
+  display: grid;
+  gap: 4px;
+  width: fit-content;
+  max-width: min(240px, 82%);
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, rgba(20, 10, 8, 0.55));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.live-rooms-messages-item.is-workout-log,
+.room-select-chat-item.is-workout-log {
+  display: flex;
+  width: 100%;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.live-rooms-messages-item.is-workout-log.is-other,
+.room-select-chat-item.is-workout-log.is-other {
+  justify-content: flex-start;
+}
+
+.live-rooms-messages-item.is-workout-log.is-self,
+.room-select-chat-item.is-workout-log.is-self {
+  justify-content: flex-end;
+}
+
+.live-rooms-messages-item.is-workout-log.is-self .live-rooms-workout-log,
+.room-select-chat-item.is-workout-log.is-self .room-select-workout-log {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, rgba(20, 10, 8, 0.55));
+}
+
+.live-rooms-workout-log-head,
+.room-select-workout-log-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.live-rooms-workout-log-author,
+.room-select-workout-log-author {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.live-rooms-workout-log-eyebrow,
+.room-select-workout-log-eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.live-rooms-workout-log-name,
+.room-select-workout-log-name {
+  display: block;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.live-rooms-workout-log-stats,
+.room-select-workout-log-stats {
+  display: grid;
+  gap: 2px;
+}
+
+.live-rooms-workout-log-stats-row,
+.room-select-workout-log-stats-row {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  column-gap: 18px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-height: 1.1em;
+}
+
+.live-rooms-workout-log-stats-row span:last-child,
+.room-select-workout-log-stats-row span:last-child {
+  text-align: right;
+}
+
+.live-rooms-workout-log-fallback,
+.room-select-workout-log-fallback {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.live-rooms-messages-composer-wrap,
+.room-select-chat-composer-wrap {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.live-rooms-messages-composer-wrap .live-rooms-messages-send,
+.room-select-chat-composer-wrap .room-select-chat-send {
+  justify-self: end;
+}
+
+@media (max-width: 720px) {
+  .live-rooms-messages-log-grid,
+  .room-select-chat-log-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

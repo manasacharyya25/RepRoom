@@ -6,10 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import type { FeedAuthorPreview } from "@/lib/feed-posts";
 import { createClient } from "@/lib/supabase/client";
 import { followUser, isFollowing, unfollowUser } from "@/lib/social-api";
@@ -150,7 +153,8 @@ export function FeedAuthorHoverCard({
   size = 32,
   className,
   children,
-  cardPlacement = "below"
+  cardPlacement = "below",
+  portal = false
 }: {
   author: FeedAuthorPreview;
   size?: number;
@@ -158,6 +162,8 @@ export function FeedAuthorHoverCard({
   /** Custom trigger (e.g. room tile name). Defaults to avatar button. */
   children?: ReactNode;
   cardPlacement?: "below" | "above";
+  /** Render the preview card in a portal so overflow parents cannot clip it. */
+  portal?: boolean;
 }) {
   const cardId = useId();
   const router = useRouter();
@@ -169,6 +175,7 @@ export function FeedAuthorHoverCard({
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [isSelf, setIsSelf] = useState(false);
+  const [portalStyle, setPortalStyle] = useState<CSSProperties | null>(null);
 
   const clearTimers = () => {
     if (openTimer.current != null) window.clearTimeout(openTimer.current);
@@ -228,6 +235,45 @@ export function FeedAuthorHoverCard({
     };
   }, [open, author.id]);
 
+  useLayoutEffect(() => {
+    if (!open || !portal) {
+      setPortalStyle(null);
+      return;
+    }
+
+    const update = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(240, window.innerWidth - 32);
+      let left = rect.left;
+      left = Math.max(16, Math.min(left, window.innerWidth - width - 16));
+      const belowTop = rect.bottom + 8;
+      const aboveTop = rect.top - 8;
+      const placeAbove =
+        cardPlacement === "above" ||
+        (cardPlacement === "below" &&
+          belowTop + 220 > window.innerHeight &&
+          aboveTop > 220);
+
+      setPortalStyle({
+        position: "fixed",
+        top: placeAbove ? undefined : belowTop,
+        bottom: placeAbove ? window.innerHeight - aboveTop : undefined,
+        left,
+        width,
+        zIndex: 200
+      });
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open, portal, cardPlacement]);
+
   const metrics = [
     {
       key: "age",
@@ -269,6 +315,117 @@ export function FeedAuthorHoverCard({
   };
 
   const hasCustomTrigger = Boolean(children);
+
+  const card = open ? (
+    <div
+      id={cardId}
+      className={`feed-author-card${
+        !portal && cardPlacement === "above" ? " feed-author-card--above" : ""
+      }${portal ? " feed-author-card--portal" : ""}`}
+      role="dialog"
+      aria-label={`${author.name} profile`}
+      style={portal ? portalStyle ?? undefined : undefined}
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onMouseEnter={scheduleOpen}
+      onMouseLeave={scheduleClose}
+    >
+      <div className="feed-author-card-top">
+        <div className="feed-author-card-avatar">
+          <Image
+            alt=""
+            className="feed-post-avatar-image"
+            fill
+            sizes="44px"
+            src={author.avatar}
+            unoptimized={isRemoteSrc(author.avatar)}
+          />
+        </div>
+        <div className="feed-author-card-copy">
+          <p className="feed-author-card-name">{author.name}</p>
+          <p className="feed-author-card-handle">{author.handle}</p>
+        </div>
+      </div>
+
+      <div className="feed-author-card-footer">
+        {metrics.length > 0 ? (
+          <ul className="feed-author-card-meta">
+            {metrics.map((metric) => (
+              <li
+                key={metric.key}
+                className="feed-author-card-metric"
+                aria-label={`${metric.label}: ${metric.value}`}
+              >
+                <span className="feed-author-card-metric-icon" aria-hidden>
+                  {metric.icon}
+                </span>
+                <span>{metric.value}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="feed-author-card-footer-spacer" aria-hidden />
+        )}
+        <div className="feed-author-card-actions">
+          {!isSelf ? (
+            <>
+              <button
+                type="button"
+                className={`feed-author-card-profile-btn${
+                  following ? " is-active" : ""
+                }`}
+                aria-label={
+                  following
+                    ? `Unfollow ${author.name}`
+                    : `Follow ${author.name}`
+                }
+                title={following ? "Following" : "Follow"}
+                disabled={followBusy}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void toggleFollow();
+                }}
+              >
+                <FollowIcon following={following} />
+              </button>
+              <button
+                type="button"
+                className="feed-author-card-profile-btn"
+                aria-label={`Message ${author.name}`}
+                title="Message"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  router.push(
+                    `${pathname}?dm=${encodeURIComponent(author.id)}`
+                  );
+                }}
+              >
+                <MessageIcon />
+              </button>
+            </>
+          ) : null}
+          {author.profileHref ? (
+            <Link
+              href={author.profileHref}
+              className="feed-author-card-profile-btn"
+              aria-label={`View ${author.name}'s profile`}
+              title="View profile"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <ProfileIcon />
+            </Link>
+          ) : (
+            <span
+              className="feed-author-card-profile-btn is-disabled"
+              aria-hidden
+            >
+              <ProfileIcon />
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div
@@ -328,111 +485,11 @@ export function FeedAuthorHoverCard({
         </button>
       )}
 
-      {open ? (
-        <div
-          id={cardId}
-          className={`feed-author-card${cardPlacement === "above" ? " feed-author-card--above" : ""}`}
-          role="dialog"
-          aria-label={`${author.name} profile`}
-          onClick={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <div className="feed-author-card-top">
-            <div className="feed-author-card-avatar">
-              <Image
-                alt=""
-                className="feed-post-avatar-image"
-                fill
-                sizes="44px"
-                src={author.avatar}
-                unoptimized={isRemoteSrc(author.avatar)}
-              />
-            </div>
-            <div className="feed-author-card-copy">
-              <p className="feed-author-card-name">{author.name}</p>
-              <p className="feed-author-card-handle">{author.handle}</p>
-            </div>
-          </div>
-
-          <div className="feed-author-card-footer">
-            {metrics.length > 0 ? (
-              <ul className="feed-author-card-meta">
-                {metrics.map((metric) => (
-                  <li
-                    key={metric.key}
-                    className="feed-author-card-metric"
-                    aria-label={`${metric.label}: ${metric.value}`}
-                  >
-                    <span className="feed-author-card-metric-icon" aria-hidden>
-                      {metric.icon}
-                    </span>
-                    <span>{metric.value}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="feed-author-card-footer-spacer" aria-hidden />
-            )}
-            <div className="feed-author-card-actions">
-              {!isSelf ? (
-                <>
-                  <button
-                    type="button"
-                    className={`feed-author-card-profile-btn${
-                      following ? " is-active" : ""
-                    }`}
-                    aria-label={
-                      following
-                        ? `Unfollow ${author.name}`
-                        : `Follow ${author.name}`
-                    }
-                    title={following ? "Following" : "Follow"}
-                    disabled={followBusy}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void toggleFollow();
-                    }}
-                  >
-                    <FollowIcon following={following} />
-                  </button>
-                  <button
-                    type="button"
-                    className="feed-author-card-profile-btn"
-                    aria-label={`Message ${author.name}`}
-                    title="Message"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      router.push(
-                        `${pathname}?dm=${encodeURIComponent(author.id)}`
-                      );
-                    }}
-                  >
-                    <MessageIcon />
-                  </button>
-                </>
-              ) : null}
-              {author.profileHref ? (
-                <Link
-                  href={author.profileHref}
-                  className="feed-author-card-profile-btn"
-                  aria-label={`View ${author.name}'s profile`}
-                  title="View profile"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <ProfileIcon />
-                </Link>
-              ) : (
-                <span
-                  className="feed-author-card-profile-btn is-disabled"
-                  aria-hidden
-                >
-                  <ProfileIcon />
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {portal && typeof document !== "undefined"
+        ? card
+          ? createPortal(card, document.body)
+          : null
+        : card}
     </div>
   );
 }

@@ -898,6 +898,11 @@ html:has(.landing) body::-webkit-scrollbar {
   animation: feed-author-card-in 0.16s ease;
 }
 
+.feed-author-card--portal {
+  position: fixed;
+  animation: feed-author-card-in 0.16s ease;
+}
+
 .feed-author-card--above {
   top: auto;
   bottom: calc(100% + 8px);

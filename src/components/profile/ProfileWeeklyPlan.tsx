@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProfilePlanModal } from "@/components/profile/ProfilePlanModal";
+import { createClient } from "@/lib/supabase/client";
 import type { WorkoutPlan } from "@/lib/workout-plan";
 import { normalizeWorkoutPlan } from "@/lib/workout-plan";
 import { humanizePlanLabel } from "@/lib/workout-plan-seed";
+import { listWorkoutDayCompletions } from "@/lib/workout-log-api";
 import {
   addDays,
   buildWeekDaySlots,
+  dateKey,
   formatDurationHours,
   formatWeekRange,
   startOfWeekMonday,
@@ -122,6 +125,9 @@ export function ProfileWeeklyPlan({
   const [weekOffset, setWeekOffset] = useState(0);
   const [planOpen, setPlanOpen] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [completedDateKeys, setCompletedDateKeys] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const normalizedPlan = useMemo(
     () => (plan ? normalizeWorkoutPlan(plan) ?? plan : null),
@@ -133,10 +139,47 @@ export function ProfileWeeklyPlan({
     return addDays(base, weekOffset * 7);
   }, [weekOffset]);
 
+  useEffect(() => {
+    if (readOnly || !normalizedPlan) {
+      setCompletedDateKeys(new Set());
+      return;
+    }
+    let cancelled = false;
+    const from = dateKey(addDays(weekStart, -7));
+    const to = dateKey(addDays(weekStart, 13));
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const rows = await listWorkoutDayCompletions(supabase, user.id, {
+          from,
+          to
+        });
+        if (cancelled) return;
+        setCompletedDateKeys(new Set(rows.map((row) => row.loggedOn)));
+      } catch {
+        if (!cancelled) setCompletedDateKeys(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedPlan, readOnly, weekStart]);
+
   const slots = useMemo(
     () =>
-      normalizedPlan ? buildWeekDaySlots(normalizedPlan, weekStart) : [],
-    [normalizedPlan, weekStart]
+      normalizedPlan
+        ? buildWeekDaySlots(
+            normalizedPlan,
+            weekStart,
+            new Date(),
+            completedDateKeys
+          )
+        : [],
+    [normalizedPlan, weekStart, completedDateKeys]
   );
 
   const stats = useMemo(() => weekPlanStats(slots), [slots]);

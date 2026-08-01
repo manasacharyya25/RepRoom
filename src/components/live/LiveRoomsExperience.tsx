@@ -23,12 +23,21 @@ import {
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
-  formatLobbyRelativeTime,
   listLobbyMessages,
-  mapDbLobbyMessageToView,
-  sendLobbyMessage
+  mapDbLobbyMessageToView
 } from "@/lib/lobby-chat-api";
+import {
+  exerciseNamesFromPlan,
+  LobbyChatComposer
+} from "@/components/live/LobbyChatComposer";
+import { LobbyWorkoutLogCard } from "@/components/live/LobbyWorkoutLogCard";
+import { WorkoutAcceptPrompt } from "@/components/live/WorkoutAcceptPrompt";
 import { LIVE_IMAGES } from "@/lib/live-images";
+import { normalizeWorkoutPlan, type WorkoutPlan } from "@/lib/workout-plan";
+import {
+  buildWeekDaySlots,
+  startOfWeekMonday
+} from "@/lib/weekly-plan-calendar";
 import {
   getRoomLiveSets,
   isRoomComingSoon,
@@ -53,7 +62,6 @@ import type {
   DbLobbyMessage,
   LobbyMessageView
 } from "@/lib/types/lobby-chat";
-import { LOBBY_MESSAGE_MAX_LENGTH } from "@/lib/types/lobby-chat";
 
 function isRemoteSrc(src: string) {
   return src.startsWith("http://") || src.startsWith("https://");
@@ -382,10 +390,13 @@ export function ImmersiveRoom({
   const [tabHidden, setTabHidden] = useState(false);
   const [viewTimerPercent, setViewTimerPercent] = useState<number | null>(null);
   const [messages, setMessages] = useState<LobbyMessageView[]>([]);
-  const [chatDraft, setChatDraft] = useState("");
   const [chatLoading, setChatLoading] = useState(true);
-  const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan | null>(null);
+  const [workoutAcceptOpen, setWorkoutAcceptOpen] = useState(false);
+  const [acceptedPlanDayIndex, setAcceptedPlanDayIndex] = useState<
+    number | null
+  >(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunkRecorderRef = useRef<ChunkRecorder | null>(null);
@@ -421,9 +432,58 @@ export function ImmersiveRoom({
   const ROOM_PAGE_COUNT = 2;
   const onDiscoveryPage = roomPage === 0;
 
+  const logExerciseOptions = useMemo(() => {
+    const index =
+      acceptedPlanDayIndex ??
+      (workoutPlan
+        ? buildWeekDaySlots(
+            workoutPlan,
+            startOfWeekMonday(new Date())
+          ).find((slot) => slot.isToday)?.sessionIndex ?? null
+        : null);
+    return exerciseNamesFromPlan(workoutPlan, index);
+  }, [acceptedPlanDayIndex, workoutPlan]);
+
+  const logPlanDayIndex = useMemo(() => {
+    if (acceptedPlanDayIndex != null) return acceptedPlanDayIndex;
+    if (!workoutPlan) return null;
+    return (
+      buildWeekDaySlots(workoutPlan, startOfWeekMonday(new Date())).find(
+        (slot) => slot.isToday
+      )?.sessionIndex ?? null
+    );
+  }, [acceptedPlanDayIndex, workoutPlan]);
+
   useEffect(() => {
     playedArchiveSessionIdsRef.current = new Set();
   }, [room.id]);
+
+  useEffect(() => {
+    if (!authUser?.id) {
+      setWorkoutPlan(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("workout_plan")
+          .eq("id", authUser.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const raw = data?.workout_plan ?? null;
+        setWorkoutPlan(
+          raw ? normalizeWorkoutPlan(raw) ?? (raw as WorkoutPlan) : null
+        );
+      } catch {
+        if (!cancelled) setWorkoutPlan(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id, supabase]);
 
   const showQuotaTimer =
     (tier === "guest" || tier === "free") &&
@@ -843,8 +903,9 @@ export function ImmersiveRoom({
       try {
         const rows = await listLobbyMessages(supabase);
         if (cancelled) return;
-        setMessages(rows);
+        setMessages(rows.filter((row) => row.messageType === "workout_log"));
         for (const row of rows) {
+          if (row.messageType !== "workout_log") continue;
           profileCacheRef.current.set(row.senderId, {
             id: row.senderId,
             display_name: row.author === "Athlete" ? null : row.author,
@@ -897,6 +958,7 @@ export function ImmersiveRoom({
             }
 
             const view = mapDbLobbyMessageToView(row, profile);
+            if (view.messageType !== "workout_log") return;
             setMessages((prev) => {
               if (prev.some((message) => message.id === view.id)) return prev;
               return [...prev, view];
@@ -916,31 +978,6 @@ export function ImmersiveRoom({
     if (roomPage !== 1 || chatLoading) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, roomPage, chatLoading]);
-
-  const sendChatMessage = async () => {
-    const text = chatDraft.trim();
-    if (!text || chatSending) return;
-    if (tier === "guest") {
-      setChatError("Sign in to join the conversation.");
-      return;
-    }
-    setChatSending(true);
-    setChatError(null);
-    try {
-      const created = await sendLobbyMessage(supabase, text);
-      setMessages((prev) => {
-        if (prev.some((message) => message.id === created.id)) return prev;
-        return [...prev, created];
-      });
-      setChatDraft("");
-    } catch (caught) {
-      setChatError(
-        caught instanceof Error ? caught.message : "Could not send message."
-      );
-    } finally {
-      setChatSending(false);
-    }
-  };
 
   const fetchEndedArchives = useCallback(
     async (options: {
@@ -1427,11 +1464,22 @@ export function ImmersiveRoom({
       stopCamera();
       return;
     }
-    void startCamera();
+    setWorkoutAcceptOpen(true);
   };
 
   const startBroadcastFromPromo = () => {
     if (isLive || isGoingLive || staticPreviewOnly) return;
+    setWorkoutAcceptOpen(true);
+  };
+
+  const handleWorkoutAcceptDecision = (
+    decision: "accept" | "skip",
+    sessionIndex: number | null
+  ) => {
+    if (decision === "accept") {
+      setAcceptedPlanDayIndex(sessionIndex);
+    }
+    setWorkoutAcceptOpen(false);
     void startCamera();
   };
 
@@ -1463,6 +1511,12 @@ export function ImmersiveRoom({
       className={`live-rooms-immersive${blurred ? " is-blurred" : ""}`}
       aria-hidden={blurred || undefined}
     >
+      <WorkoutAcceptPrompt
+        plan={workoutPlan}
+        open={workoutAcceptOpen}
+        onClose={() => setWorkoutAcceptOpen(false)}
+        onDecision={handleWorkoutAcceptDecision}
+      />
       <header className="live-rooms-immersive-header">
         <button
           className={`live-rooms-immersive-action${isLive ? " live-rooms-immersive-action--live" : ""}`}
@@ -1482,7 +1536,7 @@ export function ImmersiveRoom({
             &lt;
           </button>
           <h1 className="live-rooms-immersive-title">
-            {onDiscoveryPage ? room.title : "Messages"}
+            {onDiscoveryPage ? room.title : "Rooms chat"}
           </h1>
           <button
             type="button"
@@ -1554,90 +1608,51 @@ export function ImmersiveRoom({
 
       <div className="live-rooms-immersive-body">
         {!onDiscoveryPage ? (
-          <section className="live-rooms-messages-page" aria-label="Lobby messages">
+          <section className="live-rooms-messages-page" aria-label="Rooms chat">
             <div className="live-rooms-messages-list">
               {chatLoading ? (
-                <p className="live-rooms-messages-status">Loading messages…</p>
+                <p className="live-rooms-messages-status">Loading logs…</p>
               ) : null}
               {!chatLoading && messages.length === 0 ? (
                 <p className="live-rooms-messages-status">
-                  No messages yet. Say hello to the lobby.
+                  No workout logs yet. Log your first set below.
                 </p>
               ) : null}
-              {messages.map((message) => (
-                <article className="live-rooms-messages-item" key={message.id}>
-                  <div className="live-rooms-messages-top">
-                    <span className="live-rooms-messages-avatar">
-                      <Image
-                        alt=""
-                        className="room-select-avatar-image"
-                        fill
-                        sizes="40px"
-                        src={message.avatar}
-                        unoptimized={isRemoteSrc(message.avatar)}
-                      />
-                    </span>
-                    <div>
-                      <p className="live-rooms-messages-author">
-                        {message.author}
-                      </p>
-                      <p className="live-rooms-messages-handle">
-                        {message.handle}
-                      </p>
-                    </div>
-                    <time
-                      className="live-rooms-messages-time"
-                      dateTime={message.createdAt}
-                    >
-                      {formatLobbyRelativeTime(message.createdAt)}
-                    </time>
-                  </div>
-                  <p className="live-rooms-messages-text">{message.text}</p>
-                </article>
-              ))}
+              {messages.map((message) => {
+                const isSelf = Boolean(
+                  authUser?.id && message.senderId === authUser.id
+                );
+                return (
+                  <article
+                    className={`live-rooms-messages-item is-workout-log${
+                      isSelf ? " is-self" : " is-other"
+                    }`}
+                    key={message.id}
+                  >
+                    <LobbyWorkoutLogCard message={message} />
+                  </article>
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
             {chatError ? (
               <p className="live-rooms-messages-error">{chatError}</p>
             ) : null}
-            <form
-              className="live-rooms-messages-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void sendChatMessage();
-              }}
-            >
-              <label className="sr-only" htmlFor="immersive-chat-input">
-                Type a message
-              </label>
-              <textarea
-                id="immersive-chat-input"
-                className="live-rooms-messages-input"
-                maxLength={LOBBY_MESSAGE_MAX_LENGTH}
-                onChange={(event) => setChatDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendChatMessage();
+            <LobbyChatComposer
+              onSendWorkoutLog={(created) => {
+                setMessages((prev) => {
+                  if (prev.some((message) => message.id === created.id)) {
+                    return prev;
                   }
-                }}
-                placeholder={
-                  tier === "guest"
-                    ? "Sign in to message the lobby…"
-                    : "Message the lobby…"
-                }
-                rows={2}
-                value={chatDraft}
-                disabled={chatSending || tier === "guest"}
-              />
-              <button
-                className="live-rooms-messages-send"
-                type="submit"
-                disabled={!chatDraft.trim() || chatSending || tier === "guest"}
-              >
-                {chatSending ? "…" : "Send"}
-              </button>
-            </form>
+                  return [...prev, created];
+                });
+              }}
+              disabled={tier === "guest"}
+              exerciseOptions={logExerciseOptions}
+              planDayIndex={logPlanDayIndex}
+              inputId="immersive-chat-input"
+              classPrefix="live-rooms-messages"
+            />
           </section>
         ) : !discoveryReady ? (
           <div
@@ -1878,7 +1893,6 @@ export function LiveRoomsExperience() {
     refreshStatus
   } = useEntitlements();
   const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<LobbyMessageView[]>([]);
   const [chatMinimized, setChatMinimized] = useState(true);
   const [privateRoomModalOpen, setPrivateRoomModalOpen] = useState(false);
@@ -1886,8 +1900,11 @@ export function LiveRoomsExperience() {
     null
   );
   const [chatLoading, setChatLoading] = useState(true);
-  const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [lobbyWorkoutPlan, setLobbyWorkoutPlan] = useState<WorkoutPlan | null>(
+    null
+  );
+  const { user: authUser } = useAuth();
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(
     null
   );
@@ -1906,6 +1923,47 @@ export function LiveRoomsExperience() {
       setChatMinimized(false);
     }
   }, [tier]);
+
+  useEffect(() => {
+    if (!authUser?.id) {
+      setLobbyWorkoutPlan(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("workout_plan")
+          .eq("id", authUser.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const raw = data?.workout_plan ?? null;
+        setLobbyWorkoutPlan(
+          raw ? normalizeWorkoutPlan(raw) ?? (raw as WorkoutPlan) : null
+        );
+      } catch {
+        if (!cancelled) setLobbyWorkoutPlan(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id, supabase]);
+
+  const lobbyLogPlanDayIndex = useMemo(() => {
+    if (!lobbyWorkoutPlan) return null;
+    return (
+      buildWeekDaySlots(lobbyWorkoutPlan, startOfWeekMonday(new Date())).find(
+        (slot) => slot.isToday
+      )?.sessionIndex ?? null
+    );
+  }, [lobbyWorkoutPlan]);
+
+  const lobbyExerciseOptions = useMemo(
+    () => exerciseNamesFromPlan(lobbyWorkoutPlan, lobbyLogPlanDayIndex),
+    [lobbyWorkoutPlan, lobbyLogPlanDayIndex]
+  );
 
   const stubUpgrade = async () => {
     setUpgradeReason(null);
@@ -1932,8 +1990,9 @@ export function LiveRoomsExperience() {
       try {
         const rows = await listLobbyMessages(supabase);
         if (cancelled) return;
-        setMessages(rows);
+        setMessages(rows.filter((row) => row.messageType === "workout_log"));
         for (const row of rows) {
+          if (row.messageType !== "workout_log") continue;
           profileCacheRef.current.set(row.senderId, {
             id: row.senderId,
             display_name: row.author === "Athlete" ? null : row.author,
@@ -1986,6 +2045,7 @@ export function LiveRoomsExperience() {
             }
 
             const view = mapDbLobbyMessageToView(row, profile);
+            if (view.messageType !== "workout_log") return;
             setMessages((prev) => {
               if (prev.some((message) => message.id === view.id)) return prev;
               return [...prev, view];
@@ -2005,37 +2065,6 @@ export function LiveRoomsExperience() {
     if (chatMinimized || chatLoading) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, chatMinimized, chatLoading]);
-
-  const sendMessage = async () => {
-    const text = draft.trim();
-    if (!text || chatSending) return;
-
-    setChatSending(true);
-    setChatError(null);
-    setDraft("");
-    try {
-      const created = await sendLobbyMessage(supabase, text);
-      profileCacheRef.current.set(created.senderId, {
-        id: created.senderId,
-        display_name: created.author === "Athlete" ? null : created.author,
-        username: created.handle.startsWith("@")
-          ? created.handle.slice(1)
-          : created.handle,
-        avatar_url: created.avatar
-      });
-      setMessages((prev) => {
-        if (prev.some((message) => message.id === created.id)) return prev;
-        return [...prev, created];
-      });
-    } catch (caught) {
-      setDraft(text);
-      setChatError(
-        caught instanceof Error ? caught.message : "Could not send message."
-      );
-    } finally {
-      setChatSending(false);
-    }
-  };
 
   return (
     <>
@@ -2205,12 +2234,12 @@ export function LiveRoomsExperience() {
                 strokeLinejoin="round"
               />
             </svg>
-            <span>Chat</span>
+            <span>Rooms chat</span>
           </button>
         ) : (
           <aside className="room-select-chat">
             <div className="room-select-chat-header">
-              <strong>Lobby Chat</strong>
+              <strong>Rooms chat</strong>
               <button
                 type="button"
                 className="room-select-chat-minimize"
@@ -2230,79 +2259,51 @@ export function LiveRoomsExperience() {
             </div>
             <div className="room-select-chat-list">
               {chatLoading ? (
-                <p className="room-select-chat-status">Loading messages…</p>
+                <p className="room-select-chat-status">Loading logs…</p>
               ) : null}
               {!chatLoading && messages.length === 0 ? (
                 <p className="room-select-chat-status">
-                  No messages yet. Say hello to the lobby.
+                  No workout logs yet. Log your first set below.
                 </p>
               ) : null}
-              {messages.map((message) => (
-                <article className="room-select-chat-item" key={message.id}>
-                  <div className="room-select-chat-top">
-                    <span className="room-select-chat-avatar">
-                      <Image
-                        alt=""
-                        className="room-select-avatar-image"
-                        fill
-                        sizes="36px"
-                        src={message.avatar}
-                        unoptimized={isRemoteSrc(message.avatar)}
-                      />
-                    </span>
-                    <div>
-                      <p className="room-select-chat-author">{message.author}</p>
-                      <p className="room-select-chat-handle">{message.handle}</p>
-                    </div>
-                  </div>
-                  <p className="room-select-chat-text">{message.text}</p>
-                  <time
-                    className="room-select-chat-tag"
-                    dateTime={message.createdAt}
+              {messages.map((message) => {
+                const isSelf = Boolean(
+                  authUser?.id && message.senderId === authUser.id
+                );
+                return (
+                  <article
+                    className={`room-select-chat-item is-workout-log${
+                      isSelf ? " is-self" : " is-other"
+                    }`}
+                    key={message.id}
                   >
-                    {formatLobbyRelativeTime(message.createdAt)}
-                  </time>
-                </article>
-              ))}
+                    <LobbyWorkoutLogCard
+                      message={message}
+                      className="room-select-workout-log"
+                    />
+                  </article>
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
             {chatError ? (
               <p className="room-select-chat-error">{chatError}</p>
             ) : null}
-            <form
-              className="room-select-chat-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void sendMessage();
-              }}
-            >
-              <label className="sr-only" htmlFor="room-chat-input">
-                Type a message
-              </label>
-              <textarea
-                id="room-chat-input"
-                className="room-select-chat-input"
-                maxLength={LOBBY_MESSAGE_MAX_LENGTH}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendMessage();
+            <LobbyChatComposer
+              onSendWorkoutLog={(created) => {
+                setMessages((prev) => {
+                  if (prev.some((message) => message.id === created.id)) {
+                    return prev;
                   }
-                }}
-                placeholder="Message the lobby…"
-                rows={2}
-                value={draft}
-                disabled={chatSending}
-              />
-              <button
-                className="room-select-chat-send"
-                type="submit"
-                disabled={!draft.trim() || chatSending}
-              >
-                {chatSending ? "…" : "Send"}
-              </button>
-            </form>
+                  return [...prev, created];
+                });
+              }}
+              disabled={false}
+              exerciseOptions={lobbyExerciseOptions}
+              planDayIndex={lobbyLogPlanDayIndex}
+              inputId="room-chat-input"
+              classPrefix="room-select-chat"
+            />
           </aside>
         )}
       </div>

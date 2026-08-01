@@ -2,8 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import type {
   DbLobbyMessage,
+  LobbyMessageType,
   LobbyMessageView,
-  LobbySenderProfile
+  LobbySenderProfile,
+  WorkoutLogMessagePayload
 } from "@/lib/types/lobby-chat";
 import {
   LOBBY_MESSAGE_MAX_LENGTH,
@@ -13,6 +15,21 @@ import {
 type LobbyMessageRow = DbLobbyMessage & {
   profiles: LobbySenderProfile | LobbySenderProfile[] | null;
 };
+
+const LOBBY_MESSAGE_SELECT = `
+  id,
+  sender_id,
+  body,
+  message_type,
+  payload,
+  created_at,
+  profiles!lobby_messages_sender_id_fkey (
+    id,
+    display_name,
+    username,
+    avatar_url
+  )
+`;
 
 function requireUser(user: { id: string } | null) {
   if (!user) throw new Error("Sign in to continue.");
@@ -26,6 +43,73 @@ function normalizeProfile(
   return Array.isArray(profiles) ? profiles[0] ?? null : profiles;
 }
 
+function asMessageType(value: unknown): LobbyMessageType {
+  return value === "workout_log" ? "workout_log" : "text";
+}
+
+function parseWorkoutPayload(
+  messageType: LobbyMessageType,
+  payload: unknown
+): WorkoutLogMessagePayload | null {
+  if (messageType !== "workout_log" || !payload || typeof payload !== "object") {
+    return null;
+  }
+  const raw = payload as Record<string, unknown>;
+  const exerciseName =
+    typeof raw.exerciseName === "string" ? raw.exerciseName.trim() : "";
+  const loggedOn =
+    typeof raw.loggedOn === "string" ? raw.loggedOn.trim() : "";
+  if (!exerciseName || !loggedOn) return null;
+
+  const setRaw = raw.set;
+  const set =
+    setRaw == null || setRaw === ""
+      ? null
+      : Number.isFinite(Number(setRaw))
+        ? Math.round(Number(setRaw))
+        : null;
+
+  const repsRaw =
+    typeof raw.reps === "string"
+      ? raw.reps.trim()
+      : raw.reps == null || raw.reps === ""
+        ? ""
+        : String(raw.reps).trim();
+  const reps = repsRaw || null;
+
+  const weight =
+    typeof raw.weight === "string" && raw.weight.trim()
+      ? raw.weight.trim()
+      : null;
+
+  const durationRaw = raw.durationSeconds;
+  const durationSeconds =
+    durationRaw == null || durationRaw === ""
+      ? null
+      : Number.isFinite(Number(durationRaw)) && Number(durationRaw) > 0
+        ? Math.round(Number(durationRaw))
+        : null;
+
+  const planDayIndex =
+    typeof raw.planDayIndex === "number" && Number.isFinite(raw.planDayIndex)
+      ? raw.planDayIndex
+      : null;
+
+  if (set == null && !reps && !weight && durationSeconds == null) {
+    return null;
+  }
+
+  return {
+    exerciseName,
+    set,
+    reps,
+    weight,
+    durationSeconds,
+    planDayIndex,
+    loggedOn
+  };
+}
+
 export function mapLobbyProfile(
   profile: LobbySenderProfile | null | undefined
 ): Pick<LobbyMessageView, "author" | "handle" | "avatar"> {
@@ -37,15 +121,20 @@ export function mapLobbyProfile(
 }
 
 export function mapDbLobbyMessageToView(
-  row: DbLobbyMessage,
+  row: DbLobbyMessage | Record<string, unknown>,
   profile: LobbySenderProfile | null | undefined
 ): LobbyMessageView {
   const labels = mapLobbyProfile(profile);
+  const raw = row as Record<string, unknown>;
+  const messageType = asMessageType(raw.message_type);
+  const body = typeof raw.body === "string" ? raw.body : "";
   return {
-    id: row.id,
-    senderId: row.sender_id,
-    text: row.body,
-    createdAt: row.created_at,
+    id: String(raw.id),
+    senderId: String(raw.sender_id),
+    text: body,
+    messageType,
+    payload: parseWorkoutPayload(messageType, raw.payload ?? {}),
+    createdAt: String(raw.created_at),
     ...labels
   };
 }
@@ -66,6 +155,24 @@ export function formatLobbyRelativeTime(iso: string) {
   });
 }
 
+export function formatDurationClock(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+export function buildWorkoutLogBody(payload: WorkoutLogMessagePayload): string {
+  const parts = [`Logged ${payload.exerciseName}`];
+  if (payload.set != null) parts.push(`Set ${payload.set}`);
+  if (payload.reps) parts.push(`${payload.reps} reps`);
+  if (payload.weight) parts.push(payload.weight);
+  if (payload.durationSeconds != null) {
+    parts.push(formatDurationClock(payload.durationSeconds));
+  }
+  return parts.join(" · ");
+}
+
 export async function listLobbyMessages(
   supabase: SupabaseClient,
   options?: { limit?: number }
@@ -77,20 +184,7 @@ export async function listLobbyMessages(
 
   const { data, error } = await supabase
     .from("lobby_messages")
-    .select(
-      `
-      id,
-      sender_id,
-      body,
-      created_at,
-      profiles!lobby_messages_sender_id_fkey (
-        id,
-        display_name,
-        username,
-        avatar_url
-      )
-    `
-    )
+    .select(LOBBY_MESSAGE_SELECT)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -126,22 +220,37 @@ export async function sendLobbyMessage(
     .from("lobby_messages")
     .insert({
       sender_id: me.id,
-      body: trimmed
+      body: trimmed,
+      message_type: "text",
+      payload: {}
     })
-    .select(
-      `
-      id,
-      sender_id,
+    .select(LOBBY_MESSAGE_SELECT)
+    .single();
+
+  if (error) throw error;
+  const row = data as LobbyMessageRow;
+  return mapDbLobbyMessageToView(row, normalizeProfile(row.profiles));
+}
+
+export async function sendLobbyWorkoutLog(
+  supabase: SupabaseClient,
+  userId: string,
+  payload: WorkoutLogMessagePayload
+): Promise<LobbyMessageView> {
+  const body = buildWorkoutLogBody(payload);
+  if (body.length > LOBBY_MESSAGE_MAX_LENGTH) {
+    throw new Error("Workout log message is too long.");
+  }
+
+  const { data, error } = await supabase
+    .from("lobby_messages")
+    .insert({
+      sender_id: userId,
       body,
-      created_at,
-      profiles!lobby_messages_sender_id_fkey (
-        id,
-        display_name,
-        username,
-        avatar_url
-      )
-    `
-    )
+      message_type: "workout_log",
+      payload
+    })
+    .select(LOBBY_MESSAGE_SELECT)
     .single();
 
   if (error) throw error;

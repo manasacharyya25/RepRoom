@@ -138,7 +138,8 @@ function slotIndexesForPlan(plan: WorkoutPlan): number[] {
 export function buildWeekDaySlots(
   plan: WorkoutPlan,
   weekStart: Date,
-  today = new Date()
+  today = new Date(),
+  completedDateKeys?: ReadonlySet<string>
 ): WeekDaySlot[] {
   const todayKey = dateKey(startOfLocalDay(today));
   const slots = slotIndexesForPlan(plan);
@@ -172,10 +173,13 @@ export function buildWeekDaySlots(
     const isToday = key === todayKey;
     const isRest = !scheduled;
     const isPast = key < todayKey;
+    const isLoggedComplete = Boolean(completedDateKeys?.has(key));
 
     let status: WeekDayStatus = "rest";
     if (isRest) {
-      status = isPast ? "completed" : "rest";
+      status = isPast || isLoggedComplete ? "completed" : "rest";
+    } else if (isLoggedComplete) {
+      status = "completed";
     } else if (isPast) {
       status = "missed";
     } else {
