@@ -1125,6 +1125,26 @@
 
 .onboarding-plan-exercise-card.is-done { opacity: 0.72; }
 
+.onboarding-plan-exercise-card--no-check {
+  grid-template-areas: "main ring";
+}
+
+.onboarding-plan-exercise-card--rest {
+  opacity: 0.88;
+  grid-template-areas: "main ring";
+}
+
+.onboarding-plan-exercise-thumb--rest {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.onboarding-plan-exercise-card.is-addon {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .onboarding-plan-exercise-main {
   grid-area: main;
   display: grid;
@@ -1173,6 +1193,19 @@
   margin: 0;
   color: var(--text-muted);
   font-size: 0.84rem;
+}
+
+.onboarding-plan-exercise-copy p:empty {
+  display: none;
+}
+
+.onboarding-plan-exercise-duration {
+  display: none;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .onboarding-plan-check {
@@ -1248,4 +1281,5 @@
   .onboarding-plan-exercise-thumb { width: 56px; height: 56px; }
   .onboarding-plan-check { margin-left: 70px; }
   .onboarding-plan-rest-ring { display: none; }
+  .onboarding-plan-exercise-duration { display: block; }
 }

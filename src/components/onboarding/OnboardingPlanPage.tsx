@@ -15,7 +15,21 @@ import {
 } from "@/lib/onboarding-draft";
 import { createClient } from "@/lib/supabase/client";
 import { youtubeSearchUrl } from "@/lib/youtube-exercise";
-import { buildStaticWorkoutPlan, type WorkoutPlan } from "@/lib/workout-plan";
+import {
+  activityTotalSeconds,
+  activityYoutubeQuery,
+  formatSecondsClock,
+  isAddOnActivity,
+  normalizeWorkoutPlan,
+  scalePlanToSessionDuration,
+  sessionDurationMinutes,
+  warmupActivities,
+  warmupDurationSeconds,
+  workoutListActivities,
+  workoutTabLabel,
+  type WorkoutPlan
+} from "@/lib/workout-plan";
+import { humanizePlanLabel } from "@/lib/workout-plan-seed";
 
 const STEPS = [
   { id: "identity", label: "Profile" },
@@ -44,15 +58,9 @@ export function OnboardingPlanPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeDay, setActiveDay] = useState(0);
-  const [openSections, setOpenSections] = useState({
-    warmup: true,
-    progression: true,
-    cooldown: false,
-    notes: false
-  });
-  const [completedExercises, setCompletedExercises] = useState<
-    Record<string, boolean>
-  >({});
+  const [openSection, setOpenSection] = useState<"warmup" | "workouts" | null>(
+    "workouts"
+  );
   const [thumbnails, setThumbnails] = useState<Record<string, string | null>>(
     {}
   );
@@ -68,21 +76,58 @@ export function OnboardingPlanPage() {
 
     const run = async () => {
       setLoading(true);
-      await new Promise((resolve) => window.setTimeout(resolve, 1600));
-      const generated =
-        existing.workoutPlan ??
-        buildStaticWorkoutPlan({
-          primaryGoal: existing.primaryFitnessGoal || "build_muscle",
-          experience: existing.fitnessExperience || "just_starting",
-          daysPerWeek: existing.workoutDaysPerWeek ?? 3,
-          sessionMinutes: existing.sessionMinutes ?? 60
+      setError(null);
+      try {
+        const existingPlan = normalizeWorkoutPlan(existing.workoutPlan);
+        if (existingPlan) {
+          const scaled = scalePlanToSessionDuration(existingPlan);
+          setPlan(scaled);
+          setActiveDay(0);
+          setLoading(false);
+          return;
+        }
+
+        // Plan should already be generated on step 4; if missing, fetch once.
+        const response = await fetch("/api/workout-plan/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            primaryGoal: existing.primaryFitnessGoal || "build_muscle",
+            fitnessExperience: existing.fitnessExperience || "just_starting",
+            daysPerWeek: existing.workoutDaysPerWeek ?? 3,
+            sessionMinutes: existing.sessionMinutes ?? 60
+          })
         });
-      const nextDraft = { ...existing, workoutPlan: generated };
-      saveOnboardingDraft(nextDraft);
-      setDraft(nextDraft);
-      setPlan(generated);
-      setActiveDay(0);
-      setLoading(false);
+
+        const payload = (await response.json().catch(() => null)) as {
+          plan?: WorkoutPlan;
+          error?: string;
+        } | null;
+
+        if (!response.ok || !payload?.plan) {
+          throw new Error(
+            payload?.error || "Could not generate your workout plan."
+          );
+        }
+
+        const generated =
+          scalePlanToSessionDuration(
+            normalizeWorkoutPlan(payload.plan) ?? payload.plan
+          );
+        const nextDraft = { ...existing, workoutPlan: generated };
+        saveOnboardingDraft(nextDraft);
+        setDraft(nextDraft);
+        setPlan(generated);
+        setActiveDay(0);
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Could not generate your workout plan."
+        );
+      } finally {
+        setLoading(false);
+      }
     };
 
     void run();
@@ -91,10 +136,12 @@ export function OnboardingPlanPage() {
   useEffect(() => {
     if (!plan) return;
 
-    const names = [
+    const queries = [
       ...new Set(
-        plan.weeklySchedule.flatMap((session) =>
-          session.exercises.map((exercise) => exercise.exercise)
+        plan.days.flatMap((day) =>
+          day.activities
+            .map((item) => activityYoutubeQuery(item))
+            .filter((value): value is string => Boolean(value))
         )
       )
     ];
@@ -102,24 +149,22 @@ export function OnboardingPlanPage() {
 
     const loadThumbnails = async () => {
       const entries = await Promise.all(
-        names.map(async (name) => {
+        queries.map(async (query) => {
           try {
             const response = await fetch(
-              `/api/youtube/thumbnail?q=${encodeURIComponent(name)}`
+              `/api/youtube/thumbnail?q=${encodeURIComponent(query)}`
             );
-            if (!response.ok) return [name, null] as const;
+            if (!response.ok) return [query, null] as const;
             const data = (await response.json()) as {
               thumbnailUrl?: string | null;
             };
-            return [name, data.thumbnailUrl ?? null] as const;
+            return [query, data.thumbnailUrl ?? null] as const;
           } catch {
-            return [name, null] as const;
+            return [query, null] as const;
           }
         })
       );
-      if (!cancelled) {
-        setThumbnails(Object.fromEntries(entries));
-      }
+      if (!cancelled) setThumbnails(Object.fromEntries(entries));
     };
 
     void loadThumbnails();
@@ -128,12 +173,8 @@ export function OnboardingPlanPage() {
     };
   }, [plan]);
 
-  const toggleSection = (key: keyof typeof openSections) => {
-    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const toggleExercise = (key: string) => {
-    setCompletedExercises((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleSection = (section: "warmup" | "workouts") => {
+    setOpenSection((current) => (current === section ? null : section));
   };
 
   const enterRhoq = async () => {
@@ -188,7 +229,8 @@ export function OnboardingPlanPage() {
     }
   };
 
-  const activeSession = plan?.weeklySchedule[activeDay] ?? null;
+  const activeSession = plan?.days[activeDay] ?? null;
+  const activeWarmups = activeSession ? warmupActivities(activeSession) : [];
 
   return (
     <div className="onboarding-page">
@@ -231,8 +273,8 @@ export function OnboardingPlanPage() {
                 <div className="onboarding-plan-loading-spinner" aria-hidden />
                 <strong>Generating your personalized routine…</strong>
                 <p>
-                  Matching your goal, schedule, and session length into a
-                  starter plan.
+                  Building a starter plan from your goal, experience, schedule,
+                  and session length.
                 </p>
               </div>
             ) : (
@@ -245,14 +287,14 @@ export function OnboardingPlanPage() {
                       <span aria-hidden>{OVERVIEW_ICONS.goal}</span>
                       <div>
                         <small>Goal</small>
-                        <strong>{plan.goal}</strong>
+                        <strong>{humanizePlanLabel(plan.goal)}</strong>
                       </div>
                     </article>
                     <article>
                       <span aria-hidden>{OVERVIEW_ICONS.style}</span>
                       <div>
                         <small>Style</small>
-                        <strong>{plan.workoutStyle}</strong>
+                        <strong>{humanizePlanLabel(plan.workoutStyle)}</strong>
                       </div>
                     </article>
                     <article>
@@ -266,21 +308,21 @@ export function OnboardingPlanPage() {
                       <span aria-hidden>{OVERVIEW_ICONS.experience}</span>
                       <div>
                         <small>Experience</small>
-                        <strong>{plan.experience}</strong>
+                        <strong>{humanizePlanLabel(plan.experience)}</strong>
                       </div>
                     </article>
                     <article>
                       <span aria-hidden>{OVERVIEW_ICONS.split}</span>
                       <div>
                         <small>Split</small>
-                        <strong>{plan.split}</strong>
+                        <strong>{humanizePlanLabel(plan.split)}</strong>
                       </div>
                     </article>
                     <article>
                       <span aria-hidden>{OVERVIEW_ICONS.session}</span>
                       <div>
                         <small>Session</small>
-                        <strong>~{plan.sessionDurationMinutes} min</strong>
+                        <strong>~{sessionDurationMinutes(plan)} min</strong>
                       </div>
                     </article>
                   </div>
@@ -290,23 +332,96 @@ export function OnboardingPlanPage() {
                   <button
                     type="button"
                     className="onboarding-plan-block-trigger"
-                    aria-expanded={openSections.warmup}
+                    aria-expanded={openSection === "warmup"}
                     onClick={() => toggleSection("warmup")}
                   >
-                    <span>Warm-up · {plan.warmup.durationMinutes} min</span>
+                    <span>
+                      Warm-up
+                      {activeSession
+                        ? ` · ${Math.max(
+                            1,
+                            Math.round(warmupDurationSeconds(activeSession) / 60)
+                          )} min`
+                        : ""}
+                    </span>
                     <span aria-hidden>
-                      {openSections.warmup ? "▾" : "▸"}
+                      {openSection === "warmup" ? "▾" : "▸"}
                     </span>
                   </button>
-                  {openSections.warmup ? (
-                    <ol className="onboarding-plan-numbered">
-                      {plan.warmup.steps.map((step, index) => (
-                        <li key={step}>
-                          <em>{index + 1}</em>
-                          <span>{step}</span>
-                        </li>
-                      ))}
-                    </ol>
+                  {openSection === "warmup" ? (
+                    <div className="onboarding-plan-exercise-cards">
+                      {activeWarmups.map((item, index) => {
+                        const query = activityYoutubeQuery(item);
+                        const searchUrl = query
+                          ? youtubeSearchUrl(query)
+                          : null;
+                        const thumbnailUrl = query
+                          ? thumbnails[query]
+                          : null;
+                        const totalSeconds = activityTotalSeconds(item);
+                        const clock = formatSecondsClock(totalSeconds);
+                        return (
+                          <article
+                            className="onboarding-plan-exercise-card onboarding-plan-exercise-card--no-check"
+                            key={`${item.name}-${index}`}
+                          >
+                            {searchUrl ? (
+                              <a
+                                className="onboarding-plan-exercise-main"
+                                href={searchUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Search YouTube for ${item.name}`}
+                              >
+                                <div className="onboarding-plan-exercise-thumb">
+                                  {thumbnailUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={thumbnailUrl}
+                                      alt=""
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  ) : (
+                                    <span aria-hidden>▶</span>
+                                  )}
+                                </div>
+                                <div className="onboarding-plan-exercise-copy">
+                                  <strong>{item.name}</strong>
+                                  <p>
+                                    {item.sets ? `${item.sets} sets` : null}
+                                    {item.sets && item.reps ? " × " : null}
+                                    {item.reps}
+                                  </p>
+                                  <p className="onboarding-plan-exercise-duration">
+                                    {clock}
+                                  </p>
+                                </div>
+                              </a>
+                            ) : (
+                              <div className="onboarding-plan-exercise-main">
+                                <div className="onboarding-plan-exercise-thumb">
+                                  <span aria-hidden>▶</span>
+                                </div>
+                                <div className="onboarding-plan-exercise-copy">
+                                  <strong>{item.name}</strong>
+                                  {item.reps ? <p>{item.reps}</p> : null}
+                                  <p className="onboarding-plan-exercise-duration">
+                                    {clock}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            <div
+                              className="onboarding-plan-rest-ring"
+                              aria-label={`Duration ${clock}`}
+                            >
+                              <span>{clock}</span>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
                   ) : null}
                 </section>
 
@@ -316,9 +431,9 @@ export function OnboardingPlanPage() {
                     role="tablist"
                     aria-label="Weekly workouts"
                   >
-                    {plan.weeklySchedule.map((session, index) => (
+                    {plan.days.map((day, index) => (
                       <button
-                        key={session.day}
+                        key={day.day}
                         type="button"
                         role="tab"
                         aria-selected={activeDay === index}
@@ -327,7 +442,7 @@ export function OnboardingPlanPage() {
                         }
                         onClick={() => setActiveDay(index)}
                       >
-                        {session.day}
+                        {workoutTabLabel(day, index)}
                       </button>
                     ))}
                   </div>
@@ -337,153 +452,129 @@ export function OnboardingPlanPage() {
                       className="onboarding-plan-exercise-cards"
                       role="tabpanel"
                     >
-                      {activeSession.exercises.map((exercise) => {
-                        const key = `${activeSession.day}-${exercise.exercise}`;
-                        const done = Boolean(completedExercises[key]);
-                        const restLabel = `${Math.floor(
-                          exercise.restSeconds / 60
-                        )
-                          .toString()
-                          .padStart(2, "0")}:${(exercise.restSeconds % 60)
-                          .toString()
-                          .padStart(2, "0")}`;
-                        const searchUrl = youtubeSearchUrl(exercise.exercise);
-                        const thumbnailUrl = thumbnails[exercise.exercise];
-                        return (
-                          <article
-                            className={`onboarding-plan-exercise-card${
-                              done ? " is-done" : ""
-                            }`}
-                            key={key}
-                          >
-                            <a
-                              className="onboarding-plan-exercise-main"
-                              href={searchUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label={`Search YouTube for ${exercise.exercise}`}
+                      {workoutListActivities(activeSession).map(
+                        (activity, index) => {
+                          const key = `${activeSession.day}-${activity.type}-${activity.name}-${index}`;
+                          const query = activityYoutubeQuery(activity);
+                          const searchUrl = query
+                            ? youtubeSearchUrl(query)
+                            : null;
+                          const thumbnailUrl = query
+                            ? thumbnails[query]
+                            : null;
+                          const clock = formatSecondsClock(
+                            activityTotalSeconds(activity)
+                          );
+                          const addOn = isAddOnActivity(activity);
+
+                          if (activity.type === "rest") {
+                            return (
+                              <article
+                                className="onboarding-plan-exercise-card onboarding-plan-exercise-card--rest"
+                                key={key}
+                              >
+                                <div className="onboarding-plan-exercise-main">
+                                  <div
+                                    className="onboarding-plan-exercise-thumb onboarding-plan-exercise-thumb--rest"
+                                    aria-hidden
+                                  >
+                                    ⏱
+                                  </div>
+                                  <div className="onboarding-plan-exercise-copy">
+                                    <strong>Rest</strong>
+                                    <p>60s recovery</p>
+                                    <p className="onboarding-plan-exercise-duration">
+                                      {clock}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div
+                                  className="onboarding-plan-rest-ring"
+                                  aria-label={`Rest ${clock}`}
+                                >
+                                  <span>{clock}</span>
+                                </div>
+                              </article>
+                            );
+                          }
+
+                          return (
+                            <article
+                              className={`onboarding-plan-exercise-card onboarding-plan-exercise-card--no-check${
+                                addOn ? " is-addon" : ""
+                              }`}
+                              key={key}
                             >
-                              <div className="onboarding-plan-exercise-thumb">
-                                {thumbnailUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={thumbnailUrl}
-                                    alt=""
-                                    loading="lazy"
-                                    decoding="async"
-                                  />
-                                ) : (
-                                  <span aria-hidden>▶</span>
-                                )}
+                              {searchUrl ? (
+                                <a
+                                  className="onboarding-plan-exercise-main"
+                                  href={searchUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Search YouTube for ${activity.name}`}
+                                >
+                                  <div className="onboarding-plan-exercise-thumb">
+                                    {thumbnailUrl ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={thumbnailUrl}
+                                        alt=""
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    ) : (
+                                      <span aria-hidden>▶</span>
+                                    )}
+                                  </div>
+                                  <div className="onboarding-plan-exercise-copy">
+                                    <strong>{activity.name}</strong>
+                                    <p>
+                                      {activity.sets
+                                        ? `${activity.sets} sets`
+                                        : null}
+                                      {activity.sets && activity.reps
+                                        ? " × "
+                                        : null}
+                                      {activity.reps}
+                                    </p>
+                                    <p className="onboarding-plan-exercise-duration">
+                                      {clock}
+                                    </p>
+                                  </div>
+                                </a>
+                              ) : (
+                                <div className="onboarding-plan-exercise-main">
+                                  <div className="onboarding-plan-exercise-thumb">
+                                    <span aria-hidden>▶</span>
+                                  </div>
+                                  <div className="onboarding-plan-exercise-copy">
+                                    <strong>{activity.name}</strong>
+                                    <p>
+                                      {activity.sets
+                                        ? `${activity.sets} sets`
+                                        : null}
+                                      {activity.sets && activity.reps
+                                        ? " × "
+                                        : null}
+                                      {activity.reps}
+                                    </p>
+                                    <p className="onboarding-plan-exercise-duration">
+                                      {clock}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              <div
+                                className="onboarding-plan-rest-ring"
+                                aria-label={`Duration ${clock}`}
+                              >
+                                <span>{clock}</span>
                               </div>
-                              <div className="onboarding-plan-exercise-copy">
-                                <strong>{exercise.exercise}</strong>
-                                <p>
-                                  {exercise.sets} sets × {exercise.reps}
-                                </p>
-                                <p>Rest {exercise.restSeconds}s</p>
-                              </div>
-                            </a>
-                            <label
-                              className="onboarding-plan-check"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={done}
-                                onChange={() => toggleExercise(key)}
-                              />
-                              Check as completed
-                            </label>
-                            <div
-                              className="onboarding-plan-rest-ring"
-                              aria-label={`Rest ${restLabel}`}
-                            >
-                              <span>{restLabel}</span>
-                            </div>
-                          </article>
-                        );
-                      })}
+                            </article>
+                          );
+                        }
+                      )}
                     </div>
-                  ) : null}
-                </section>
-
-                <section className="onboarding-plan-progression">
-                  <button
-                    type="button"
-                    className="onboarding-plan-block-trigger onboarding-plan-block-trigger--plain"
-                    aria-expanded={openSections.progression}
-                    onClick={() => toggleSection("progression")}
-                  >
-                    <span>Progression · {plan.progression.method}</span>
-                    <span aria-hidden>
-                      {openSections.progression ? "▾" : "▸"}
-                    </span>
-                  </button>
-                  {openSections.progression ? (
-                    <ul className="onboarding-plan-progression-list">
-                      {plan.progression.instructions.map((item, index) => (
-                        <li key={item}>
-                          <span aria-hidden>
-                            {index === 0
-                              ? "🏋"
-                              : index === 1
-                                ? "📈"
-                                : index === 2
-                                  ? "💪"
-                                  : "🔄"}
-                          </span>
-                          <p>{item}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </section>
-
-                <section className="onboarding-plan-block">
-                  <button
-                    type="button"
-                    className="onboarding-plan-block-trigger"
-                    aria-expanded={openSections.cooldown}
-                    onClick={() => toggleSection("cooldown")}
-                  >
-                    <span>
-                      Cool-down · {plan.cooldown.durationMinutes} min
-                    </span>
-                    <span aria-hidden>
-                      {openSections.cooldown ? "▾" : "▸"}
-                    </span>
-                  </button>
-                  {openSections.cooldown ? (
-                    <ol className="onboarding-plan-numbered">
-                      {plan.cooldown.steps.map((step, index) => (
-                        <li key={step}>
-                          <em>{index + 1}</em>
-                          <span>{step}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : null}
-                </section>
-
-                <section className="onboarding-plan-block">
-                  <button
-                    type="button"
-                    className="onboarding-plan-block-trigger"
-                    aria-expanded={openSections.notes}
-                    onClick={() => toggleSection("notes")}
-                  >
-                    <span>Notes</span>
-                    <span aria-hidden>
-                      {openSections.notes ? "▾" : "▸"}
-                    </span>
-                  </button>
-                  {openSections.notes ? (
-                    <ul className="onboarding-plan-notes">
-                      {plan.notes.map((note) => (
-                        <li key={note}>{note}</li>
-                      ))}
-                    </ul>
                   ) : null}
                 </section>
               </>

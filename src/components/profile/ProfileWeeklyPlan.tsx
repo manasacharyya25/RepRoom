@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { ProfilePlanModal } from "@/components/profile/ProfilePlanModal";
 import type { WorkoutPlan } from "@/lib/workout-plan";
+import { normalizeWorkoutPlan } from "@/lib/workout-plan";
+import { humanizePlanLabel } from "@/lib/workout-plan-seed";
 import {
   addDays,
   buildWeekDaySlots,
@@ -119,6 +121,12 @@ export function ProfileWeeklyPlan({
 }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [planOpen, setPlanOpen] = useState(false);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+
+  const normalizedPlan = useMemo(
+    () => (plan ? normalizeWorkoutPlan(plan) ?? plan : null),
+    [plan]
+  );
 
   const weekStart = useMemo(() => {
     const base = startOfWeekMonday(new Date());
@@ -126,15 +134,21 @@ export function ProfileWeeklyPlan({
   }, [weekOffset]);
 
   const slots = useMemo(
-    () => (plan ? buildWeekDaySlots(plan, weekStart) : []),
-    [plan, weekStart]
+    () =>
+      normalizedPlan ? buildWeekDaySlots(normalizedPlan, weekStart) : [],
+    [normalizedPlan, weekStart]
   );
 
   const stats = useMemo(() => weekPlanStats(slots), [slots]);
   const title = weekRelativeLabel(weekStart);
   const range = formatWeekRange(weekStart);
 
-  if (!plan) {
+  const openPlanAtDay = (dayIndex = 0) => {
+    setSelectedDayIndex(dayIndex);
+    setPlanOpen(true);
+  };
+
+  if (!normalizedPlan) {
     return (
       <div className="profile-week-plan">
         <div className="profile-week-plan-head">
@@ -179,7 +193,11 @@ export function ProfileWeeklyPlan({
             {range}
           </p>
           <p className="profile-week-plan-meta">
-            {[plan.experience, plan.split, plan.goal]
+            {[
+              humanizePlanLabel(normalizedPlan.experience),
+              humanizePlanLabel(normalizedPlan.split),
+              humanizePlanLabel(normalizedPlan.goal)
+            ]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -281,50 +299,73 @@ export function ProfileWeeklyPlan({
       </div>
 
       <ol className="profile-week-plan-list">
-        {slots.map((slot) => (
-          <li
-            key={slot.dateKey}
-            className={[
-              "profile-week-day",
-              `is-${slot.status}`,
-              slot.isToday ? "is-today" : ""
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <div className="profile-week-day-date">
-              <span className="profile-week-day-dow">{slot.weekday}</span>
-              <span className="profile-week-day-num">{slot.dateLabel}</span>
-            </div>
+        {slots.map((slot) => {
+          const canOpenWorkout = slot.sessionIndex != null;
+          return (
+            <li key={slot.dateKey}>
+              <button
+                type="button"
+                className={[
+                  "profile-week-day",
+                  `is-${slot.status}`,
+                  slot.isToday ? "is-today" : "",
+                  canOpenWorkout ? "is-clickable" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                disabled={!canOpenWorkout}
+                aria-label={
+                  canOpenWorkout
+                    ? `View workout: ${slot.label ?? slot.sessionTitle}`
+                    : `${slot.weekday} rest day`
+                }
+                onClick={() => {
+                  if (slot.sessionIndex == null) return;
+                  openPlanAtDay(slot.sessionIndex);
+                }}
+              >
+                <div className="profile-week-day-date">
+                  <span className="profile-week-day-dow">{slot.weekday}</span>
+                  <span className="profile-week-day-num">{slot.dateLabel}</span>
+                </div>
 
-            <span className={`profile-week-day-icon is-${slot.status}`}>
-              <DayIcon slot={slot} />
-            </span>
-
-            <div className="profile-week-day-main">
-              <strong>
-                {slot.isRest ? "Rest" : slot.label}
-                {slot.isToday ? (
-                  <span className="profile-week-day-today-tag">Today</span>
-                ) : null}
-              </strong>
-              {slot.isRest ? (
-                <span className="profile-week-day-meta">Recovery day</span>
-              ) : (
-                <span className="profile-week-day-meta">
-                  <span>{slot.durationMinutes} min</span>
-                  <span aria-hidden>·</span>
-                  <span>{slot.exerciseCount} exercises</span>
+                <span className={`profile-week-day-icon is-${slot.status}`}>
+                  <DayIcon slot={slot} />
                 </span>
-              )}
-            </div>
 
-            <span className={`profile-week-day-badge is-${slot.status}`}>
-              <StatusIcon status={slot.status} />
-              {statusLabel(slot.status)}
-            </span>
-          </li>
-        ))}
+                <div className="profile-week-day-main">
+                  <strong>
+                    {slot.isRest ? "Rest" : slot.label}
+                    {slot.isToday ? (
+                      <span className="profile-week-day-today-tag">Today</span>
+                    ) : null}
+                  </strong>
+                  {slot.isRest ? (
+                    <span className="profile-week-day-meta">Recovery day</span>
+                  ) : (
+                    <span className="profile-week-day-meta">
+                      {slot.sessionTitle &&
+                      slot.sessionTitle !== slot.label ? (
+                        <>
+                          <span>{slot.sessionTitle}</span>
+                          <span aria-hidden>·</span>
+                        </>
+                      ) : null}
+                      <span>{slot.durationMinutes} min</span>
+                      <span aria-hidden>·</span>
+                      <span>{slot.exerciseCount} exercises</span>
+                    </span>
+                  )}
+                </div>
+
+                <span className={`profile-week-day-badge is-${slot.status}`}>
+                  <StatusIcon status={slot.status} />
+                  {statusLabel(slot.status)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ol>
 
       <footer className="profile-week-plan-foot">
@@ -347,7 +388,7 @@ export function ProfileWeeklyPlan({
         <button
           type="button"
           className="profile-week-plan-cta"
-          onClick={() => setPlanOpen(true)}
+          onClick={() => openPlanAtDay(0)}
         >
           <svg viewBox="0 0 16 16" fill="none" aria-hidden>
             <path
@@ -368,8 +409,9 @@ export function ProfileWeeklyPlan({
       </footer>
 
       <ProfilePlanModal
-        plan={plan}
+        plan={normalizedPlan}
         open={planOpen}
+        initialDayIndex={selectedDayIndex}
         onClose={() => setPlanOpen(false)}
       />
     </div>

@@ -1,4 +1,10 @@
-import type { WorkoutPlan, WorkoutPlanSession } from "@/lib/workout-plan";
+import {
+  exerciseCount,
+  isAddOnActivity,
+  sessionDurationMinutes,
+  type WorkoutPlan,
+  type WorkoutPlanDay
+} from "@/lib/workout-plan";
 
 export type WeekDayStatus = "upcoming" | "missed" | "rest" | "completed";
 
@@ -7,7 +13,12 @@ export type WeekDaySlot = {
   dateKey: string;
   weekday: string;
   dateLabel: string;
+  /** First main exercise name (or day title fallback). */
   label: string | null;
+  /** Plan day title, e.g. "Push" / "Full Body A". */
+  sessionTitle: string | null;
+  /** Index into plan.days when this is a workout day. */
+  sessionIndex: number | null;
   isRest: boolean;
   isToday: boolean;
   status: WeekDayStatus;
@@ -17,23 +28,19 @@ export type WeekDaySlot = {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+/**
+ * Weekday indexes (Mon=0 … Sun=6) for N sessions/week.
+ * Always starts Monday; rest days are spaced between workouts.
+ */
 const SESSION_SLOT_PATTERNS: Record<number, number[]> = {
   1: [0],
   2: [0, 3],
   3: [0, 2, 4],
-  4: [0, 1, 3, 4],
+  4: [0, 2, 4, 5],
   5: [0, 1, 2, 3, 4],
-  6: [0, 1, 2, 3, 4, 5]
+  6: [0, 1, 2, 3, 4, 5],
+  7: [0, 1, 2, 3, 4, 5, 6]
 };
-
-const FALLBACK_LABELS = [
-  "Upper Body",
-  "Lower Body",
-  "Pull",
-  "Push",
-  "Full Body",
-  "Cardio"
-];
 
 function startOfLocalDay(date: Date): Date {
   const next = new Date(date);
@@ -97,52 +104,34 @@ export function formatDurationHours(totalMinutes: number): string {
   return `${hours}h ${minutes}m`;
 }
 
-function sessionLabel(
-  session: WorkoutPlanSession,
-  index: number,
-  plan: WorkoutPlan
-): string {
-  if (!/^workout\s+[a-z]$/i.test(session.day.trim())) {
-    return session.day;
-  }
-
-  if (/cardio/i.test(plan.split) && index % 2 === 0) {
-    return index === 0 ? "Cardio + Strength" : "Cardio";
-  }
-
-  if (/strength/i.test(plan.workoutStyle)) {
-    const strengthLabels = [
-      "Upper Body",
-      "Lower Body",
-      "Full Body",
-      "Push",
-      "Pull",
-      "Legs"
-    ];
-    return strengthLabels[index] ?? FALLBACK_LABELS[index] ?? session.day;
-  }
-
-  return FALLBACK_LABELS[index] ?? session.day;
+/** First non–ADD-ON exercise name for the weekly calendar row. */
+export function firstExerciseName(day: WorkoutPlanDay): string | null {
+  const exercise = day.activities.find(
+    (item) => item.type === "exercise" && !isAddOnActivity(item)
+  );
+  return exercise?.name?.trim() || null;
 }
 
 export function resolveSessionLabel(
-  session: WorkoutPlanSession,
-  index: number,
-  plan: WorkoutPlan
+  day: WorkoutPlanDay,
+  _index: number,
+  _plan: WorkoutPlan
 ): string {
-  return sessionLabel(session, index, plan);
+  return firstExerciseName(day) ?? day.title;
 }
 
 function slotIndexesForPlan(plan: WorkoutPlan): number[] {
   const count = Math.min(
-    6,
-    Math.max(1, plan.weeklySchedule.length || plan.sessionsPerWeek || 3)
+    7,
+    Math.max(1, plan.days.length || plan.sessionsPerWeek || 3)
   );
   return SESSION_SLOT_PATTERNS[count] ?? SESSION_SLOT_PATTERNS[3];
 }
 
 /**
  * Build Mon–Sun slots for a week from a stored workout plan.
+ * Session 1 → Monday, then remaining sessions follow SESSION_SLOT_PATTERNS
+ * so rest days sit between workouts based on sessionsPerWeek.
  * Without completion persistence: past rest days count as Completed,
  * past workouts as Missed, future workouts Upcoming, future rest Rest Day.
  */
@@ -153,18 +142,28 @@ export function buildWeekDaySlots(
 ): WeekDaySlot[] {
   const todayKey = dateKey(startOfLocalDay(today));
   const slots = slotIndexesForPlan(plan);
-  const byWeekday = new Map<number, { label: string; exerciseCount: number }>();
+  const byWeekday = new Map<
+    number,
+    {
+      label: string;
+      sessionTitle: string;
+      sessionIndex: number;
+      exerciseCount: number;
+    }
+  >();
 
   slots.forEach((weekdayIndex, sessionIndex) => {
-    const session = plan.weeklySchedule[sessionIndex];
-    if (!session) return;
+    const day = plan.days[sessionIndex];
+    if (!day) return;
     byWeekday.set(weekdayIndex, {
-      label: sessionLabel(session, sessionIndex, plan),
-      exerciseCount: session.exercises.length
+      label: resolveSessionLabel(day, sessionIndex, plan),
+      sessionTitle: day.title,
+      sessionIndex,
+      exerciseCount: exerciseCount(day)
     });
   });
 
-  const durationMinutes = plan.sessionDurationMinutes || 60;
+  const durationMinutes = sessionDurationMinutes(plan);
 
   return WEEKDAYS.map((weekday, index) => {
     const date = addDays(weekStart, index);
@@ -192,6 +191,8 @@ export function buildWeekDaySlots(
         day: "numeric"
       }),
       label: scheduled?.label ?? null,
+      sessionTitle: scheduled?.sessionTitle ?? null,
+      sessionIndex: scheduled?.sessionIndex ?? null,
       isRest,
       isToday,
       status,

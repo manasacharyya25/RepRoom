@@ -1146,12 +1146,36 @@
   grid-template-columns: 46px 32px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  width: 100%;
   flex: 1;
   min-height: 0;
   padding: 7px 8px;
   border-radius: 14px;
   border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.profile-week-day.is-clickable {
+  cursor: pointer;
+}
+
+.profile-week-day.is-clickable:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.profile-week-day.is-clickable:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.profile-week-day:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .profile-week-day.is-today {
@@ -1564,6 +1588,11 @@
   overscroll-behavior: contain;
 }
 
+.profile-plan-modal-exercise-cards--inline {
+  max-height: min(40vh, 320px);
+  flex: 0 1 auto;
+}
+
 .profile-plan-modal-exercise-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 58px;
@@ -1573,6 +1602,21 @@
   border-radius: 14px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.profile-plan-modal-exercise-card.is-addon {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.profile-plan-modal-exercise-card.is-rest {
+  opacity: 0.88;
+}
+
+.profile-plan-modal-exercise-thumb.is-rest {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 1.1rem;
 }
 
 .profile-plan-modal-exercise-main {
@@ -1626,6 +1670,19 @@
   font-size: 0.8rem;
 }
 
+.profile-plan-modal-exercise-copy p:empty {
+  display: none;
+}
+
+.profile-plan-modal-exercise-duration {
+  display: none;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .profile-plan-modal-rest-ring {
   width: 54px;
   height: 54px;
@@ -1662,6 +1719,10 @@
 
   .profile-plan-modal-rest-ring {
     display: none;
+  }
+
+  .profile-plan-modal-exercise-duration {
+    display: block;
   }
 
   .profile-plan-modal-exercise-main {

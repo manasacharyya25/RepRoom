@@ -16,7 +16,7 @@ import {
 } from "@/lib/onboarding-draft";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
-import type { WorkoutPlanStatus } from "@/lib/workout-plan";
+import type { WorkoutPlan, WorkoutPlanStatus } from "@/lib/workout-plan";
 
 const STEPS = [
   { id: "identity", label: "Profile" },
@@ -175,6 +175,7 @@ export function OnboardingPage() {
   const [currentWeight, setCurrentWeight] = useState("95");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
 
   const suggestions = useMemo(
     () => usernameSuggestions(displayName || "you"),
@@ -317,8 +318,7 @@ export function OnboardingPage() {
         return;
       }
 
-      saveOnboardingDraft(buildDraftPayload(workoutPlanStatus));
-      router.push("/onboarding/plan");
+      void generateAndOpenPlan();
       return;
     }
 
@@ -328,6 +328,52 @@ export function OnboardingPage() {
     }
     setError(null);
     setStepIndex((index) => index + 1);
+  };
+
+  const generateAndOpenPlan = async () => {
+    if (generatingPlan || saving) return;
+    setGeneratingPlan(true);
+    setError(null);
+
+    try {
+      const draft = buildDraftPayload(workoutPlanStatus as WorkoutPlanStatus);
+      saveOnboardingDraft(draft);
+
+      const response = await fetch("/api/workout-plan/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          primaryGoal: draft.primaryFitnessGoal || "build_muscle",
+          fitnessExperience: draft.fitnessExperience || "just_starting",
+          daysPerWeek: draft.workoutDaysPerWeek ?? 3,
+          sessionMinutes: draft.sessionMinutes ?? 60
+        })
+      });
+
+      const payload = (await response.json().catch(() => null)) as {
+        plan?: unknown;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.plan) {
+        throw new Error(
+          payload?.error || "Could not generate your workout plan."
+        );
+      }
+
+      saveOnboardingDraft({
+        ...draft,
+        workoutPlan: payload.plan as WorkoutPlan
+      });
+      router.push("/onboarding/plan");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not generate your workout plan."
+      );
+      setGeneratingPlan(false);
+    }
   };
 
   const goBack = () => {
@@ -971,7 +1017,7 @@ export function OnboardingPage() {
                       className={`onboarding-option-card onboarding-option-card--goal${
                         workoutPlanStatus === option.value ? " is-selected" : ""
                       }`}
-                      disabled={saving}
+                      disabled={saving || generatingPlan}
                       onClick={() => selectPlanStatus(option.value)}
                     >
                       <span className="onboarding-option-emoji" aria-hidden>
@@ -982,6 +1028,21 @@ export function OnboardingPage() {
                   ))}
                 </div>
               </fieldset>
+
+              {generatingPlan ? (
+                <div
+                  className="onboarding-plan-loading"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="onboarding-plan-loading-spinner" aria-hidden />
+                  <strong>Generating your personalized routine…</strong>
+                  <p>
+                    Building a starter plan from your goal, experience, schedule,
+                    and session length.
+                  </p>
+                </div>
+              ) : null}
             </>
           ) : null}
 
@@ -996,7 +1057,7 @@ export function OnboardingPage() {
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={saving}
+                disabled={saving || generatingPlan}
                 onClick={goBack}
               >
                 Back
@@ -1009,7 +1070,7 @@ export function OnboardingPage() {
                 <button
                   type="button"
                   className="btn-ghost"
-                  disabled={saving}
+                  disabled={saving || generatingPlan}
                   onClick={() => {
                     setError(null);
                     setStepIndex((index) => index + 1);
@@ -1021,18 +1082,26 @@ export function OnboardingPage() {
               <button
                 type="button"
                 className="btn-primary"
-                disabled={saving || (step.id === "plan" && !workoutPlanStatus)}
+                disabled={
+                  saving ||
+                  generatingPlan ||
+                  (step.id === "plan" && !workoutPlanStatus)
+                }
                 onClick={goNext}
               >
                 {saving
                   ? "Saving…"
-                  : step.id === "plan"
-                    ? workoutPlanStatus === "has_own"
-                      ? "Enter RhoQ"
-                      : "Next"
-                    : stepIndex >= STEPS.length - 1
-                      ? "Enter RhoQ"
-                      : "Continue"}
+                  : generatingPlan
+                    ? "Generating…"
+                    : step.id === "plan"
+                      ? !workoutPlanStatus
+                        ? "Next"
+                        : workoutPlanStatus === "has_own"
+                          ? "Enter RhoQ"
+                          : "Generate my workout plan"
+                      : stepIndex >= STEPS.length - 1
+                        ? "Enter RhoQ"
+                        : "Continue"}
               </button>
             </div>
           </footer>
