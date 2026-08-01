@@ -1421,8 +1421,36 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
     -webkit-overflow-scrolling: touch;
   }
 
+  .live-rooms-immersive {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .live-rooms-immersive-header {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 6;
+  }
+
   .live-rooms-immersive-body {
     grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .live-rooms-messages-page {
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .live-rooms-messages-list {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .live-rooms-discovery-stage {

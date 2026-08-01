@@ -403,7 +403,7 @@ export function ImmersiveRoom({
   /** R2 live_sessions row id. */
   const liveR2SessionIdRef = useRef<string | null>(null);
   const liveEpochRef = useRef(0);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesListRef = useRef<HTMLDivElement | null>(null);
   const profileCacheRef = useRef(
     new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
   );
@@ -976,7 +976,12 @@ export function ImmersiveRoom({
 
   useEffect(() => {
     if (roomPage !== 1 || chatLoading) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = messagesListRef.current;
+    if (!list) return;
+    list.scrollTo({
+      top: list.scrollHeight,
+      behavior: "smooth"
+    });
   }, [messages, roomPage, chatLoading]);
 
   const fetchEndedArchives = useCallback(
@@ -1609,7 +1614,7 @@ export function ImmersiveRoom({
       <div className="live-rooms-immersive-body">
         {!onDiscoveryPage ? (
           <section className="live-rooms-messages-page" aria-label="Rooms chat">
-            <div className="live-rooms-messages-list">
+            <div className="live-rooms-messages-list" ref={messagesListRef}>
               {chatLoading ? (
                 <p className="live-rooms-messages-status">Loading logs…</p>
               ) : null}
@@ -1633,7 +1638,6 @@ export function ImmersiveRoom({
                   </article>
                 );
               })}
-              <div ref={messagesEndRef} />
             </div>
             {chatError ? (
               <p className="live-rooms-messages-error">{chatError}</p>
@@ -1909,7 +1913,7 @@ export function LiveRoomsExperience() {
     null
   );
   const [planModalOpen, setPlanModalOpen] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesListRef = useRef<HTMLDivElement | null>(null);
   const profileCacheRef = useRef(
     new Map<string, Awaited<ReturnType<typeof fetchLobbySenderProfile>>>()
   );
@@ -2063,7 +2067,12 @@ export function LiveRoomsExperience() {
 
   useEffect(() => {
     if (chatMinimized || chatLoading) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = messagesListRef.current;
+    if (!list) return;
+    list.scrollTo({
+      top: list.scrollHeight,
+      behavior: "smooth"
+    });
   }, [messages, chatMinimized, chatLoading]);
 
   return (
@@ -2257,7 +2266,7 @@ export function LiveRoomsExperience() {
                 </svg>
               </button>
             </div>
-            <div className="room-select-chat-list">
+            <div className="room-select-chat-list" ref={messagesListRef}>
               {chatLoading ? (
                 <p className="room-select-chat-status">Loading logs…</p>
               ) : null}
@@ -2284,7 +2293,6 @@ export function LiveRoomsExperience() {
                   </article>
                 );
               })}
-              <div ref={messagesEndRef} />
             </div>
             {chatError ? (
               <p className="room-select-chat-error">{chatError}</p>
