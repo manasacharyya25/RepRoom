@@ -1,3 +1,5 @@
+import type { WorkoutPlan, WorkoutPlanStatus } from "@/lib/workout-plan";
+
 export type WeightUnit = "kg" | "lbs";
 
 export type GoalCategory = "consistency" | "performance" | "lifestyle";
@@ -8,7 +10,10 @@ export type GoalTemplateId =
   | "lift_target"
   | "meal_prep"
   | "target_weight"
-  | "hours_worked";
+  | "hours_worked"
+  | "primary_fitness"
+  | "session_length"
+  | "success_milestone";
 
 export type Profile = {
   id: string;
@@ -17,6 +22,15 @@ export type Profile = {
   bio: string | null;
   avatar_url: string | null;
   age_range: string | null;
+  gender: string | null;
+  activity_level: string | null;
+  fitness_experience: string | null;
+  primary_fitness_goal: string | null;
+  workout_days_per_week: number | null;
+  session_minutes: number | null;
+  success_milestone: string | null;
+  workout_plan_status: WorkoutPlanStatus | null;
+  workout_plan: WorkoutPlan | null;
   country_code: string | null;
   timezone: string | null;
   height_cm: number | null;
@@ -78,12 +92,21 @@ export type OnboardingPayload = {
   avatarUrl: string;
   avatarFile: File | null;
   ageRange: string;
+  gender: string;
+  activityLevel: string;
+  fitnessExperience: string;
   countryCode: string;
   timezone: string;
   heightCm: number | null;
   currentWeightKg: number | null;
   targetWeightKg: number | null;
   weightUnit: WeightUnit;
+  primaryFitnessGoal: string;
+  workoutDaysPerWeek: number | null;
+  sessionMinutes: number | null;
+  successMilestone: string;
+  workoutPlanStatus: WorkoutPlanStatus | "";
+  workoutPlan: WorkoutPlan | null;
   goals: OnboardingGoalInput[];
   skipped: boolean;
 };

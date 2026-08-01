@@ -2,22 +2,27 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
 import { Logo } from "@/components/brand/Logo";
 import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
-import { heightToCm, hoursGoalTarget, slugifyUsername, toKg } from "@/lib/goals";
+import { heightToCm, slugifyUsername, toKg } from "@/lib/goals";
 import { completeOnboarding } from "@/lib/onboarding";
+import {
+  buildOnboardingGoalsFromDraft,
+  saveOnboardingDraft
+} from "@/lib/onboarding-draft";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
-import type { OnboardingGoalInput } from "@/lib/types/profile";
+import type { WorkoutPlanStatus } from "@/lib/workout-plan";
 
 const STEPS = [
   { id: "identity", label: "Profile" },
   { id: "context", label: "You" },
-  { id: "goals", label: "Goals" }
+  { id: "goals", label: "Goals" },
+  { id: "plan", label: "Plan" }
 ] as const;
 
 const BIO_TEMPLATES = [
@@ -33,15 +38,81 @@ const AGE_RANGES = [
   { value: "45+", label: "45+" }
 ] as const;
 
-const REGIONS = [
-  { value: "in", label: "India" },
-  { value: "us", label: "United States" },
-  { value: "gb", label: "United Kingdom" },
-  { value: "ca", label: "Canada" },
-  { value: "au", label: "Australia" },
-  { value: "sg", label: "Singapore" },
-  { value: "ae", label: "United Arab Emirates" },
-  { value: "other", label: "Somewhere else" }
+const GENDERS = [
+  { value: "woman", label: "Woman" },
+  { value: "man", label: "Man" },
+  { value: "non_binary", label: "Non-binary" },
+  { value: "prefer_not", label: "Prefer not to say" }
+] as const;
+
+const ACTIVITY_LEVELS = [
+  { value: "sedentary", label: "Sedentary" },
+  { value: "beginner", label: "Beginner" },
+  { value: "somewhat_active", label: "Somewhat active" },
+  { value: "regular_gym", label: "Regular gym-goer" },
+  { value: "athlete", label: "Athlete" }
+] as const;
+
+const FITNESS_EXPERIENCE = [
+  { value: "just_starting", label: "Just starting" },
+  { value: "under_1_year", label: "<1 year" },
+  { value: "1_3_years", label: "1–3 years" },
+  { value: "3_plus_years", label: "3+ years" }
+] as const;
+
+const PRIMARY_GOALS = [
+  { value: "build_muscle", emoji: "💪", label: "Build muscle" },
+  { value: "lose_fat", emoji: "🔥", label: "Lose fat" },
+  { value: "get_stronger", emoji: "⚡", label: "Get stronger" },
+  { value: "improve_endurance", emoji: "❤️", label: "Improve endurance" },
+  { value: "more_flexible", emoji: "🧘", label: "Become more flexible" },
+  { value: "stay_healthy", emoji: "🌱", label: "Stay healthy & active" },
+  { value: "stay_consistent", emoji: "📅", label: "Stay consistent" }
+] as const;
+
+const WORKOUT_FREQUENCY = [
+  { value: 2, label: "2 days/week" },
+  { value: 3, label: "3 days/week" },
+  { value: 4, label: "4 days/week" },
+  { value: 5, label: "5 days/week" },
+  { value: 6, label: "6+ days/week" }
+] as const;
+
+const SESSION_LENGTHS = [
+  { value: 20, label: "20 min" },
+  { value: 30, label: "30 min" },
+  { value: 45, label: "45 min" },
+  { value: 60, label: "60 min" },
+  { value: 90, label: "90+ min" }
+] as const;
+
+const MILESTONE_EXAMPLES = [
+  "Complete my first month without skipping",
+  "Lose 5 kg",
+  "Gain visible muscle",
+  "Do my first pull-up",
+  "Bench press 100 kg",
+  "Run 5 km",
+  "Touch my toes",
+  "Just keep showing up"
+] as const;
+
+const PLAN_STATUS_OPTIONS = [
+  {
+    value: "has_own" as const,
+    emoji: "✅",
+    label: "Yes, I already follow one"
+  },
+  {
+    value: "rough_idea" as const,
+    emoji: "🤔",
+    label: "I have a rough idea"
+  },
+  {
+    value: "needs_plan" as const,
+    emoji: "❌",
+    label: "No, create one for me"
+  }
 ] as const;
 
 const DEFAULT_AVATARS = [
@@ -53,8 +124,6 @@ const DEFAULT_AVATARS = [
   LIVE_IMAGES.participant6
 ];
 
-const STREAK_TARGETS = [10, 20, 30] as const;
-
 function usernameSuggestions(displayName: string) {
   const base = slugifyUsername(displayName);
   if (!base) return ["athlete", "moves_daily", "show_up"];
@@ -65,10 +134,19 @@ function usernameSuggestions(displayName: string) {
 
 export function OnboardingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
 
-  const [stepIndex, setStepIndex] = useState(0);
+  const initialStep = (() => {
+    const step = searchParams.get("step");
+    if (step === "plan") return 3;
+    if (step === "goals") return 2;
+    if (step === "you" || step === "context") return 1;
+    return 0;
+  })();
+
+  const [stepIndex, setStepIndex] = useState(initialStep);
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -77,22 +155,24 @@ export function OnboardingPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [ageRange, setAgeRange] = useState("");
-  const [region, setRegion] = useState("");
-  const [trainCurrentDays, setTrainCurrentDays] = useState("5");
-  const [trainExpectedDays, setTrainExpectedDays] = useState("5");
-  const [streakCurrent, setStreakCurrent] = useState("8");
-  const [streakTarget, setStreakTarget] = useState(30);
-  const [liftTarget, setLiftTarget] = useState("100");
-  const [liftCurrent, setLiftCurrent] = useState("95");
-  const [caloriesTarget, setCaloriesTarget] = useState("1800");
-  const [caloriesCurrent, setCaloriesCurrent] = useState("1750");
+  const [gender, setGender] = useState("");
+  const [activityLevel, setActivityLevel] = useState("");
+  const [fitnessExperience, setFitnessExperience] = useState("");
+  const [primaryFitnessGoal, setPrimaryFitnessGoal] = useState("");
+  const [workoutDaysPerWeek, setWorkoutDaysPerWeek] = useState<number | null>(
+    null
+  );
+  const [sessionMinutes, setSessionMinutes] = useState<number | null>(null);
+  const [successMilestone, setSuccessMilestone] = useState("");
+  const [workoutPlanStatus, setWorkoutPlanStatus] = useState<
+    WorkoutPlanStatus | ""
+  >("");
   const [heightFeet, setHeightFeet] = useState("5");
   const [heightInches, setHeightInches] = useState("11");
   const [heightCm, setHeightCm] = useState("180");
   const [heightUnit, setHeightUnit] = useState<"imperial" | "metric">("imperial");
   const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
   const [currentWeight, setCurrentWeight] = useState("95");
-  const [targetWeight, setTargetWeight] = useState("85");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -104,83 +184,46 @@ export function OnboardingPage() {
   const activeAvatar = customAvatar ?? avatarUrl;
   const step = STEPS[stepIndex];
 
-  const buildGoals = (): OnboardingGoalInput[] => {
-    const trainCurrent = Number.parseFloat(trainCurrentDays) || 0;
-    const trainExpected = Number.parseFloat(trainExpectedDays) || 5;
-    const streakNow = Number.parseFloat(streakCurrent) || 0;
-    const liftNow = Number.parseFloat(liftCurrent) || 0;
-    const liftGoal = Number.parseFloat(liftTarget) || 0;
-    const calNow = Number.parseFloat(caloriesCurrent) || 0;
-    const calGoal = Number.parseFloat(caloriesTarget) || 0;
-    const weightNowRaw = Number.parseFloat(currentWeight) || 0;
-    const weightGoalRaw = Number.parseFloat(targetWeight) || 0;
-    const weightNow = toKg(weightNowRaw, weightUnit);
-    const weightGoal = toKg(weightGoalRaw, weightUnit);
-    const hoursCurrent = 0;
-    const hoursTarget = hoursGoalTarget(hoursCurrent);
+  const buildDraftPayload = (status: WorkoutPlanStatus) => {
+    const weightNowRaw = Number.parseFloat(currentWeight);
+    const height = heightToCm({
+      unit: heightUnit,
+      feet: Number.parseFloat(heightFeet) || 0,
+      inches: Number.parseFloat(heightInches) || 0,
+      cm: Number.parseFloat(heightCm) || 0
+    });
+    const goals = buildOnboardingGoalsFromDraft({
+      primaryFitnessGoal,
+      workoutDaysPerWeek,
+      sessionMinutes,
+      successMilestone
+    });
 
-    return [
-      {
-        template_id: "train_weekly",
-        title: "Train 5 days a week",
-        detail: "Consistency over perfection",
-        category: "consistency",
-        current_value: trainCurrent,
-        target_value: trainExpected,
-        unit: "days",
-        sort_order: 0
-      },
-      {
-        template_id: "mobility_streak",
-        title: "Morning mobility streak",
-        detail: "Build a daily habit",
-        category: "consistency",
-        current_value: streakNow,
-        target_value: streakTarget,
-        unit: "days",
-        sort_order: 1
-      },
-      {
-        template_id: "lift_target",
-        title: "Hit a lift target",
-        detail: "Track a milestone PR",
-        category: "performance",
-        current_value: liftNow,
-        target_value: liftGoal,
-        unit: "kg",
-        sort_order: 2
-      },
-      {
-        template_id: "meal_prep",
-        title: "Meal Prep & Nutrition",
-        detail: "Wins between workouts",
-        category: "lifestyle",
-        current_value: calNow,
-        target_value: calGoal,
-        unit: "kcal",
-        sort_order: 3
-      },
-      {
-        template_id: "target_weight",
-        title: "Hit target weight",
-        detail: "Track toward your goal weight",
-        category: "lifestyle",
-        current_value: weightNow,
-        target_value: weightGoal,
-        unit: "kg",
-        sort_order: 4
-      },
-      {
-        template_id: "hours_worked",
-        title: "Hours worked",
-        detail: "Time in live rooms",
-        category: "consistency",
-        current_value: hoursCurrent,
-        target_value: hoursTarget,
-        unit: "hours",
-        sort_order: 5
-      }
-    ];
+    return {
+      displayName: displayName.trim() || "Athlete",
+      username: slugifyUsername(username) || slugifyUsername(displayName),
+      bio,
+      avatarUrl:
+        customAvatar && !customAvatar.startsWith("blob:")
+          ? customAvatar
+          : activeAvatar,
+      ageRange,
+      gender,
+      activityLevel,
+      fitnessExperience,
+      heightCm: Number.isFinite(height) && height > 0 ? height : null,
+      currentWeightKg: Number.isFinite(weightNowRaw)
+        ? toKg(weightNowRaw, weightUnit)
+        : null,
+      weightUnit,
+      primaryFitnessGoal,
+      workoutDaysPerWeek,
+      sessionMinutes,
+      successMilestone,
+      workoutPlanStatus: status,
+      workoutPlan: null as null,
+      goals
+    };
   };
 
   const finish = async (skipped: boolean) => {
@@ -195,40 +238,23 @@ export function OnboardingPage() {
     setError(null);
 
     try {
-      const weightNowRaw = Number.parseFloat(currentWeight);
-      const weightGoalRaw = Number.parseFloat(targetWeight);
-      const height = heightToCm({
-        unit: heightUnit,
-        feet: Number.parseFloat(heightFeet) || 0,
-        inches: Number.parseFloat(heightInches) || 0,
-        cm: Number.parseFloat(heightCm) || 0
-      });
-
+      const draft = buildDraftPayload(
+        workoutPlanStatus === "has_own" ? "has_own" : workoutPlanStatus || "has_own"
+      );
       const timezone =
         typeof Intl !== "undefined"
           ? Intl.DateTimeFormat().resolvedOptions().timeZone
           : "";
 
       await completeOnboarding(supabase, {
-        displayName: displayName.trim() || (skipped ? "Athlete" : ""),
-        username: slugifyUsername(username) || slugifyUsername(displayName),
-        bio,
-        avatarUrl: customAvatar && !customAvatar.startsWith("blob:")
-          ? customAvatar
-          : activeAvatar,
+        ...draft,
         avatarFile,
-        ageRange,
-        countryCode: region,
+        countryCode: "",
         timezone,
-        heightCm: Number.isFinite(height) && height > 0 ? height : null,
-        currentWeightKg: Number.isFinite(weightNowRaw)
-          ? toKg(weightNowRaw, weightUnit)
-          : null,
-        targetWeightKg: Number.isFinite(weightGoalRaw)
-          ? toKg(weightGoalRaw, weightUnit)
-          : null,
-        weightUnit,
-        goals: skipped ? [] : buildGoals(),
+        targetWeightKg: null,
+        workoutPlanStatus: skipped ? "" : draft.workoutPlanStatus,
+        workoutPlan: null,
+        goals: skipped ? [] : draft.goals,
         skipped
       });
 
@@ -274,6 +300,28 @@ export function OnboardingPage() {
       return;
     }
     if (stepIndex === 0 && !validateIdentity()) return;
+
+    if (step.id === "plan") {
+      if (!workoutPlanStatus) {
+        setError("Tell us whether you already have a workout plan.");
+        return;
+      }
+
+      if (workoutPlanStatus === "has_own") {
+        void finish(false);
+        return;
+      }
+
+      if (!validateIdentity()) {
+        setStepIndex(0);
+        return;
+      }
+
+      saveOnboardingDraft(buildDraftPayload(workoutPlanStatus));
+      router.push("/onboarding/plan");
+      return;
+    }
+
     if (stepIndex >= STEPS.length - 1) {
       void finish(false);
       return;
@@ -285,6 +333,11 @@ export function OnboardingPage() {
   const goBack = () => {
     setError(null);
     setStepIndex((index) => Math.max(0, index - 1));
+  };
+
+  const selectPlanStatus = (status: WorkoutPlanStatus) => {
+    setError(null);
+    setWorkoutPlanStatus(status);
   };
 
   const onPickFile = async (file: File | null) => {
@@ -353,7 +406,6 @@ export function OnboardingPage() {
       return String(Math.round(converted * 10) / 10);
     };
     setCurrentWeight((value) => convert(value));
-    setTargetWeight((value) => convert(value));
     setWeightUnit(next);
   };
 
@@ -412,7 +464,7 @@ export function OnboardingPage() {
           {step.id === "identity" ? (
             <>
               <header className="onboarding-card-head">
-                <p className="onboarding-kicker">Step 1 of 3 · Profile</p>
+                <p className="onboarding-kicker">Step 1 of 4 · Profile</p>
                 <h1 id="onboarding-title">Set up your presence</h1>
                 <p className="onboarding-lede">
                   This is how you’ll show up in live rooms and on the feed.
@@ -601,15 +653,15 @@ export function OnboardingPage() {
           {step.id === "context" ? (
             <>
               <header className="onboarding-card-head">
-                <p className="onboarding-kicker">Step 2 of 3 · You</p>
+                <p className="onboarding-kicker">Step 2 of 4 · You</p>
                 <h1 id="onboarding-title">Help us personalize rooms</h1>
                 <p className="onboarding-lede">
-                  Optional — used for recommendations and local live timings.
+                  Optional — used for recommendations and matching.
                 </p>
               </header>
 
               <fieldset className="onboarding-fieldset">
-                <legend>How old are you?</legend>
+                <legend>Age</legend>
                 <div className="onboarding-option-grid">
                   {AGE_RANGES.map((option) => (
                     <button
@@ -626,326 +678,310 @@ export function OnboardingPage() {
                 </div>
               </fieldset>
 
-              <label className="onboarding-field">
-                <span>Where are you working out from?</span>
-                <select
-                  value={region}
-                  onChange={(event) => setRegion(event.target.value)}
-                >
-                  <option value="">Select country / region</option>
-                  {REGIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
+              <fieldset className="onboarding-fieldset">
+                <legend>
+                  Gender <span className="onboarding-optional">(optional)</span>
+                </legend>
+                <div className="onboarding-option-grid">
+                  {GENDERS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card${
+                        gender === option.value ? " is-selected" : ""
+                      }`}
+                      onClick={() =>
+                        setGender((current) =>
+                          current === option.value ? "" : option.value
+                        )
+                      }
+                    >
                       {option.label}
-                    </option>
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+              </fieldset>
+
+              <div className="onboarding-biometrics onboarding-biometrics--you">
+                <div className="onboarding-biometrics-group">
+                  <div className="onboarding-biometrics-label-row">
+                    <span className="onboarding-biometrics-label">Height</span>
+                    <div
+                      className="onboarding-unit-toggle"
+                      role="group"
+                      aria-label="Height unit"
+                    >
+                      <button
+                        type="button"
+                        className={
+                          heightUnit === "imperial" ? "is-selected" : undefined
+                        }
+                        onClick={() => switchHeightUnit("imperial")}
+                      >
+                        ft / in
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          heightUnit === "metric" ? "is-selected" : undefined
+                        }
+                        onClick={() => switchHeightUnit("metric")}
+                      >
+                        cm
+                      </button>
+                    </div>
+                  </div>
+
+                  {heightUnit === "imperial" ? (
+                    <div className="onboarding-measure-control">
+                      <label className="onboarding-measure-slot">
+                        <input
+                          inputMode="numeric"
+                          onChange={(event) => setHeightFeet(event.target.value)}
+                          type="text"
+                          value={heightFeet}
+                        />
+                        <span>ft</span>
+                      </label>
+                      <label className="onboarding-measure-slot">
+                        <input
+                          inputMode="numeric"
+                          onChange={(event) =>
+                            setHeightInches(event.target.value)
+                          }
+                          type="text"
+                          value={heightInches}
+                        />
+                        <span>in</span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="onboarding-measure-control">
+                      <label className="onboarding-measure-slot onboarding-measure-slot--grow">
+                        <input
+                          inputMode="decimal"
+                          onChange={(event) => setHeightCm(event.target.value)}
+                          type="text"
+                          value={heightCm}
+                        />
+                        <span>cm</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <div className="onboarding-biometrics-group">
+                  <div className="onboarding-biometrics-label-row">
+                    <span className="onboarding-biometrics-label">Weight</span>
+                    <div
+                      className="onboarding-unit-toggle"
+                      role="group"
+                      aria-label="Weight unit"
+                    >
+                      <button
+                        type="button"
+                        className={weightUnit === "kg" ? "is-selected" : undefined}
+                        onClick={() => switchWeightUnit("kg")}
+                      >
+                        kg
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          weightUnit === "lbs" ? "is-selected" : undefined
+                        }
+                        onClick={() => switchWeightUnit("lbs")}
+                      >
+                        lbs
+                      </button>
+                    </div>
+                  </div>
+
+                  <label className="onboarding-weight-field">
+                    <div className="onboarding-measure-control">
+                      <div className="onboarding-measure-slot onboarding-measure-slot--grow">
+                        <input
+                          inputMode="decimal"
+                          onChange={(event) =>
+                            setCurrentWeight(event.target.value)
+                          }
+                          type="text"
+                          value={currentWeight}
+                        />
+                        <span>{weightUnit}</span>
+                      </div>
+                    </div>
+                    <em className="onboarding-weight-hint">
+                      ≈ {convertWeightDisplay(currentWeight, weightUnit)}
+                    </em>
+                  </label>
+                </div>
+              </div>
+
+              <fieldset className="onboarding-fieldset">
+                <legend>Activity level</legend>
+                <div className="onboarding-option-grid onboarding-option-grid--wrap">
+                  {ACTIVITY_LEVELS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card${
+                        activityLevel === option.value ? " is-selected" : ""
+                      }`}
+                      onClick={() => setActivityLevel(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="onboarding-fieldset">
+                <legend>Experience</legend>
+                <div className="onboarding-option-grid">
+                  {FITNESS_EXPERIENCE.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card${
+                        fitnessExperience === option.value ? " is-selected" : ""
+                      }`}
+                      onClick={() => setFitnessExperience(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
             </>
           ) : null}
 
           {step.id === "goals" ? (
             <>
               <header className="onboarding-card-head">
-                <p className="onboarding-kicker">Step 3 of 3 · Goals</p>
-                <h1 id="onboarding-title">What are you chasing?</h1>
+                <p className="onboarding-kicker">Step 3 of 4 · Goals</p>
+                <h1 id="onboarding-title">🎯 What&apos;s your primary fitness goal?</h1>
+                <p className="onboarding-lede">Choose one. You can refine this later.</p>
+              </header>
+
+              <fieldset className="onboarding-fieldset">
+                <legend className="sr-only">Primary fitness goal</legend>
+                <div className="onboarding-option-grid onboarding-option-grid--goals">
+                  {PRIMARY_GOALS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card onboarding-option-card--goal${
+                        primaryFitnessGoal === option.value ? " is-selected" : ""
+                      }`}
+                      onClick={() => setPrimaryFitnessGoal(option.value)}
+                    >
+                      <span className="onboarding-option-emoji" aria-hidden>
+                        {option.emoji}
+                      </span>
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="onboarding-fieldset">
+                <legend>📆 How often do you want to work out?</legend>
+                <div className="onboarding-option-grid onboarding-option-grid--wrap">
+                  {WORKOUT_FREQUENCY.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card${
+                        workoutDaysPerWeek === option.value ? " is-selected" : ""
+                      }`}
+                      onClick={() => setWorkoutDaysPerWeek(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="onboarding-fieldset">
+                <legend>⏱️ How long can you commit per session?</legend>
+                <div className="onboarding-option-grid onboarding-option-grid--wrap">
+                  {SESSION_LENGTHS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card${
+                        sessionMinutes === option.value ? " is-selected" : ""
+                      }`}
+                      onClick={() => setSessionMinutes(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="onboarding-fieldset">
+                <legend>🏁 What milestone would make you feel successful?</legend>
+                <label className="onboarding-field">
+                  <span className="sr-only">Your milestone</span>
+                  <textarea
+                    rows={3}
+                    placeholder="Write your own, or pick an example below"
+                    value={successMilestone}
+                    onChange={(event) => setSuccessMilestone(event.target.value)}
+                  />
+                </label>
+                <div className="onboarding-chip-row" role="group" aria-label="Milestone examples">
+                  {MILESTONE_EXAMPLES.map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      className={`onboarding-chip${
+                        successMilestone === example ? " is-selected" : ""
+                      }`}
+                      onClick={() => setSuccessMilestone(example)}
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </>
+          ) : null}
+
+          {step.id === "plan" ? (
+            <>
+              <header className="onboarding-card-head">
+                <p className="onboarding-kicker">Step 4 of 4 · Plan</p>
+                <h1 id="onboarding-title">Do you already have a workout plan?</h1>
                 <p className="onboarding-lede">
-                  Set a few targets to seed your accountability board. You can
-                  change these anytime.
+                  If you already follow one, jump into RhoQ. Otherwise we&apos;ll
+                  generate a personalized starter routine from your goals.
                 </p>
               </header>
 
-              <div className="onboarding-goal-layout">
-                <article className="onboarding-goal-panel">
-                  <p className="onboarding-goal-category">Consistency</p>
-                  <strong className="onboarding-goal-title">
-                    Train 5 days a week
-                  </strong>
-                  <p className="onboarding-goal-detail">
-                    Consistency over perfection
-                  </p>
-                  <div className="onboarding-goal-fields onboarding-goal-fields--row">
-                    <label className="onboarding-metric">
-                      <span>Current (days)</span>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setTrainCurrentDays(event.target.value)
-                        }
-                        type="text"
-                        value={trainCurrentDays}
-                      />
-                    </label>
-                    <label className="onboarding-metric">
-                      <span>Expected (days)</span>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setTrainExpectedDays(event.target.value)
-                        }
-                        type="text"
-                        value={trainExpectedDays}
-                      />
-                    </label>
-                  </div>
-                </article>
-
-                <article className="onboarding-goal-panel">
-                  <p className="onboarding-goal-category">Consistency</p>
-                  <strong className="onboarding-goal-title">
-                    Morning mobility streak
-                  </strong>
-                  <p className="onboarding-goal-detail">Build a daily habit</p>
-                  <div className="onboarding-streak-meta">
-                    <label className="onboarding-streak-line">
-                      <span>Current Streak (days):</span>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) => setStreakCurrent(event.target.value)}
-                        type="text"
-                        value={streakCurrent}
-                      />
-                    </label>
-                    <span>Target Streak (days): {streakTarget}</span>
-                  </div>
-                  <div
-                    className="onboarding-segmented"
-                    role="group"
-                    aria-label="Target streak"
-                  >
-                    {STREAK_TARGETS.map((days) => (
-                      <button
-                        key={days}
-                        type="button"
-                        className={
-                          streakTarget === days ? "is-selected" : undefined
-                        }
-                        onClick={() => setStreakTarget(days)}
-                      >
-                        {days}d
-                      </button>
-                    ))}
-                  </div>
-                </article>
-
-                <article className="onboarding-goal-panel">
-                  <p className="onboarding-goal-category">Performance</p>
-                  <strong className="onboarding-goal-title">
-                    Hit a lift target
-                  </strong>
-                  <p className="onboarding-goal-detail">Track a milestone PR</p>
-                  <div className="onboarding-goal-fields onboarding-goal-fields--row">
-                    <label className="onboarding-metric">
-                      <span>Current (kg)</span>
-                      <input
-                        inputMode="decimal"
-                        onChange={(event) => setLiftCurrent(event.target.value)}
-                        type="text"
-                        value={liftCurrent}
-                      />
-                    </label>
-                    <label className="onboarding-metric">
-                      <span>Target (kg)</span>
-                      <input
-                        inputMode="decimal"
-                        onChange={(event) => setLiftTarget(event.target.value)}
-                        type="text"
-                        value={liftTarget}
-                      />
-                    </label>
-                  </div>
-                </article>
-
-                <article className="onboarding-goal-panel">
-                  <p className="onboarding-goal-category">Lifestyle</p>
-                  <strong className="onboarding-goal-title">
-                    Meal Prep &amp; Nutrition
-                  </strong>
-                  <p className="onboarding-goal-detail">
-                    Wins between workouts
-                  </p>
-                  <div className="onboarding-goal-fields">
-                    <label className="onboarding-metric">
-                      <span>Current Daily Calorie Intake</span>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setCaloriesCurrent(event.target.value)
-                        }
-                        type="text"
-                        value={caloriesCurrent}
-                      />
-                    </label>
-                    <label className="onboarding-metric">
-                      <span>Target Daily Calorie Intake</span>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setCaloriesTarget(event.target.value)
-                        }
-                        type="text"
-                        value={caloriesTarget}
-                      />
-                    </label>
-                  </div>
-                </article>
-
-                <article className="onboarding-goal-panel onboarding-goal-panel--wide">
-                  <div className="onboarding-biometrics-head">
-                    <div>
-                      <p className="onboarding-goal-category">Biometrics</p>
-                      <strong className="onboarding-goal-title">
-                        Baseline measurements
-                      </strong>
-                      <p className="onboarding-goal-detail">
-                        Track your starting stats for accurate progress
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="onboarding-biometrics">
-                    <div className="onboarding-biometrics-group">
-                      <div className="onboarding-biometrics-label-row">
-                        <span className="onboarding-biometrics-label">
-                          Current height
-                        </span>
-                        <div
-                          className="onboarding-unit-toggle"
-                          role="group"
-                          aria-label="Height unit"
-                        >
-                          <button
-                            type="button"
-                            className={
-                              heightUnit === "imperial" ? "is-selected" : undefined
-                            }
-                            onClick={() => switchHeightUnit("imperial")}
-                          >
-                            ft / in
-                          </button>
-                          <button
-                            type="button"
-                            className={
-                              heightUnit === "metric" ? "is-selected" : undefined
-                            }
-                            onClick={() => switchHeightUnit("metric")}
-                          >
-                            cm
-                          </button>
-                        </div>
-                      </div>
-
-                      {heightUnit === "imperial" ? (
-                        <div className="onboarding-measure-control">
-                          <label className="onboarding-measure-slot">
-                            <input
-                              inputMode="numeric"
-                              onChange={(event) =>
-                                setHeightFeet(event.target.value)
-                              }
-                              type="text"
-                              value={heightFeet}
-                            />
-                            <span>ft</span>
-                          </label>
-                          <label className="onboarding-measure-slot">
-                            <input
-                              inputMode="numeric"
-                              onChange={(event) =>
-                                setHeightInches(event.target.value)
-                              }
-                              type="text"
-                              value={heightInches}
-                            />
-                            <span>in</span>
-                          </label>
-                        </div>
-                      ) : (
-                        <div className="onboarding-measure-control">
-                          <label className="onboarding-measure-slot onboarding-measure-slot--grow">
-                            <input
-                              inputMode="decimal"
-                              onChange={(event) => setHeightCm(event.target.value)}
-                              type="text"
-                              value={heightCm}
-                            />
-                            <span>cm</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="onboarding-biometrics-group">
-                      <div className="onboarding-biometrics-label-row">
-                        <span className="onboarding-biometrics-label">Weight</span>
-                        <div
-                          className="onboarding-unit-toggle"
-                          role="group"
-                          aria-label="Weight unit"
-                        >
-                          <button
-                            type="button"
-                            className={weightUnit === "kg" ? "is-selected" : undefined}
-                            onClick={() => switchWeightUnit("kg")}
-                          >
-                            kg
-                          </button>
-                          <button
-                            type="button"
-                            className={
-                              weightUnit === "lbs" ? "is-selected" : undefined
-                            }
-                            onClick={() => switchWeightUnit("lbs")}
-                          >
-                            lbs
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="onboarding-weight-grid">
-                        <label className="onboarding-weight-field">
-                          <span>Current</span>
-                          <div className="onboarding-measure-control">
-                            <div className="onboarding-measure-slot onboarding-measure-slot--grow">
-                              <input
-                                inputMode="decimal"
-                                onChange={(event) =>
-                                  setCurrentWeight(event.target.value)
-                                }
-                                type="text"
-                                value={currentWeight}
-                              />
-                              <span>{weightUnit}</span>
-                            </div>
-                          </div>
-                          <em className="onboarding-weight-hint">
-                            ≈ {convertWeightDisplay(currentWeight, weightUnit)}
-                          </em>
-                        </label>
-
-                        <label className="onboarding-weight-field">
-                          <span>Target</span>
-                          <div className="onboarding-measure-control">
-                            <div className="onboarding-measure-slot onboarding-measure-slot--grow">
-                              <input
-                                inputMode="decimal"
-                                onChange={(event) =>
-                                  setTargetWeight(event.target.value)
-                                }
-                                type="text"
-                                value={targetWeight}
-                              />
-                              <span>{weightUnit}</span>
-                            </div>
-                          </div>
-                          <em className="onboarding-weight-hint">
-                            ≈ {convertWeightDisplay(targetWeight, weightUnit)}
-                          </em>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              </div>
+              <fieldset className="onboarding-fieldset">
+                <legend className="sr-only">Workout plan status</legend>
+                <div className="onboarding-option-grid onboarding-option-grid--goals">
+                  {PLAN_STATUS_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`onboarding-option-card onboarding-option-card--goal${
+                        workoutPlanStatus === option.value ? " is-selected" : ""
+                      }`}
+                      disabled={saving}
+                      onClick={() => selectPlanStatus(option.value)}
+                    >
+                      <span className="onboarding-option-emoji" aria-hidden>
+                        {option.emoji}
+                      </span>
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
             </>
           ) : null}
 
@@ -985,14 +1021,18 @@ export function OnboardingPage() {
               <button
                 type="button"
                 className="btn-primary"
-                disabled={saving}
+                disabled={saving || (step.id === "plan" && !workoutPlanStatus)}
                 onClick={goNext}
               >
                 {saving
                   ? "Saving…"
-                  : stepIndex >= STEPS.length - 1
-                    ? "Enter RhoQ"
-                    : "Continue"}
+                  : step.id === "plan"
+                    ? workoutPlanStatus === "has_own"
+                      ? "Enter RhoQ"
+                      : "Next"
+                    : stepIndex >= STEPS.length - 1
+                      ? "Enter RhoQ"
+                      : "Continue"}
               </button>
             </div>
           </footer>

@@ -108,6 +108,7 @@ export async function middleware(request: NextRequest) {
     user &&
     !onboardingComplete &&
     pathname !== "/onboarding" &&
+    !pathname.startsWith("/onboarding/") &&
     !pathname.startsWith("/auth") &&
     (requiresAuth || isAppSurface)
   ) {
@@ -124,7 +125,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (pathname === "/onboarding" && user && onboardingComplete) {
+  if (
+    user &&
+    onboardingComplete &&
+    (pathname === "/onboarding" || pathname.startsWith("/onboarding/"))
+  ) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/rooms";
     redirectUrl.search = "";

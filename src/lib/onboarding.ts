@@ -14,30 +14,63 @@ import type {
 function buildDefaultGoals(payload: OnboardingPayload): OnboardingGoalInput[] {
   if (payload.goals.length > 0) return payload.goals;
 
-  const currentWeight = payload.currentWeightKg ?? 0;
-  const targetWeight = payload.targetWeightKg ?? currentWeight;
+  const days = payload.workoutDaysPerWeek ?? 5;
+  const minutes = payload.sessionMinutes ?? 45;
   const hoursTarget = hoursGoalTarget(0);
+  const primaryTitles: Record<string, string> = {
+    build_muscle: "Build muscle",
+    lose_fat: "Lose fat",
+    get_stronger: "Get stronger",
+    improve_endurance: "Improve endurance",
+    more_flexible: "Become more flexible",
+    stay_healthy: "Stay healthy & active",
+    stay_consistent: "Stay consistent"
+  };
+  const primaryLabel =
+    primaryTitles[payload.primaryFitnessGoal] ?? "Stay healthy & active";
+  const milestone =
+    payload.successMilestone.trim() || "Just keep showing up";
 
   return [
     {
-      template_id: "train_weekly",
-      title: "Train 5 days a week",
-      detail: "Consistency over perfection",
-      category: "consistency",
+      template_id: "primary_fitness",
+      title: primaryLabel,
+      detail: "Primary fitness goal",
+      category: "lifestyle",
       current_value: 0,
-      target_value: 5,
-      unit: "days",
+      target_value: 1,
+      unit: "goal",
       sort_order: 0
     },
     {
-      template_id: "mobility_streak",
-      title: "Morning mobility streak",
-      detail: "Build a daily habit",
+      template_id: "train_weekly",
+      title: `Train ${days} days a week`,
+      detail: "Weekly workout frequency",
       category: "consistency",
       current_value: 0,
-      target_value: 30,
+      target_value: days,
       unit: "days",
       sort_order: 1
+    },
+    {
+      template_id: "session_length",
+      title: `${minutes}+ min sessions`,
+      detail: "Time you can commit per session",
+      category: "consistency",
+      current_value: 0,
+      target_value: minutes,
+      unit: "min",
+      sort_order: 2
+    },
+    {
+      template_id: "success_milestone",
+      title: milestone,
+      detail: "Milestone that would feel successful",
+      category: "performance",
+      current_value: 0,
+      target_value: 1,
+      unit: "milestone",
+      sort_order: 3
     },
     {
       template_id: "hours_worked",
@@ -47,17 +80,7 @@ function buildDefaultGoals(payload: OnboardingPayload): OnboardingGoalInput[] {
       current_value: 0,
       target_value: hoursTarget,
       unit: "hours",
-      sort_order: 2
-    },
-    {
-      template_id: "target_weight",
-      title: "Hit target weight",
-      detail: "Track toward your goal weight",
-      category: "lifestyle",
-      current_value: currentWeight,
-      target_value: targetWeight || 50,
-      unit: "kg",
-      sort_order: 3
+      sort_order: 4
     }
   ];
 }
@@ -104,11 +127,20 @@ export async function completeOnboarding(
       bio: payload.bio.trim() || null,
       avatar_url: avatarUrl,
       age_range: payload.ageRange || null,
+      gender: payload.gender || null,
+      activity_level: payload.activityLevel || null,
+      fitness_experience: payload.fitnessExperience || null,
       country_code: payload.countryCode || null,
       timezone: payload.timezone || null,
       height_cm: payload.heightCm,
       current_weight_kg: payload.currentWeightKg,
       weight_unit: payload.weightUnit,
+      primary_fitness_goal: payload.primaryFitnessGoal || null,
+      workout_days_per_week: payload.workoutDaysPerWeek,
+      session_minutes: payload.sessionMinutes,
+      success_milestone: payload.successMilestone.trim() || null,
+      workout_plan_status: payload.workoutPlanStatus || null,
+      workout_plan: payload.workoutPlan,
       onboarding_completed_at: new Date().toISOString()
     },
     { onConflict: "id" }
@@ -132,7 +164,7 @@ export async function completeOnboarding(
     });
   }
 
-  // Always include target_weight when we have numbers
+  // Include target_weight when we have both current and target numbers
   if (
     payload.currentWeightKg != null &&
     payload.targetWeightKg != null &&

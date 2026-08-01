@@ -12,6 +12,7 @@ import {
 import { PostUploadPreview } from "@/components/profile/PostUploadPreview";
 import { ProfileEditDrawer } from "@/components/profile/ProfileEditDrawer";
 import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
+import { ProfileWeeklyPlan } from "@/components/profile/ProfileWeeklyPlan";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   formatGoalDetail,
@@ -1014,8 +1015,11 @@ export function ProfilePage({
 
       identity.style.height = "auto";
       if (goalsPanel) goalsPanel.style.height = "auto";
-      const bodyHeight = identityBody.getBoundingClientRect().height;
-      const totalHeight = bodyHeight / 0.9;
+
+      const identityHeight = identity.getBoundingClientRect().height;
+      const goalsHeight = goalsPanel?.getBoundingClientRect().height ?? 0;
+      const totalHeight = Math.max(identityHeight, goalsHeight);
+
       identity.style.height = `${totalHeight}px`;
       if (goalsPanel) goalsPanel.style.height = `${totalHeight}px`;
     };
@@ -1023,13 +1027,24 @@ export function ProfilePage({
     syncHeight();
     const observer = new ResizeObserver(syncHeight);
     observer.observe(identityBody);
+    const goalsContent = goalsPanel?.firstElementChild;
+    if (goalsContent) observer.observe(goalsContent);
     window.addEventListener("resize", syncHeight);
 
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", syncHeight);
     };
-  }, [displayName, bio, handle, avatarSrc, hoursWorked, hoursGoal, dayStreak, goals]);
+  }, [
+    displayName,
+    bio,
+    handle,
+    avatarSrc,
+    hoursWorked,
+    hoursGoal,
+    dayStreak,
+    profileData?.profile.workout_plan
+  ]);
 
   const activePost = posts.find((post) => post.id === activePostId) ?? null;
 
@@ -1445,36 +1460,12 @@ export function ProfilePage({
         </aside>
 
         <aside className="profile-goals-panel" ref={goalsPanelRef}>
-          <div className="profile-goals">
-            {readOnly ? (
-              <div className="profile-goals-head">
-                <h2>Goals</h2>
-              </div>
-            ) : null}
-            {goals.length > 0 ? (
-              goals.map((goal) => (
-                <article className="profile-goal-card" key={goal.id}>
-                  <div className="profile-goal-top">
-                    <strong>{goal.title}</strong>
-                    <span className="profile-goal-detail">{goal.detail}</span>
-                    <span className="profile-goal-pct">{goal.progress}%</span>
-                  </div>
-                  <div className="profile-goal-track" aria-hidden>
-                    <span
-                      className="profile-goal-fill"
-                      style={{ width: `${goal.progress}%` }}
-                    />
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="profile-goals-empty">
-                {readOnly
-                  ? "No goals shared yet."
-                  : "No goals yet. Add some from Edit on your profile."}
-              </p>
-            )}
-          </div>
+          <ProfileWeeklyPlan
+            plan={profileData?.profile.workout_plan ?? null}
+            planStatus={profileData?.profile.workout_plan_status ?? null}
+            dayStreak={dayStreak}
+            readOnly={readOnly}
+          />
         </aside>
       </section>
 
