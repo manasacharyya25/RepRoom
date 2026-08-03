@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { FeedAuthorHoverCard } from "@/components/feed/FeedAuthorHoverCard";
 import {
@@ -16,6 +16,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import {
   FEED_PAGE_SIZE,
+  FEED_POOL_SIZE,
   listFeedPosts
 } from "@/lib/posts-api";
 
@@ -521,21 +522,30 @@ export function CommunityFeed({
   onUpgradeRequest?: (reason: "guest_feed_action" | "guest_feed_end") => void;
 }) {
   const live = enableLoadMore || Boolean(guestLimit);
-  const pageSize = guestLimit ?? FEED_PAGE_SIZE;
-  const [posts, setPosts] = useState<FeedPost[]>(() =>
+  const displayLimit = guestLimit ?? FEED_PAGE_SIZE;
+  const [pool, setPool] = useState<FeedPost[]>(() =>
     live ? [] : initialPosts
   );
+  const [visibleCount, setVisibleCount] = useState(displayLimit);
   const [loading, setLoading] = useState(live);
-  const [hasMore, setHasMore] = useState(false);
+  const [serverHasMore, setServerHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activePostId, setActivePostId] = useState<string | null>(null);
 
+  const visiblePosts = useMemo(
+    () => pool.slice(0, Math.min(visibleCount, pool.length)),
+    [pool, visibleCount]
+  );
+  const hasMoreInPool = visibleCount < pool.length;
+  const hasMore = enableLoadMore && (hasMoreInPool || serverHasMore);
+
   useEffect(() => {
     if (live) return;
-    setPosts(shuffleInPlace([...initialPosts]));
+    setPool(shuffleInPlace([...initialPosts]));
+    setVisibleCount(initialPosts.length);
     setLoading(false);
-    setHasMore(false);
+    setServerHasMore(false);
     setLoadError(null);
   }, [live, initialPosts]);
 
@@ -550,21 +560,23 @@ export function CommunityFeed({
       try {
         const supabase = createClient();
         const page = await listFeedPosts(supabase, {
-          limit: pageSize
+          limit: FEED_POOL_SIZE
         });
         if (cancelled) return;
         const liked = new Set(page.likedPostIds);
-        setPosts(
-          shuffleInPlace(
-            page.posts.map((row) => mapFeedRowToPost(row, liked.has(row.id)))
-          )
+        const nextPool = shuffleInPlace(
+          page.posts.map((row) => mapFeedRowToPost(row, liked.has(row.id)))
         );
-        setHasMore(guestLimit ? false : page.hasMore);
+        setPool(nextPool);
+        setVisibleCount(Math.min(displayLimit, nextPool.length));
+        // Guests never page the server; signed-in may fetch older chunks later.
+        setServerHasMore(guestLimit ? false : page.hasMore);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
-          setPosts([]);
-          setHasMore(false);
+          setPool([]);
+          setVisibleCount(0);
+          setServerHasMore(false);
           setLoadError(
             error instanceof Error
               ? error.message
@@ -580,13 +592,13 @@ export function CommunityFeed({
     return () => {
       cancelled = true;
     };
-  }, [live, pageSize, guestLimit]);
+  }, [live, displayLimit, guestLimit]);
 
-  const activePost = posts.find((post) => post.id === activePostId) ?? null;
+  const activePost = pool.find((post) => post.id === activePostId) ?? null;
   const canOpenModal = allowComments && !readOnly;
 
   const updatePostStats: PostStatsChange = (postId, stats) => {
-    setPosts((prev) =>
+    setPool((prev) =>
       prev.map((post) =>
         post.id === postId
           ? {
@@ -601,29 +613,40 @@ export function CommunityFeed({
   };
 
   const loadMore = async () => {
-    if (!enableLoadMore || !hasMore || isLoadingMore || posts.length === 0) {
+    if (!enableLoadMore || !hasMore || isLoadingMore || pool.length === 0) {
       return;
     }
+
+    // Reveal more from the shuffled pool without a network round-trip.
+    if (visibleCount < pool.length) {
+      setVisibleCount((prev) =>
+        Math.min(prev + FEED_PAGE_SIZE, pool.length)
+      );
+      return;
+    }
+
+    if (!serverHasMore) return;
+
     setIsLoadingMore(true);
     setLoadError(null);
     try {
       const supabase = createClient();
       const page = await listFeedPosts(supabase, {
-        limit: FEED_PAGE_SIZE,
-        before: oldestCreatedAtIso(posts)
+        limit: FEED_POOL_SIZE,
+        before: oldestCreatedAtIso(pool)
       });
 
-      setPosts((prev) => {
-        const seen = new Set(prev.map((post) => post.id));
-        const liked = new Set(page.likedPostIds);
-        const next = shuffleInPlace(
-          page.posts
-            .map((row) => mapFeedRowToPost(row, liked.has(row.id)))
-            .filter((post) => !seen.has(post.id))
-        );
-        return [...prev, ...next];
-      });
-      setHasMore(page.hasMore);
+      const liked = new Set(page.likedPostIds);
+      const seen = new Set(pool.map((post) => post.id));
+      const next = shuffleInPlace(
+        page.posts
+          .map((row) => mapFeedRowToPost(row, liked.has(row.id)))
+          .filter((post) => !seen.has(post.id))
+      );
+
+      setPool((prev) => [...prev, ...next]);
+      setVisibleCount((prev) => prev + Math.min(FEED_PAGE_SIZE, next.length));
+      setServerHasMore(page.hasMore);
     } catch (error) {
       console.error(error);
       setLoadError(
@@ -647,12 +670,12 @@ export function CommunityFeed({
           {loading ? (
             <p className="feed-posts-status">Loading posts…</p>
           ) : null}
-          {!loading && posts.length === 0 ? (
+          {!loading && visiblePosts.length === 0 ? (
             <p className="feed-posts-status">
               {loadError ?? "No posts yet. Be the first to share an update."}
             </p>
           ) : null}
-          {posts.map((post) => (
+          {visiblePosts.map((post) => (
             <FeedPostCard
               key={post.id}
               post={post}
@@ -672,7 +695,7 @@ export function CommunityFeed({
           ))}
         </div>
 
-        {guestLimit && !loading && posts.length >= guestLimit ? (
+        {guestLimit && !loading && pool.length >= guestLimit ? (
           <div className="feed-load-more">
             <button
               type="button"
@@ -686,7 +709,7 @@ export function CommunityFeed({
 
         {enableLoadMore && !loading ? (
           <div className="feed-load-more">
-            {loadError && posts.length > 0 ? (
+            {loadError && pool.length > 0 ? (
               <p className="feed-load-more-error">{loadError}</p>
             ) : null}
             {hasMore ? (
@@ -698,7 +721,7 @@ export function CommunityFeed({
               >
                 {isLoadingMore ? "Loading…" : "Load more"}
               </button>
-            ) : posts.length > 0 ? (
+            ) : pool.length > 0 ? (
               <p className="feed-load-more-done">You’re all caught up</p>
             ) : null}
           </div>

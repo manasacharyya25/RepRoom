@@ -21,7 +21,7 @@ export function LandingPage({ waitlistMode = false }: LandingPageProps) {
             <Link className="btn-secondary" href="/login">
               Log in
             </Link>
-            <Link className="btn-primary" href="/feed">
+            <Link className="btn-primary" href="/rooms">
               Get Started
             </Link>
           </div>
@@ -57,7 +57,7 @@ export function LandingPage({ waitlistMode = false }: LandingPageProps) {
 
       {waitlistMode ? null : (
         <section className="landing-cta-band">
-          <Link className="btn-primary btn-primary-lg" href="/feed">
+          <Link className="btn-primary btn-primary-lg" href="/rooms">
             Get Started Now
           </Link>
         </section>

@@ -12,7 +12,10 @@ import type {
 import { COMMENT_MAX_LENGTH } from "@/lib/types/post";
 
 export const POSTS_PAGE_SIZE = 9;
+/** Visible page size for signed-in feed (load-more step). */
 export const FEED_PAGE_SIZE = 10;
+/** Recent posts fetched per chunk before client shuffle. */
+export const FEED_POOL_SIZE = 50;
 
 function clampProgress(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -153,15 +156,15 @@ function normalizeFeedAuthor(
 export async function listFeedPosts(
   supabase: SupabaseClient,
   options?: {
-    /** Max posts per page (capped at FEED_PAGE_SIZE). */
+    /** Max posts per chunk (capped at FEED_POOL_SIZE). */
     limit?: number;
     /** Fetch posts older than this `created_at` timestamp (ISO). */
     before?: string | null;
   }
 ): Promise<ListFeedPostsPage> {
   const limit = Math.min(
-    Math.max(1, options?.limit ?? FEED_PAGE_SIZE),
-    FEED_PAGE_SIZE
+    Math.max(1, options?.limit ?? FEED_POOL_SIZE),
+    FEED_POOL_SIZE
   );
 
   let query = supabase
