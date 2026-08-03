@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import "@/app/legal.css";
 import { Logo } from "@/components/brand/Logo";
 
-const LEGAL_LINKS = [
+const SITE_LINKS = [
+  { href: "/about", label: "About Us" },
   { href: "/community-guidelines", label: "Community Guidelines" },
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/terms", label: "Terms of Service" },
@@ -12,7 +13,7 @@ const LEGAL_LINKS = [
 
 type LegalPageProps = {
   title: string;
-  path: (typeof LEGAL_LINKS)[number]["href"];
+  path: (typeof SITE_LINKS)[number]["href"];
   updated: string;
   children: ReactNode;
 };
@@ -22,8 +23,8 @@ export function LegalPage({ title, path, updated, children }: LegalPageProps) {
     <div className="legal-page">
       <header className="legal-nav">
         <Logo />
-        <nav className="legal-nav-links" aria-label="Legal">
-          {LEGAL_LINKS.map((link) => (
+        <nav className="legal-nav-links" aria-label="Site">
+          {SITE_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -45,7 +46,7 @@ export function LegalPage({ title, path, updated, children }: LegalPageProps) {
         <span>Rhoq Fitness</span>
         <Link href="/rooms">Rooms</Link>
         <Link href="/feed">Feed</Link>
-        {LEGAL_LINKS.map((link) => (
+        {SITE_LINKS.map((link) => (
           <Link key={link.href} href={link.href}>
             {link.label}
           </Link>

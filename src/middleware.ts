@@ -19,6 +19,7 @@ const GUEST_ALLOWED_PREFIXES = ["/rooms", "/feed"];
 
 const WAITLIST_ALLOWED_PATHS = new Set([
   "/",
+  "/about",
   "/privacy",
   "/terms",
   "/community-guidelines",

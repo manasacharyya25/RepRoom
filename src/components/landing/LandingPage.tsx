@@ -71,6 +71,7 @@ export function LandingPage({ waitlistMode = false }: LandingPageProps) {
             <Link href="/feed">Feed</Link>
           </>
         )}
+        <Link href="/about">About Us</Link>
         <Link href="/community-guidelines">Community Guidelines</Link>
         <Link href="/privacy">Privacy Policy</Link>
         <Link href="/terms">Terms of Service</Link>
