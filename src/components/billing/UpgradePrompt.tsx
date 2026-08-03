@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import type { UpgradeReason } from "@/lib/entitlements";
+import {
+  isPremiumUpgradeReason,
+  type UpgradeReason
+} from "@/lib/entitlements";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 
 const COPY: Record<
   UpgradeReason,
@@ -71,9 +75,11 @@ export function UpgradePrompt({
   dismissLabel
 }: UpgradePromptProps) {
   if (!open) return null;
+  // Hide premium monetization prompts while the wall is disabled.
+  if (!PREMIUM_WALL_ENABLED && isPremiumUpgradeReason(reason)) return null;
+
   const copy = COPY[reason];
-  const isPremiumCta =
-    reason === "free_time" || reason === "soft_upgrade";
+  const isPremiumCta = isPremiumUpgradeReason(reason);
   const signInHref = primaryHref || copy.primaryHref || "/login";
 
   return (

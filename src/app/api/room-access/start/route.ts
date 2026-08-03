@@ -3,6 +3,7 @@ import {
   ACTIVE_SESSION_STALE_SECONDS,
   canAccessRoom
 } from "@/lib/entitlements";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 import { guestCookieHeaderValue } from "@/lib/guest-identity";
 import { getUsage, resolveAccessContext } from "@/lib/room-access";
 import { isRoomId } from "@/lib/rooms";
@@ -54,9 +55,9 @@ export async function POST(request: Request) {
       remainingSeconds = null;
       quotaSeconds = 0;
     } else if (ctx.meterMode === "credit_bank") {
-      remainingSeconds = ctx.creditSeconds;
+      remainingSeconds = PREMIUM_WALL_ENABLED ? ctx.creditSeconds : null;
       secondsUsed = 0;
-      quotaSeconds = ctx.creditSeconds;
+      quotaSeconds = PREMIUM_WALL_ENABLED ? ctx.creditSeconds : 0;
     } else if (ctx.meterMode === "free_daily") {
       quotaSeconds = ctx.quotaSeconds;
       const usage = await getUsage(supabase, ctx.subjectKey, ctx.quotaSeconds);

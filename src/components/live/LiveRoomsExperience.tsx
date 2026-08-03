@@ -20,6 +20,7 @@ import {
   type Tier,
   type UpgradeReason
 } from "@/lib/entitlements";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 import { exitFullscreen, toggleFullscreen } from "@/lib/fullscreen";
 import {
   fetchLobbySenderProfile,
@@ -181,11 +182,14 @@ const INACTIVE_TILE_PROMOS: InactiveTilePromo[] = [
   }
 ];
 
+function activeInactiveTilePromos(): InactiveTilePromo[] {
+  if (PREMIUM_WALL_ENABLED) return INACTIVE_TILE_PROMOS;
+  return INACTIVE_TILE_PROMOS.filter((promo) => promo.id !== "upgrade");
+}
+
 function promoForSlot(slotIndex: number): InactiveTilePromo {
-  return INACTIVE_TILE_PROMOS[
-    ((slotIndex % INACTIVE_TILE_PROMOS.length) + INACTIVE_TILE_PROMOS.length) %
-      INACTIVE_TILE_PROMOS.length
-  ];
+  const promos = activeInactiveTilePromos();
+  return promos[((slotIndex % promos.length) + promos.length) % promos.length];
 }
 
 function InactiveTilePromoOverlay({
@@ -486,7 +490,7 @@ export function ImmersiveRoom({
   }, [authUser?.id, supabase]);
 
   const showQuotaTimer =
-    (tier === "guest" || tier === "free") &&
+    (tier === "guest" || (PREMIUM_WALL_ENABLED && tier === "free")) &&
     quotaSeconds > 0 &&
     remainingSeconds !== null &&
     remainingSeconds >= 0;
@@ -743,6 +747,7 @@ export function ImmersiveRoom({
       }
 
       if (
+        PREMIUM_WALL_ENABLED &&
         tier === "free" &&
         remainingSeconds !== null &&
         remainingSeconds <= 0
@@ -762,8 +767,11 @@ export function ImmersiveRoom({
       if (tier === "free" || tier === "premium") {
         broadcastLimitNotifiedRef.current = false;
         broadcastFlushedRef.current = 0;
+        // Silent modes (premium wall off, or paid premium) rely on serverStop only.
         broadcastBudgetRef.current =
-          tier === "premium" ? null : remainingSeconds;
+          !PREMIUM_WALL_ENABLED || tier === "premium"
+            ? null
+            : remainingSeconds;
         broadcastStartedAtRef.current = Date.now();
       }
       setSelfMainSlot(0);
@@ -1970,6 +1978,10 @@ export function LiveRoomsExperience() {
   );
 
   const stubUpgrade = async () => {
+    if (!PREMIUM_WALL_ENABLED) {
+      setUpgradeReason(null);
+      return;
+    }
     setUpgradeReason(null);
     setPlanModalOpen(true);
   };
@@ -2093,7 +2105,7 @@ export function LiveRoomsExperience() {
             />
           </label>
 
-          {tier === "free" ? (
+          {PREMIUM_WALL_ENABLED && tier === "free" ? (
             <p className="room-select-quota">
               {formatRemainingTime(remainingSeconds)} broadcast
               {" · "}

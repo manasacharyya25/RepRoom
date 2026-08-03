@@ -1,4 +1,5 @@
 import { isRoomComingSoon } from "@/lib/rooms";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 
 export type Tier = "guest" | "free" | "premium";
 
@@ -36,10 +37,12 @@ export function canAccessRoom(tier: Tier, roomId: string): boolean {
 
 /**
  * Daily broadcast quota seconds for room_usage_daily.
- * Free: 30m. Premium: 1h silent cap. Guests: N/A (0).
- * Credit-bank users do not use this path while credits remain.
+ * With premium wall OFF: all logged-in users get 30m (silent).
+ * With premium wall ON: free 30m, premium 1h silent.
  */
 export function broadcastQuotaSeconds(tier: Tier): number {
+  if (tier === "guest") return 0;
+  if (!PREMIUM_WALL_ENABLED) return FREE_BROADCAST_SECONDS;
   if (tier === "free") return FREE_BROADCAST_SECONDS;
   if (tier === "premium") return PREMIUM_DAILY_BROADCAST_SECONDS;
   return 0;
@@ -47,8 +50,8 @@ export function broadcastQuotaSeconds(tier: Tier): number {
 
 /**
  * Whether Go Live time is metered for this tier.
- * Premium is metered server-side (silent 1h/day) but UX hides exhaustion.
- * Free is metered with upgrade UX. Credit bank is handled separately.
+ * Premium is metered server-side (silent) but UX hides exhaustion when wall is on.
+ * Free is metered with upgrade UX only when premium wall is enabled.
  */
 export function metersBroadcast(tier: Tier): boolean {
   return tier === "free" || tier === "premium";
@@ -74,6 +77,11 @@ export type UpgradeReason =
   | "free_time"
   | "soft_upgrade";
 
+/** Reasons that open the premium / upgrade plan wall. */
+export function isPremiumUpgradeReason(reason: UpgradeReason): boolean {
+  return reason === "free_time" || reason === "soft_upgrade";
+}
+
 export type BroadcastMeterMode =
   | "none"
   | "free_daily"
@@ -85,7 +93,9 @@ export function resolveBroadcastMeterMode(options: {
   creditSeconds: number;
 }): BroadcastMeterMode {
   if (options.tier === "guest") return "none";
-  if (options.tier === "premium") return "premium_silent_daily";
   if (options.creditSeconds > 0) return "credit_bank";
+  // Premium wall off: silent 30m for every logged-in user (no upgrade UX).
+  if (!PREMIUM_WALL_ENABLED) return "premium_silent_daily";
+  if (options.tier === "premium") return "premium_silent_daily";
   return "free_daily";
 }

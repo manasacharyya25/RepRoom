@@ -10,6 +10,7 @@ import type {
   PremiumPlanId,
   PremiumPlanSelection
 } from "@/lib/billing/plans";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 
 export type { PremiumPlanId, PremiumPlanSelection };
 
@@ -44,7 +45,7 @@ export function PremiumPlanModal({
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !PREMIUM_WALL_ENABLED) return;
     setCheckoutBusy(false);
     setCheckoutError(null);
     setPricingReady(false);
@@ -127,6 +128,7 @@ export function PremiumPlanModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, checkoutBusy, onClose]);
 
+  if (!PREMIUM_WALL_ENABLED) return null;
   if (!open && !checkoutBusy) return null;
 
   if (checkoutBusy) {

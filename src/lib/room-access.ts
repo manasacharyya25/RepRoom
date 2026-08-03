@@ -7,6 +7,7 @@ import {
   type ProfilePlan,
   type Tier
 } from "@/lib/entitlements";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 import {
   getRequestIpHash,
   hashDeviceFingerprint,
@@ -30,7 +31,7 @@ export type AccessContext = {
   meterMode: BroadcastMeterMode;
   /**
    * Whether the client should show remaining time / upgrade UX.
-   * False for premium (silent cap) and guests.
+   * False for premium (silent cap), guests, and when premium wall is disabled.
    */
   metersBroadcastUx: boolean;
 };
@@ -76,7 +77,9 @@ export async function resolveAccessContext(
       plan,
       creditSeconds,
       meterMode,
-      metersBroadcastUx: meterMode === "free_daily" || meterMode === "credit_bank"
+      metersBroadcastUx:
+        PREMIUM_WALL_ENABLED &&
+        (meterMode === "free_daily" || meterMode === "credit_bank")
     };
   }
 
@@ -196,12 +199,13 @@ export async function applyBroadcastSeconds(
       add > 0
         ? await burnBroadcastCredits(supabase, ctx.userId, add)
         : { creditSeconds: ctx.creditSeconds, burned: 0 };
+    const exhausted = result.creditSeconds <= 0;
     return {
-      remainingSeconds: result.creditSeconds,
+      remainingSeconds: PREMIUM_WALL_ENABLED ? result.creditSeconds : null,
       secondsUsed: 0,
       creditSeconds: result.creditSeconds,
-      exhaustedUx: result.creditSeconds <= 0,
-      serverStop: result.creditSeconds <= 0
+      exhaustedUx: PREMIUM_WALL_ENABLED && exhausted,
+      serverStop: exhausted
     };
   }
 

@@ -21,6 +21,7 @@ import {
   type Tier,
   type UpgradeReason
 } from "@/lib/entitlements";
+import { PREMIUM_WALL_ENABLED } from "@/lib/feature-flags";
 import { exitFullscreen } from "@/lib/fullscreen";
 import { addLiveHours } from "@/lib/onboarding";
 import type { WorkoutRoom } from "@/lib/rooms";
@@ -308,6 +309,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
   ]);
 
   const openPlanModal = () => {
+    if (!PREMIUM_WALL_ENABLED) return;
     setUpgradeReason(null);
     setPlanModalOpen(true);
   };
@@ -323,8 +325,10 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
   );
 
   const onBroadcastLimitReached = useCallback(() => {
-    setRemainingSeconds(0);
-    setUpgradeReason("free_time");
+    setRemainingSeconds(PREMIUM_WALL_ENABLED ? 0 : null);
+    if (PREMIUM_WALL_ENABLED) {
+      setUpgradeReason("free_time");
+    }
     void refreshStatus();
   }, [refreshStatus, setRemainingSeconds]);
 
@@ -384,7 +388,7 @@ export function ImmersiveRoomRoute({ room }: { room: WorkoutRoom }) {
         onNeedSignInToGoLive={() => setUpgradeReason("go_live_auth")}
         onBroadcastRemaining={onBroadcastRemaining}
         onBroadcastLimitReached={onBroadcastLimitReached}
-        onRequestUpgrade={openPlanModal}
+        onRequestUpgrade={PREMIUM_WALL_ENABLED ? openPlanModal : undefined}
         staticPreviewOnly={limitReached}
         blurred={limitReached}
       />
