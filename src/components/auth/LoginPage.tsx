@@ -6,7 +6,9 @@ import { useMemo, useState, type FormEvent } from "react";
 import "@/app/landing.css";
 import "@/app/login.css";
 import { BrandMark, BrandName, Logo } from "@/components/brand/Logo";
+import { buildAuthCallbackUrl, isNativeApp } from "@/lib/capacitor-auth";
 import { createClient } from "@/lib/supabase/client";
+import { Browser } from "@capacitor/browser";
 
 type Mode = "signin" | "signup";
 
@@ -76,7 +78,7 @@ export function LoginPage() {
         email: email.trim(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+          emailRedirectTo: buildAuthCallbackUrl(nextPath)
         }
       });
       if (signUpError) throw signUpError;
@@ -105,16 +107,38 @@ export function LoginPage() {
     setError(null);
     setInfo(null);
 
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+    const redirectTo = buildAuthCallbackUrl(nextPath);
 
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo }
-    });
+    try {
+      if (isNativeApp()) {
+        const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo,
+            skipBrowserRedirect: true
+          }
+        });
+        if (oauthError) throw oauthError;
+        if (!data.url) {
+          throw new Error("Could not start Google sign-in.");
+        }
+        await Browser.open({ url: data.url });
+        return;
+      }
 
-    if (oauthError) {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo }
+      });
+      if (oauthError) throw oauthError;
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not start Google sign-in."
+      );
+    } finally {
       setBusy(false);
-      setError(oauthError.message);
     }
   };
 
