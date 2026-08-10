@@ -1455,9 +1455,8 @@ html:has(.live-rooms-immersive) body::-webkit-scrollbar {
 
   .live-rooms-discovery-stage {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.42fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
-      "pin0 pin1"
       "pin0 pin1"
       "bot0 bot1";
   }

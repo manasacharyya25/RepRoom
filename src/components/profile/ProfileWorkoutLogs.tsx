@@ -221,8 +221,13 @@ function ProfileWorkoutLogModal({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [onClose]);
 
   const toggleLike = async () => {
@@ -301,7 +306,7 @@ function ProfileWorkoutLogModal({
       onClick={onClose}
     >
       <div
-        className="feed-post-modal profile-workout-log-modal"
+        className="profile-workout-log-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Workout log"
@@ -309,14 +314,14 @@ function ProfileWorkoutLogModal({
       >
         <button
           type="button"
-          className="feed-post-modal-close"
+          className="profile-workout-log-modal-close"
           aria-label="Close"
           onClick={onClose}
         >
           ×
         </button>
 
-        <div className="profile-workout-log-modal-body">
+        <div className="profile-workout-log-modal-top">
           <div className="profile-workout-log-modal-card">
             <p className="profile-workout-log-eyebrow">Completed set</p>
             <strong className="profile-workout-log-name">
@@ -353,7 +358,7 @@ function ProfileWorkoutLogModal({
             <p className="profile-workout-log-when">{log.createdAt}</p>
           </div>
 
-          <div className="feed-post-actions">
+          <div className="profile-workout-log-modal-actions">
             <button
               type="button"
               className={`feed-post-action feed-post-like${liked ? " is-liked" : ""}`}
@@ -372,74 +377,74 @@ function ProfileWorkoutLogModal({
           {actionError ? (
             <p className="feed-post-manage-error">{actionError}</p>
           ) : null}
+        </div>
 
-          <div className="feed-post-comments feed-post-comments--modal">
-            <div className="feed-post-comments-scroll">
-              {commentsLoading ? (
-                <p className="feed-post-comments-empty">Loading comments…</p>
-              ) : comments.length > 0 ? (
-                <ul className="feed-post-comment-list">
-                  {comments.map((comment) => (
-                    <li className="feed-post-comment" key={comment.id}>
-                      <span className="feed-post-comment-avatar">
-                        <Image
-                          alt=""
-                          width={28}
-                          height={28}
-                          src={comment.avatar}
-                          unoptimized={
-                            comment.avatar.startsWith("http") ||
-                            comment.avatar.startsWith("blob:")
-                          }
-                        />
-                      </span>
-                      <div className="feed-post-comment-body">
-                        <p className="feed-post-comment-meta">
-                          <strong>{comment.author}</strong>
-                          <span>{comment.handle}</span>
-                        </p>
-                        <p className="feed-post-comment-text">{comment.text}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="feed-post-comments-empty">
-                  Be the first to comment.
-                </p>
-              )}
-            </div>
-            <form
-              className="feed-post-comment-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitComment();
-              }}
-            >
-              <label
-                className="sr-only"
-                htmlFor={`profile-log-comment-${log.id}`}
-              >
-                Write a comment
-              </label>
-              <input
-                id={`profile-log-comment-${log.id}`}
-                className="feed-post-comment-input"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Write a comment…"
-                disabled={commentBusy}
-                maxLength={500}
-              />
-              <button
-                type="submit"
-                className="feed-post-comment-send"
-                disabled={!draft.trim() || commentBusy}
-              >
-                {commentBusy ? "…" : "Send"}
-              </button>
-            </form>
+        <div className="profile-workout-log-modal-comments">
+          <div className="profile-workout-log-modal-comments-scroll">
+            {commentsLoading ? (
+              <p className="feed-post-comments-empty">Loading comments…</p>
+            ) : comments.length > 0 ? (
+              <ul className="feed-post-comment-list">
+                {comments.map((comment) => (
+                  <li className="feed-post-comment" key={comment.id}>
+                    <span className="feed-post-comment-avatar">
+                      <Image
+                        alt=""
+                        width={28}
+                        height={28}
+                        src={comment.avatar}
+                        unoptimized={
+                          comment.avatar.startsWith("http") ||
+                          comment.avatar.startsWith("blob:")
+                        }
+                      />
+                    </span>
+                    <div className="feed-post-comment-body">
+                      <p className="feed-post-comment-meta">
+                        <strong>{comment.author}</strong>
+                        <span>{comment.handle}</span>
+                      </p>
+                      <p className="feed-post-comment-text">{comment.text}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="feed-post-comments-empty">
+                Be the first to comment.
+              </p>
+            )}
           </div>
+          <form
+            className="profile-workout-log-modal-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitComment();
+            }}
+          >
+            <label
+              className="sr-only"
+              htmlFor={`profile-log-comment-${log.id}`}
+            >
+              Write a comment
+            </label>
+            <input
+              id={`profile-log-comment-${log.id}`}
+              className="profile-workout-log-modal-input"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Write a comment…"
+              disabled={commentBusy}
+              maxLength={500}
+            />
+            <button
+              type="submit"
+              className="profile-workout-log-modal-send"
+              disabled={!draft.trim() || commentBusy}
+            >
+              {commentBusy ? "…" : "Send"}
+            </button>
+          </form>
         </div>
       </div>
     </div>
