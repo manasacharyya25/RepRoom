@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { LobbyMessageView } from "@/lib/types/lobby-chat";
+import type { WorkoutLogView } from "@/lib/types/workout-log";
 import type { WorkoutPlan } from "@/lib/workout-plan";
 import { dateKey } from "@/lib/weekly-plan-calendar";
 
@@ -29,7 +30,10 @@ export function LobbyChatComposer({
   inputId = "lobby-chat-input",
   classPrefix = "live-rooms-messages"
 }: {
-  onSendWorkoutLog: (message: LobbyMessageView) => void;
+  onSendWorkoutLog: (
+    message: LobbyMessageView,
+    log?: WorkoutLogView | null
+  ) => void;
   disabled: boolean;
   exerciseOptions?: string[];
   planDayIndex?: number | null;
@@ -94,12 +98,13 @@ export function LobbyChatComposer({
       });
       const data = (await response.json().catch(() => null)) as {
         message?: LobbyMessageView;
+        log?: WorkoutLogView;
         error?: string;
       } | null;
       if (!response.ok || !data?.message) {
         throw new Error(data?.error || "Could not log workout.");
       }
-      onSendWorkoutLog(data.message);
+      onSendWorkoutLog(data.message, data.log ?? null);
       if (setValue != null) setSetNumber(String(setValue + 1));
       setReps("");
       setWeight("");

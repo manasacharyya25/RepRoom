@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { MotivationQuoteCard } from "@/components/MotivationQuoteCard";
+import { useEffect, useRef, useState } from "react";
 import { PostUploadPreview } from "@/components/profile/PostUploadPreview";
 import {
   CAPTION_MAX_LENGTH,
   COMPOSER_TYPE_OPTIONS,
+  extractHashtagsFromText,
   resolveComposerType,
   type ComposerTypeId,
   type PostCategory,
@@ -28,31 +28,15 @@ export type ComposerPublishPayload = {
   afterFile?: File;
 };
 
-function ComposerTypeIcon({ id }: { id: ComposerTypeId }) {
-  const srcById: Partial<Record<ComposerTypeId, string>> = {
-    fit_check: "/images/icons/fit-check.png",
-    pump_check: "/images/icons/pump-check.png",
-    meal_prep: "/images/icons/meal-prep.png",
-    weight_check: "/images/icons/weight-check.png",
-    transformation: "/images/icons/before-after.png",
-    achievement: "/images/icons/achievement.png",
-    motivation: "/images/icons/motivation.png",
-    goal_completed: "/images/icons/goal-completed.png"
-  };
+type LocationSuggestion = {
+  placeId: number | null;
+  displayName: string;
+  name: string | null;
+};
 
-  const src = srcById[id];
-  if (!src) return null;
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      alt=""
-      aria-hidden
-      className="profile-compose-type-icon-img"
-      src={src}
-    />
-  );
-}
+const PILL_OPTIONS = COMPOSER_TYPE_OPTIONS.filter(
+  (option) => !option.auto && option.id !== "motivation"
+);
 
 export function ProfileComposer({
   onPublish,
@@ -68,33 +52,84 @@ export function ProfileComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const beforeInputRef = useRef<HTMLInputElement>(null);
   const afterInputRef = useRef<HTMLInputElement>(null);
+  const locationBlurTimer = useRef<number | null>(null);
   const [draft, setDraft] = useState("");
-  const [composerType, setComposerType] = useState<ComposerTypeId>("fit_check");
+  /** null = text-only motivation post */
+  const [composerType, setComposerType] = useState<ComposerTypeId | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [location, setLocation] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagDraft, setTagDraft] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationSuggestions, setLocationSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
-  const [showTags, setShowTags] = useState(false);
+  const [showLocationMenu, setShowLocationMenu] = useState(false);
   const [draftPreview, setDraftPreview] =
     useState<ComposerPublishPayload | null>(null);
 
-  const selectedType = resolveComposerType(composerType);
+  const selectedType = composerType ? resolveComposerType(composerType) : null;
   const isTransform = selectedType?.kind === "transform";
-  const isMotivation = selectedType?.category === "motivation";
+  const isTextOnly = !selectedType;
 
   const canPost =
-    Boolean(selectedType?.kind && selectedType.category) &&
     draft.trim().length > 0 &&
-    (isMotivation
+    (isTextOnly
       ? true
       : isTransform
         ? Boolean(beforeFile && afterFile)
         : Boolean(imageFile));
+
+  useEffect(() => {
+    if (!showLocation) return;
+    const q = locationQuery.trim();
+    if (q.length < 2) {
+      setLocationSuggestions([]);
+      setLocationLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLocationLoading(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch(
+            `/api/geo/search?q=${encodeURIComponent(q)}`
+          );
+          const data = (await response.json().catch(() => null)) as {
+            results?: LocationSuggestion[];
+          } | null;
+          if (cancelled) return;
+          setLocationSuggestions(
+            Array.isArray(data?.results) ? data.results.slice(0, 10) : []
+          );
+          setShowLocationMenu(true);
+        } catch {
+          if (!cancelled) setLocationSuggestions([]);
+        } finally {
+          if (!cancelled) setLocationLoading(false);
+        }
+      })();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [locationQuery, showLocation]);
+
+  useEffect(() => {
+    return () => {
+      if (locationBlurTimer.current) {
+        window.clearTimeout(locationBlurTimer.current);
+      }
+    };
+  }, []);
 
   const clearMedia = (revoke = true) => {
     if (revoke) {
@@ -114,11 +149,12 @@ export function ProfileComposer({
   const clearComposer = (revokeMedia = true) => {
     setDraft("");
     clearMedia(revokeMedia);
+    setComposerType(null);
     setLocation("");
-    setTags([]);
-    setTagDraft("");
+    setLocationQuery("");
+    setLocationSuggestions([]);
     setShowLocation(false);
-    setShowTags(false);
+    setShowLocationMenu(false);
   };
 
   const onSelectImage = (
@@ -144,62 +180,47 @@ export function ProfileComposer({
     setImageFile(file);
   };
 
-  const selectComposerType = (id: ComposerTypeId) => {
+  const togglePill = (id: ComposerTypeId) => {
     const option = resolveComposerType(id);
     if (!option || option.auto) return;
 
-    if (option.category === "motivation" || option.kind !== "transform") {
-      if (afterPreviewUrl) {
-        URL.revokeObjectURL(afterPreviewUrl);
-        setAfterPreviewUrl(null);
-      }
-      setAfterFile(null);
-      if (afterInputRef.current) afterInputRef.current.value = "";
+    if (composerType === id) {
+      clearMedia();
+      setComposerType(null);
+      return;
     }
-    if (option.category === "motivation") {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
-      }
-      setImageFile(null);
-      setBeforeFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      if (beforeInputRef.current) beforeInputRef.current.value = "";
-    }
-    if (option.kind === "transform") {
-      setImageFile(null);
-    } else if (option.category !== "motivation") {
-      setBeforeFile(null);
-    }
+
+    clearMedia();
     setComposerType(id);
   };
 
-  const commitTagDraft = () => {
-    const raw = tagDraft.trim().replace(/^#/, "");
-    if (!raw) return;
-    const normalized = raw.toLowerCase().replace(/\s+/g, "");
-    if (!normalized || tags.includes(normalized) || tags.length >= 8) {
-      setTagDraft("");
-      return;
-    }
-    setTags((prev) => [...prev, normalized]);
-    setTagDraft("");
-  };
-
   const buildPayload = (): ComposerPublishPayload | null => {
-    if (!canPost || !selectedType?.kind || !selectedType.category) return null;
+    if (!canPost) return null;
+    const caption = draft.trim();
+    const tags = extractHashtagsFromText(caption);
+    const locationValue = location.trim() || undefined;
+
+    if (isTextOnly) {
+      return {
+        kind: "standard",
+        category: "motivation",
+        caption,
+        location: locationValue,
+        tags: tags.length > 0 ? tags : undefined
+      };
+    }
+    if (!selectedType?.kind || !selectedType.category) return null;
     return {
       kind: selectedType.kind,
       category: selectedType.category,
-      caption: draft.trim(),
-      image:
-        isTransform || isMotivation ? undefined : previewUrl ?? undefined,
+      caption,
+      image: isTransform ? undefined : previewUrl ?? undefined,
       beforeImage: isTransform ? previewUrl ?? undefined : undefined,
       afterImage: isTransform ? afterPreviewUrl ?? undefined : undefined,
-      imageFile: isTransform || isMotivation ? undefined : imageFile ?? undefined,
+      imageFile: isTransform ? undefined : imageFile ?? undefined,
       beforeFile: isTransform ? beforeFile ?? undefined : undefined,
       afterFile: isTransform ? afterFile ?? undefined : undefined,
-      location: location.trim() || undefined,
+      location: locationValue,
       tags: tags.length > 0 ? tags : undefined
     };
   };
@@ -208,7 +229,6 @@ export function ProfileComposer({
     const payload = buildPayload();
     if (!payload) return;
     onPublish(payload);
-    // Keep blob URLs alive for the upload preview UI.
     clearComposer(false);
   };
 
@@ -226,73 +246,32 @@ export function ProfileComposer({
     clearComposer(false);
   };
 
+  const pickLocation = (suggestion: LocationSuggestion) => {
+    setLocation(suggestion.displayName);
+    setLocationQuery(suggestion.displayName);
+    setLocationSuggestions([]);
+    setShowLocationMenu(false);
+  };
+
   return (
     <div className="profile-composer">
       <div className="profile-compose-main">
         <h2>Share an update</h2>
 
-        <section className="profile-compose-step">
-          <h3>
-            <span className="profile-compose-step-num">1</span>
-            Choose post type
-          </h3>
-
-          <div className="profile-compose-type-grid" role="listbox" aria-label="Post type">
-            {COMPOSER_TYPE_OPTIONS.map((option) => {
-              const selected = composerType === option.id;
-              const disabled = Boolean(option.auto);
-
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  aria-disabled={disabled}
-                  disabled={disabled}
-                  className={`profile-compose-type-card${
-                    selected ? " is-active" : ""
-                  }${disabled ? " is-auto" : ""}`}
-                  onClick={() => selectComposerType(option.id)}
-                >
-                  {disabled ? (
-                    <span className="profile-compose-auto-badge">Auto</span>
-                  ) : selected ? (
-                    <span className="profile-compose-check" aria-hidden>
-                      ✓
-                    </span>
-                  ) : null}
-                  <span className="profile-compose-type-icon is-image">
-                    <ComposerTypeIcon id={option.id} />
-                  </span>
-                  <strong>{option.label}</strong>
-                  <span>{option.description}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <p className="profile-compose-info">
-            <span className="profile-compose-info-icon" aria-hidden>
-              i
-            </span>
-            More post types coming soon. We keep it focused on fitness.
-          </p>
-        </section>
-
-        {isMotivation ? (
-          <section className="profile-compose-step">
-            <h3>
-              <span className="profile-compose-step-num">2</span>
-              Write your quote
-            </h3>
-
-            <MotivationQuoteCard text={draft} />
-
+        <div
+          className={`profile-compose-shell${
+            selectedType ? " has-media" : ""
+          }`}
+        >
+          <div className="profile-compose-text-col">
             <div className="profile-compose-caption-wrap">
               <textarea
                 className="profile-composer-input"
-                placeholder="There is no finish line — only the community that keeps you going."
+                placeholder={
+                  isTextOnly
+                    ? "Share a thought with the community… Use #tags in your text."
+                    : "Write something about your update… Use #tags in your text."
+                }
                 rows={4}
                 maxLength={CAPTION_MAX_LENGTH}
                 value={draft}
@@ -302,15 +281,10 @@ export function ProfileComposer({
                 {draft.length}/{CAPTION_MAX_LENGTH}
               </span>
             </div>
-          </section>
-        ) : (
-          <>
-            <section className="profile-compose-step">
-              <h3>
-                <span className="profile-compose-step-num">2</span>
-                {isTransform ? "Add your photos" : "Add your photo"}
-              </h3>
+          </div>
 
+          {selectedType ? (
+            <div className="profile-compose-media-col">
               <input
                 ref={fileInputRef}
                 className="sr-only"
@@ -340,9 +314,11 @@ export function ProfileComposer({
               />
 
               {isTransform ? (
-                <div className="profile-compose-transform-grid">
+                <div className="profile-compose-transform-grid profile-compose-transform-grid--compact">
                   <div className="profile-compose-transform-slot">
-                    <span className="profile-compose-transform-label">Before</span>
+                    <span className="profile-compose-transform-label">
+                      Before
+                    </span>
                     {previewUrl ? (
                       <div className="profile-composer-preview">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -372,28 +348,15 @@ export function ProfileComposer({
                         className="profile-compose-dropzone"
                         onClick={() => beforeInputRef.current?.click()}
                       >
-                        <span className="profile-compose-dropzone-icon" aria-hidden>
-                          <svg viewBox="0 0 24 24" fill="none">
-                            <path
-                              d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                            />
-                            <path
-                              d="M12 9v6M9 12h6"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                        </span>
-                        <strong>Before photo</strong>
-                        <span>JPG, PNG, WEBP · Max 10MB</span>
+                        <strong>Before</strong>
+                        <span>Add photo</span>
                       </button>
                     )}
                   </div>
                   <div className="profile-compose-transform-slot">
-                    <span className="profile-compose-transform-label">After</span>
+                    <span className="profile-compose-transform-label">
+                      After
+                    </span>
                     {afterPreviewUrl ? (
                       <div className="profile-composer-preview">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -425,23 +388,8 @@ export function ProfileComposer({
                         className="profile-compose-dropzone"
                         onClick={() => afterInputRef.current?.click()}
                       >
-                        <span className="profile-compose-dropzone-icon" aria-hidden>
-                          <svg viewBox="0 0 24 24" fill="none">
-                            <path
-                              d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                            />
-                            <path
-                              d="M12 9v6M9 12h6"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                        </span>
-                        <strong>After photo</strong>
-                        <span>JPG, PNG, WEBP · Max 10MB</span>
+                        <strong>After</strong>
+                        <span>Add photo</span>
                       </button>
                     )}
                   </div>
@@ -470,121 +418,114 @@ export function ProfileComposer({
               ) : (
                 <button
                   type="button"
-                  className="profile-compose-dropzone profile-compose-dropzone--lg"
+                  className="profile-compose-dropzone profile-compose-dropzone--side"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <span className="profile-compose-dropzone-icon" aria-hidden>
-                    <svg viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                      />
-                      <path
-                        d="M12 9v6M9 12h6"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </span>
                   <strong>Add a photo</strong>
-                  <span>JPG, PNG, WEBP · Max 10MB</span>
-                  <span className="profile-compose-dropzone-tip">
-                    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path
-                        d="M9.5 18.5h5M10.2 21h3.6M12 3.5a5.5 5.5 0 0 1 3.3 9.9c-.7.5-1.1 1.3-1.1 2.1v.5h-4.4v-.5c0-.8-.4-1.6-1.1-2.1A5.5 5.5 0 0 1 12 3.5Z"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    Use good lighting and clear photos for more engagement.
-                  </span>
+                  <span>JPG, PNG, WEBP</span>
                 </button>
               )}
-            </section>
+            </div>
+          ) : null}
+        </div>
 
-            <section className="profile-compose-step">
-              <h3>
-                <span className="profile-compose-step-num">3</span>
-                Write your caption
-              </h3>
-
-              <div className="profile-compose-caption-wrap">
-                <textarea
-                  className="profile-composer-input"
-                  placeholder="Write something about your update..."
-                  rows={4}
-                  maxLength={CAPTION_MAX_LENGTH}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                />
-                <span className="profile-compose-char-count">
-                  {draft.length}/{CAPTION_MAX_LENGTH}
-                </span>
-              </div>
-            </section>
-          </>
-        )}
+        <div
+          className="profile-compose-pills"
+          role="group"
+          aria-label="Post type"
+        >
+          {PILL_OPTIONS.map((option) => {
+            const selected = composerType === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={`profile-compose-pill${
+                  selected ? " is-active" : ""
+                }`}
+                aria-pressed={selected}
+                onClick={() => togglePill(option.id)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
 
         {(showLocation || location) && (
-          <div className="profile-compose-meta-field">
-            <label className="sr-only" htmlFor="compose-location">
-              Location
-            </label>
-            <input
-              id="compose-location"
-              className="profile-compose-meta-input"
-              placeholder="Add a location"
-              value={location}
-              onChange={(event) => setLocation(event.target.value)}
-              autoFocus={showLocation && !location}
-            />
-            <button
-              type="button"
-              className="profile-compose-meta-clear"
-              onClick={() => {
-                setLocation("");
-                setShowLocation(false);
-              }}
-            >
-              Clear
-            </button>
-          </div>
-        )}
-
-        {(showTags || tags.length > 0) && (
-          <div className="profile-compose-tags-editor">
-            <div className="profile-compose-tag-chips">
-              {tags.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  className="profile-compose-tag-chip"
-                  onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                  title="Remove tag"
-                >
-                  #{tag} ×
-                </button>
-              ))}
-            </div>
-            {tags.length < 8 ? (
+          <div className="profile-compose-location">
+            <div className="profile-compose-meta-field">
+              <label className="sr-only" htmlFor="compose-location">
+                Location
+              </label>
               <input
+                id="compose-location"
                 className="profile-compose-meta-input"
-                placeholder="Add a tag and press Enter"
-                value={tagDraft}
-                onChange={(event) => setTagDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === ",") {
-                    event.preventDefault();
-                    commitTagDraft();
-                  }
+                placeholder="Search for a place"
+                value={locationQuery}
+                autoComplete="off"
+                autoFocus={showLocation && !location}
+                onChange={(event) => {
+                  setLocationQuery(event.target.value);
+                  if (location) setLocation("");
                 }}
-                onBlur={commitTagDraft}
+                onFocus={() => {
+                  if (locationSuggestions.length > 0) setShowLocationMenu(true);
+                }}
+                onBlur={() => {
+                  locationBlurTimer.current = window.setTimeout(() => {
+                    setShowLocationMenu(false);
+                  }, 150);
+                }}
               />
+              <button
+                type="button"
+                className="profile-compose-meta-clear"
+                onClick={() => {
+                  setLocation("");
+                  setLocationQuery("");
+                  setLocationSuggestions([]);
+                  setShowLocation(false);
+                  setShowLocationMenu(false);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            {showLocationMenu &&
+            (locationLoading || locationSuggestions.length > 0) ? (
+              <ul className="profile-compose-location-menu" role="listbox">
+                {locationLoading && locationSuggestions.length === 0 ? (
+                  <li className="profile-compose-location-empty">Searching…</li>
+                ) : (
+                  locationSuggestions.map((suggestion) => (
+                    <li key={`${suggestion.placeId}-${suggestion.displayName}`}>
+                      <button
+                        type="button"
+                        className="profile-compose-location-option"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => pickLocation(suggestion)}
+                      >
+                        {suggestion.displayName}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
             ) : null}
+
+            <p className="profile-compose-location-attribution">
+              Location search ©{" "}
+              <a
+                href="https://www.openstreetmap.org/copyright"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                OpenStreetMap
+              </a>{" "}
+              contributors
+            </p>
           </div>
         )}
       </div>
@@ -596,34 +537,11 @@ export function ProfileComposer({
             className={`profile-compose-chip-btn${
               showLocation || location ? " is-active" : ""
             }`}
-            onClick={() => setShowLocation((open) => !open || Boolean(location))}
+            onClick={() =>
+              setShowLocation((open) => !open || Boolean(location))
+            }
           >
-            <svg viewBox="0 0 24 24" aria-hidden fill="none">
-              <path
-                d="M12 21s6-5.2 6-10.2A6 6 0 0 0 6 10.8C6 15.8 12 21 12 21Z"
-                stroke="currentColor"
-                strokeWidth="1.7"
-              />
-              <circle cx="12" cy="10.5" r="2.2" stroke="currentColor" strokeWidth="1.7" />
-            </svg>
             Add location
-          </button>
-          <button
-            type="button"
-            className={`profile-compose-chip-btn${
-              showTags || tags.length > 0 ? " is-active" : ""
-            }`}
-            onClick={() => setShowTags((open) => !open || tags.length > 0)}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden fill="none">
-              <path
-                d="M10 4 8.2 20M15.8 4 14 20M5.5 9.5h13M4.5 14.5h13"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-              />
-            </svg>
-            Add tags
           </button>
         </div>
 

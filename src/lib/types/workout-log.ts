@@ -29,6 +29,8 @@ export type DbWorkoutLog = {
   duration_seconds: number | null;
   plan_day_index: number | null;
   lobby_message_id: string | null;
+  likes_count: number;
+  comments_count: number;
   created_at: string;
 };
 
@@ -43,8 +45,43 @@ export type WorkoutLogView = {
   durationSeconds: number | null;
   planDayIndex: number | null;
   lobbyMessageId: string | null;
+  likesCount: number;
+  commentsCount: number;
   createdAt: string;
 };
+
+export type DbWorkoutLogComment = {
+  id: string;
+  workout_log_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkoutLogCommentAuthor = {
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+};
+
+export type WorkoutLogCommentRow = DbWorkoutLogComment & {
+  profiles: WorkoutLogCommentAuthor | WorkoutLogCommentAuthor[] | null;
+};
+
+export type WorkoutLogCommentView = {
+  id: string;
+  workoutLogId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  author: string;
+  handle: string;
+  avatar: string;
+};
+
+export const WORKOUT_LOG_COMMENT_MAX_LENGTH = 500;
+export const WORKOUT_LOGS_PAGE_SIZE = 20;
 
 export type DbWorkoutDayCompletion = {
   id: string;

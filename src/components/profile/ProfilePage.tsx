@@ -13,6 +13,7 @@ import { PostUploadPreview } from "@/components/profile/PostUploadPreview";
 import { ProfileEditDrawer } from "@/components/profile/ProfileEditDrawer";
 import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
 import { ProfileWeeklyPlan } from "@/components/profile/ProfileWeeklyPlan";
+import { ProfileWorkoutLogsSection } from "@/components/profile/ProfileWorkoutLogs";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   formatGoalDetail,
@@ -846,12 +847,14 @@ export function ProfilePage({
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
+  const [logsTab, setLogsTab] = useState<"posts" | "logs">("posts");
 
   useEffect(() => {
     setProfileData(initialData);
     if (initialData) {
       setGoals(mapGoalsToCards(initialData.goals));
     }
+    setLogsTab("posts");
   }, [initialData]);
 
   useEffect(() => {
@@ -1302,6 +1305,9 @@ export function ProfilePage({
               <div className="profile-identity-copy-main">
                 <div className="profile-identity-name-row">
                   <h1>{displayName}</h1>
+                  {profileData?.profile.plan === "premium" ? (
+                    <span className="profile-premium-badge">Premium</span>
+                  ) : null}
                   <ProfileSocialLinks links={profileData?.profile} />
                 </div>
                 <p className="profile-handle">{handle}</p>
@@ -1465,63 +1471,137 @@ export function ProfilePage({
             planStatus={profileData?.profile.workout_plan_status ?? null}
             dayStreak={dayStreak}
             readOnly={readOnly}
+            planFields={
+              profileData
+                ? {
+                    primaryFitnessGoal:
+                      profileData.profile.primary_fitness_goal,
+                    fitnessExperience: profileData.profile.fitness_experience,
+                    workoutDaysPerWeek:
+                      profileData.profile.workout_days_per_week,
+                    sessionMinutes: profileData.profile.session_minutes
+                  }
+                : null
+            }
+            onPlanCreated={(nextPlan) => {
+              setProfileData((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      profile: {
+                        ...prev.profile,
+                        workout_plan: nextPlan,
+                        workout_plan_status: "needs_plan"
+                      }
+                    }
+                  : prev
+              );
+            }}
           />
         </aside>
       </section>
 
-      {!readOnly ? (
-        <ProfileComposer
-          onPublish={publish}
-          author={displayName}
+      <div
+        className="profile-logs-switch"
+        role="tablist"
+        aria-label="Profile content"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={logsTab === "posts"}
+          className={`profile-logs-switch-btn${logsTab === "posts" ? " is-active" : ""}`}
+          onClick={() => setLogsTab("posts")}
+        >
+          {readOnly ? "Posts" : "Your Posts"}
+        </button>
+        <span className="profile-logs-switch-divider" aria-hidden>
+          |
+        </span>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={logsTab === "logs"}
+          className={`profile-logs-switch-btn${logsTab === "logs" ? " is-active" : ""}`}
+          onClick={() => setLogsTab("logs")}
+        >
+          {readOnly ? "Workout Logs" : "Your Workout Logs"}
+        </button>
+      </div>
+
+      {logsTab === "posts" ? (
+        <>
+          {!readOnly ? (
+            <ProfileComposer
+              onPublish={publish}
+              author={displayName}
+              handle={handle}
+              avatarSrc={avatarSrc}
+            />
+          ) : null}
+
+          <section className="profile-section">
+            <div className="profile-section-head">
+              <h2>{readOnly ? "Posts" : "Your posts"}</h2>
+              <span>
+                {postsLoading
+                  ? "Loading…"
+                  : `${posts.length} update${posts.length === 1 ? "" : "s"}`}
+              </span>
+            </div>
+            <div className="profile-posts">
+              {!postsLoading && posts.length === 0 ? (
+                <p className="profile-posts-empty">
+                  {readOnly
+                    ? "No posts yet."
+                    : "No posts yet. Share your first update above."}
+                </p>
+              ) : null}
+              {posts.map((post) => (
+                <ProfilePostCard
+                  key={post.id}
+                  post={post}
+                  canManage={!readOnly}
+                  onOpen={() => openPost(post.id)}
+                  onEdit={() => openPost(post.id, true)}
+                  onDelete={() => requestDeletePost(post.id)}
+                />
+              ))}
+            </div>
+
+            <div className="feed-load-more">
+              {postsLoading ? null : hasMorePosts ? (
+                <button
+                  type="button"
+                  className="feed-load-more-btn"
+                  onClick={() => void loadMorePosts()}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? "Loading…" : "Load more"}
+                </button>
+              ) : posts.length > 0 ? (
+                <p className="feed-load-more-done">You’re all caught up</p>
+              ) : null}
+            </div>
+          </section>
+        </>
+      ) : (profileData?.profile.id ?? initialData?.profile.id) ? (
+        <ProfileWorkoutLogsSection
+          ownerId={
+            (profileData?.profile.id ?? initialData?.profile.id) as string
+          }
+          displayName={displayName}
           handle={handle}
           avatarSrc={avatarSrc}
+          readOnly={readOnly}
+          workoutPlan={
+            profileData?.profile.workout_plan ??
+            initialData?.profile.workout_plan ??
+            null
+          }
+          showComposer={!readOnly}
         />
       ) : null}
-
-      <section className="profile-section">
-        <div className="profile-section-head">
-          <h2>{readOnly ? "Posts" : "Your posts"}</h2>
-          <span>
-            {postsLoading
-              ? "Loading…"
-              : `${posts.length} update${posts.length === 1 ? "" : "s"}`}
-          </span>
-        </div>
-        <div className="profile-posts">
-          {!postsLoading && posts.length === 0 ? (
-            <p className="profile-posts-empty">
-              {readOnly
-                ? "No posts yet."
-                : "No posts yet. Share your first update above."}
-            </p>
-          ) : null}
-          {posts.map((post) => (
-            <ProfilePostCard
-              key={post.id}
-              post={post}
-              canManage={!readOnly}
-              onOpen={() => openPost(post.id)}
-              onEdit={() => openPost(post.id, true)}
-              onDelete={() => requestDeletePost(post.id)}
-            />
-          ))}
-        </div>
-
-        <div className="feed-load-more">
-          {postsLoading ? null : hasMorePosts ? (
-            <button
-              type="button"
-              className="feed-load-more-btn"
-              onClick={() => void loadMorePosts()}
-              disabled={isLoadingMore}
-            >
-              {isLoadingMore ? "Loading…" : "Load more"}
-            </button>
-          ) : posts.length > 0 ? (
-            <p className="feed-load-more-done">You’re all caught up</p>
-          ) : null}
-        </div>
-      </section>
 
       {uploadPreview ? (
         <PostUploadPreview

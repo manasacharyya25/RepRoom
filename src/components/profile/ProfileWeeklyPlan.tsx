@@ -20,6 +20,13 @@ import {
   type WeekDaySlot
 } from "@/lib/weekly-plan-calendar";
 
+type PlanGenerateFields = {
+  primaryFitnessGoal: string | null;
+  fitnessExperience: string | null;
+  workoutDaysPerWeek: number | null;
+  sessionMinutes: number | null;
+};
+
 function DayIcon({ slot }: { slot: WeekDaySlot }) {
   if (slot.isRest) {
     return (
@@ -115,16 +122,22 @@ export function ProfileWeeklyPlan({
   plan,
   planStatus,
   dayStreak = 0,
-  readOnly = false
+  readOnly = false,
+  planFields = null,
+  onPlanCreated
 }: {
   plan: WorkoutPlan | null;
   planStatus: string | null;
   dayStreak?: number;
   readOnly?: boolean;
+  planFields?: PlanGenerateFields | null;
+  onPlanCreated?: (plan: WorkoutPlan) => void;
 }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [planOpen, setPlanOpen] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [completedDateKeys, setCompletedDateKeys] = useState<Set<string>>(
     () => new Set()
   );
@@ -191,7 +204,67 @@ export function ProfileWeeklyPlan({
     setPlanOpen(true);
   };
 
+  const createWorkoutPlan = async () => {
+    if (readOnly || generating) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const response = await fetch("/api/workout-plan/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          primaryGoal: planFields?.primaryFitnessGoal || "build_muscle",
+          fitnessExperience: planFields?.fitnessExperience || "just_starting",
+          daysPerWeek: planFields?.workoutDaysPerWeek ?? 3,
+          sessionMinutes: planFields?.sessionMinutes ?? 60
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        plan?: WorkoutPlan;
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.plan) {
+        throw new Error(
+          payload?.error || "Could not generate your workout plan."
+        );
+      }
+
+      const nextPlan =
+        normalizeWorkoutPlan(payload.plan) ?? (payload.plan as WorkoutPlan);
+      const supabase = createClient();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Sign in to save your workout plan.");
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          workout_plan: nextPlan,
+          workout_plan_status: "needs_plan",
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user.id);
+      if (error) throw error;
+
+      onPlanCreated?.(nextPlan);
+    } catch (caught) {
+      setGenerateError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not generate your workout plan."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!normalizedPlan) {
+    const ctaLabel =
+      planStatus === "has_own"
+        ? "Generate a RhoQ schedule"
+        : "Create workout plan";
+
     return (
       <div className="profile-week-plan">
         <div className="profile-week-plan-head">
@@ -199,13 +272,30 @@ export function ProfileWeeklyPlan({
             <h2>Weekly plan</h2>
           </div>
         </div>
-        <p className="profile-goals-empty">
-          {readOnly
-            ? "No workout plan shared."
-            : planStatus === "has_own"
-              ? "You’re following your own plan. A RhoQ schedule will show here if you generate one later."
-              : "No workout plan yet. Finish onboarding to generate one."}
-        </p>
+        {readOnly ? (
+          <p className="profile-goals-empty">No workout plan shared.</p>
+        ) : (
+          <div className="profile-week-plan-empty">
+            <p className="profile-goals-empty">
+              {planStatus === "has_own"
+                ? "You’re following your own plan. Generate a RhoQ schedule to track it here."
+                : "No workout plan yet. Create one from your fitness goals."}
+            </p>
+            <button
+              type="button"
+              className="btn-primary profile-week-plan-create"
+              disabled={generating}
+              onClick={() => void createWorkoutPlan()}
+            >
+              {generating ? "Generating…" : ctaLabel}
+            </button>
+            {generateError ? (
+              <p className="profile-week-plan-create-error" role="alert">
+                {generateError}
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
     );
   }

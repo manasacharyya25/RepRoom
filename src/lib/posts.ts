@@ -98,3 +98,18 @@ export function resolveComposerType(
 ): ComposerTypeOption | undefined {
   return COMPOSER_TYPE_OPTIONS.find((option) => option.id === id);
 }
+
+/** Extract unique #tags from caption text (no leading # in returned values). */
+export function extractHashtagsFromText(text: string): string[] {
+  const matches = text.matchAll(/#([a-zA-Z0-9_]{1,40})/g);
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const match of matches) {
+    const tag = match[1]?.toLowerCase();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+    if (tags.length >= 12) break;
+  }
+  return tags;
+}
