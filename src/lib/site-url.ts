@@ -10,7 +10,7 @@ export function resolveSiteUrl() {
 export const DEFAULT_OG_IMAGE = {
   url: "/images/og/default-card.png",
   width: 1024,
-  height: 289,
+  height: 682,
   alt: "RhoQ — Work out together. Motivate each other."
 } as const;
 
