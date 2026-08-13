@@ -109,4 +109,5 @@ export type OnboardingPayload = {
   workoutPlan: WorkoutPlan | null;
   goals: OnboardingGoalInput[];
   skipped: boolean;
+  fromPlan?: boolean;
 };

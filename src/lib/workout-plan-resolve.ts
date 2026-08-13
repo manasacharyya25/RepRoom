@@ -62,7 +62,10 @@ export async function resolveWorkoutPlan(
               ? "1_3_years"
               : "just_starting",
         daysPerWeek: key.daysPerWeek,
-        sessionMinutes: key.sessionMinutes
+        sessionMinutes: key.sessionMinutes,
+        focus: key.focus,
+        equipment: key.equipment,
+        style: key.style
       })
     ),
     "static"

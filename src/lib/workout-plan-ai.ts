@@ -7,12 +7,15 @@ import {
 } from "@/lib/workout-plan";
 import {
   experienceLabel,
+  focusLabel,
+  equipmentLabel,
   goalLabel,
+  styleLabel,
   type WorkoutPlanCacheKey
 } from "@/lib/workout-plan-seed";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-5-mini";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -122,9 +125,9 @@ export function sanitizeGeneratedPlan(
     ),
     workoutStyle: humanReadableOr(
       (base as WorkoutPlan).workoutStyle,
-      "Strength Training"
+      styleLabel(key.style)
     ),
-    split: humanReadableOr((base as WorkoutPlan).split, "Full Body"),
+    split: humanReadableOr((base as WorkoutPlan).split, focusLabel(key.focus)),
     sessionsPerWeek: key.daysPerWeek,
     sessionDurationSeconds: key.sessionMinutes * 60,
     days: days.map((day, index) => ({ ...day, day: index + 1 })),
@@ -146,6 +149,9 @@ Inputs:
 - experience: ${key.experience}
 - days per week: ${key.daysPerWeek}
 - session duration minutes: ${key.sessionMinutes}
+- focus: ${key.focus} (${focusLabel(key.focus)})
+- equipment: ${key.equipment} (${equipmentLabel(key.equipment)})
+- style: ${key.style} (${styleLabel(key.style)})
 
 Return exactly this shape:
 {
@@ -180,6 +186,22 @@ Rules:
 - days array length MUST be ${key.daysPerWeek}
 - goal / experience / workoutStyle / split must be human-readable Title Case
   (e.g. goal "Build Muscle", experience "Beginner", not snake_case ids)
+- workoutStyle MUST match the selected style: ${styleLabel(key.style)}
+- split / day titles MUST reflect the selected focus: ${focusLabel(key.focus)}
+  (if focus is Full Body, use a balanced full-body split; otherwise bias each session toward ${focusLabel(key.focus)} while still including complementary work)
+- ONLY use movements that work with the selected equipment: ${equipmentLabel(key.equipment)}
+  - None: bodyweight only
+  - Bands: resistance bands + bodyweight
+  - Dumbbells: dumbbells + bodyweight
+  - Home gym: dumbbells, bands, bench, pull-up bar as available
+  - Full gym: barbells, machines, cables, and free weights are allowed
+- Style rules:
+  - Strength: compound lifts, progressive sets/reps
+  - HIIT: intervals, short rest, metabolic work using allowed equipment
+  - Yoga: flows, holds, mobility; sets/reps can be hold-based
+  - Pilates: core-centric controlled reps
+  - Walking: walking intervals, hills, posture work; keep it walking-first
+  - Jump rope: jump-rope intervals plus complementary accessory work
 - each day needs: warmups, main exercises, optional ADD-ON exercises, and cooldowns
 - NEVER include activities with type "rest". Between exercises the app always uses a fixed 60s rest.
 - for every exercise set restSeconds to 60
@@ -194,8 +216,7 @@ Rules:
   "ADD-ON : <Exercise Name>" (type "exercise")
 - youtubeQuery should be a short search query for form demos
 - tailor difficulty to ${key.experience}
-- tailor exercise selection to goal ${key.goal}
-- use practical gym or home-adaptable movements`;
+- tailor exercise selection to goal ${key.goal}`;
 }
 
 export async function generateWorkoutPlanWithAi(
@@ -205,6 +226,8 @@ export async function generateWorkoutPlanWithAi(
   if (!apiKey) return null;
 
   const model = process.env.OPENAI_WORKOUT_MODEL?.trim() || DEFAULT_MODEL;
+  const omitSampling =
+    /^(gpt-5|o1|o3|o4)/i.test(model);
 
   const response = await fetch(OPENAI_URL, {
     method: "POST",
@@ -214,7 +237,7 @@ export async function generateWorkoutPlanWithAi(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.4,
+      ...(omitSampling ? {} : { temperature: 0.4 }),
       response_format: { type: "json_object" },
       messages: [
         {

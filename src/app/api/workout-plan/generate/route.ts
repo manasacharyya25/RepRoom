@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { resolveWorkoutPlan } from "@/lib/workout-plan-resolve";
 
 export const runtime = "nodejs";
@@ -10,18 +9,12 @@ type Body = {
   fitnessExperience?: string;
   daysPerWeek?: number;
   sessionMinutes?: number;
+  focus?: string;
+  equipment?: string;
+  style?: string;
 };
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const body = (await request.json().catch(() => null)) as Body | null;
   if (!body) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
@@ -31,7 +24,10 @@ export async function POST(request: Request) {
     primaryGoal: body.primaryGoal ?? "",
     fitnessExperience: body.fitnessExperience ?? "",
     daysPerWeek: Number(body.daysPerWeek),
-    sessionMinutes: Number(body.sessionMinutes)
+    sessionMinutes: Number(body.sessionMinutes),
+    focus: body.focus,
+    equipment: body.equipment,
+    style: body.style
   });
 
   if ("error" in result) {

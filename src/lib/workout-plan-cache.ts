@@ -23,6 +23,9 @@ export async function getCachedWorkoutPlan(
     .eq("experience", key.experience)
     .eq("days_per_week", key.daysPerWeek)
     .eq("session_minutes", key.sessionMinutes)
+    .eq("focus", key.focus)
+    .eq("equipment", key.equipment)
+    .eq("style", key.style)
     .maybeSingle();
 
   if (error) {
@@ -51,12 +54,16 @@ export async function saveCachedWorkoutPlan(
       experience: key.experience,
       days_per_week: key.daysPerWeek,
       session_minutes: key.sessionMinutes,
+      focus: key.focus,
+      equipment: key.equipment,
+      style: key.style,
       plan,
       model,
       updated_at: new Date().toISOString()
     },
     {
-      onConflict: "goal,experience,days_per_week,session_minutes"
+      onConflict:
+        "goal,experience,days_per_week,session_minutes,focus,equipment,style"
     }
   );
 

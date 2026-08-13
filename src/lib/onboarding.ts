@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { uploadAvatar } from "@/lib/avatar";
+import { clearFreePlanDraft } from "@/lib/free-plan-draft";
 import {
   goalProgress,
   hoursGoalTarget,
   slugifyUsername,
   stripCacheBust
 } from "@/lib/goals";
+import { createPost } from "@/lib/posts-api";
 import type {
   OnboardingGoalInput,
   OnboardingPayload
@@ -204,6 +206,22 @@ export async function completeOnboarding(
 
   const { error: goalsError } = await supabase.from("goals").insert(rows);
   if (goalsError) throw goalsError;
+
+  if (payload.fromPlan && !payload.skipped) {
+    const caption = payload.successMilestone.trim();
+    if (caption) {
+      try {
+        await createPost(supabase, user.id, {
+          kind: "standard",
+          category: "motivation",
+          caption
+        });
+      } catch {
+        // Profile + plan still succeed if the first post cannot be created.
+      }
+    }
+    clearFreePlanDraft();
+  }
 
   return { userId: user.id };
 }

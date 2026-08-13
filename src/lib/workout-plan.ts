@@ -41,6 +41,9 @@ type PlanSeed = {
   experience: string;
   daysPerWeek: number;
   sessionMinutes: number;
+  focus?: string;
+  equipment?: string;
+  style?: string;
 };
 
 const GOAL_LABELS: Record<string, string> = {
@@ -619,10 +622,38 @@ export function buildStaticWorkoutPlan(seed: PlanSeed): WorkoutPlan {
   const sessionMinutes = seed.sessionMinutes || 60;
   const goal = GOAL_LABELS[seed.primaryGoal] ?? "Build Muscle";
   const experience = EXPERIENCE_LABELS[seed.experience] ?? "Beginner";
-  const { style, split } = STYLE_BY_GOAL[seed.primaryGoal] ?? {
+  const fromGoal = STYLE_BY_GOAL[seed.primaryGoal] ?? {
     style: "Strength Training",
     split: "Full Body"
   };
+  const style =
+    seed.style === "hiit"
+      ? "HIIT"
+      : seed.style === "yoga"
+        ? "Yoga"
+        : seed.style === "pilates"
+          ? "Pilates"
+          : seed.style === "walking"
+            ? "Walking"
+            : seed.style === "jump_rope"
+              ? "Jump Rope"
+              : seed.style === "strength"
+                ? "Strength"
+                : fromGoal.style;
+  const split =
+    seed.focus === "chest"
+      ? "Chest"
+      : seed.focus === "back"
+        ? "Back"
+        : seed.focus === "legs"
+          ? "Legs"
+          : seed.focus === "shoulders"
+            ? "Shoulders"
+            : seed.focus === "arms"
+              ? "Arms"
+              : seed.focus === "core"
+                ? "Core"
+                : fromGoal.split;
 
   const days: WorkoutPlanDay[] = Array.from(
     { length: sessionsPerWeek },

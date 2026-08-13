@@ -24,12 +24,15 @@ const WAITLIST_ALLOWED_PATHS = new Set([
   "/terms",
   "/community-guidelines",
   "/credits",
+  "/plan",
   "/sitemap.xml",
   "/robots.txt"
 ]);
 
 const WAITLIST_ALLOWED_PREFIXES = [
   "/api/waitlist",
+  "/api/workout-plan",
+  "/api/youtube",
   "/onboard",
   "/api/onboarding-record",
   "/rhoq-admin",

@@ -23,6 +23,7 @@ export type OnboardingDraft = {
   workoutPlanStatus: WorkoutPlanStatus;
   workoutPlan: WorkoutPlan | null;
   goals: OnboardingGoalInput[];
+  fromPlan?: boolean;
 };
 
 export function buildOnboardingGoalsFromDraft(options: {

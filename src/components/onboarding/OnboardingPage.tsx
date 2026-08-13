@@ -3,11 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
 import { Logo } from "@/components/brand/Logo";
 import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
+import { readFreePlanDraft } from "@/lib/free-plan-draft";
 import { heightToCm, slugifyUsername, toKg } from "@/lib/goals";
 import { completeOnboarding } from "@/lib/onboarding";
 import {
@@ -16,7 +17,11 @@ import {
 } from "@/lib/onboarding-draft";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
-import type { WorkoutPlan, WorkoutPlanStatus } from "@/lib/workout-plan";
+import {
+  normalizeWorkoutPlan,
+  type WorkoutPlan,
+  type WorkoutPlanStatus
+} from "@/lib/workout-plan";
 
 const STEPS = [
   { id: "identity", label: "Profile" },
@@ -176,6 +181,37 @@ export function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [fromPlan, setFromPlan] = useState(false);
+  const [importedPlan, setImportedPlan] = useState<WorkoutPlan | null>(null);
+
+  useEffect(() => {
+    const free = readFreePlanDraft();
+    if (!free?.plan) return;
+    const normalized = normalizeWorkoutPlan(free.plan) ?? free.plan;
+    setFromPlan(true);
+    setImportedPlan(normalized);
+    setFitnessExperience(free.fitnessExperience || "");
+    setPrimaryFitnessGoal(free.primaryGoal || "");
+    setWorkoutDaysPerWeek(free.daysPerWeek);
+    setSessionMinutes(free.sessionMinutes);
+    setWorkoutPlanStatus("needs_plan");
+    const life = free.lifestyle;
+    if (life?.ageRange) setAgeRange(life.ageRange);
+    if (life?.gender) setGender(life.gender);
+    if (life?.activityLevel) setActivityLevel(life.activityLevel);
+    if (life?.heightUnit) setHeightUnit(life.heightUnit);
+    if (life?.heightFeet) setHeightFeet(life.heightFeet);
+    if (life?.heightInches) setHeightInches(life.heightInches);
+    if (life?.heightCm) setHeightCm(life.heightCm);
+    if (life?.weightUnit) setWeightUnit(life.weightUnit);
+    if (life?.currentWeight) setCurrentWeight(life.currentWeight);
+  }, []);
+
+  useEffect(() => {
+    if (fromPlan && stepIndex === 3) {
+      setStepIndex(2);
+    }
+  }, [fromPlan, stepIndex]);
 
   const suggestions = useMemo(
     () => usernameSuggestions(displayName || "you"),
@@ -222,7 +258,8 @@ export function OnboardingPage() {
       sessionMinutes,
       successMilestone,
       workoutPlanStatus: status,
-      workoutPlan: null as null,
+      workoutPlan: importedPlan,
+      fromPlan,
       goals
     };
   };
@@ -254,7 +291,8 @@ export function OnboardingPage() {
         timezone,
         targetWeightKg: null,
         workoutPlanStatus: skipped ? "" : draft.workoutPlanStatus,
-        workoutPlan: null,
+        workoutPlan: skipped ? null : importedPlan,
+        fromPlan,
         goals: skipped ? [] : draft.goals,
         skipped
       });
@@ -302,6 +340,11 @@ export function OnboardingPage() {
     }
     if (stepIndex === 0 && !validateIdentity()) return;
 
+    if (fromPlan && (step.id === "goals" || step.id === "plan")) {
+      openExistingPlan();
+      return;
+    }
+
     if (step.id === "plan") {
       if (!workoutPlanStatus) {
         setError("Tell us whether you already have a workout plan.");
@@ -328,6 +371,28 @@ export function OnboardingPage() {
     }
     setError(null);
     setStepIndex((index) => index + 1);
+  };
+
+  const openExistingPlan = () => {
+    if (!successMilestone.trim()) {
+      setError("Tell us what milestone would make you feel successful.");
+      return;
+    }
+    if (!importedPlan) {
+      setError("Your generated plan is missing. Go back to /plan and generate it again.");
+      return;
+    }
+    if (!validateIdentity()) {
+      setStepIndex(0);
+      return;
+    }
+    const draft = buildDraftPayload("needs_plan");
+    saveOnboardingDraft({
+      ...draft,
+      workoutPlan: importedPlan,
+      fromPlan: true
+    });
+    router.push("/onboarding/plan");
   };
 
   const generateAndOpenPlan = async () => {
@@ -903,7 +968,56 @@ export function OnboardingPage() {
           ) : null}
 
           {step.id === "goals" ? (
-            <>
+            fromPlan ? (
+              <>
+                <header className="onboarding-card-head">
+                  <p className="onboarding-kicker">Step 3 of 4</p>
+                  <h1 id="onboarding-title">
+                    What milestone would make you most successful?
+                  </h1>
+                  <p className="onboarding-lede">
+                    This becomes your first post on RhoQ when you finish
+                    onboarding.
+                  </p>
+                </header>
+
+                <fieldset className="onboarding-fieldset">
+                  <legend className="sr-only">
+                    What milestone would make you feel successful?
+                  </legend>
+                  <label className="onboarding-field">
+                    <span className="sr-only">Your milestone</span>
+                    <textarea
+                      rows={3}
+                      placeholder="Write your own, or pick an example below"
+                      value={successMilestone}
+                      onChange={(event) =>
+                        setSuccessMilestone(event.target.value)
+                      }
+                    />
+                  </label>
+                  <div
+                    className="onboarding-chip-row"
+                    role="group"
+                    aria-label="Milestone examples"
+                  >
+                    {MILESTONE_EXAMPLES.map((example) => (
+                      <button
+                        key={example}
+                        type="button"
+                        className={`onboarding-chip${
+                          successMilestone === example ? " is-selected" : ""
+                        }`}
+                        onClick={() => setSuccessMilestone(example)}
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              </>
+            ) : (
+              <>
               <header className="onboarding-card-head">
                 <p className="onboarding-kicker">Step 3 of 4 · Goals</p>
                 <h1 id="onboarding-title">🎯 What&apos;s your primary fitness goal?</h1>
@@ -993,10 +1107,11 @@ export function OnboardingPage() {
                   ))}
                 </div>
               </fieldset>
-            </>
+              </>
+            )
           ) : null}
 
-          {step.id === "plan" ? (
+          {step.id === "plan" && !fromPlan ? (
             <>
               <header className="onboarding-card-head">
                 <p className="onboarding-kicker">Step 4 of 4 · Plan</p>
@@ -1066,7 +1181,7 @@ export function OnboardingPage() {
               <span />
             )}
             <div className="onboarding-actions-end">
-              {stepIndex < STEPS.length - 1 ? (
+              {stepIndex < STEPS.length - 1 && !(fromPlan && step.id === "goals") ? (
                 <button
                   type="button"
                   className="btn-ghost"
@@ -1085,6 +1200,9 @@ export function OnboardingPage() {
                 disabled={
                   saving ||
                   generatingPlan ||
+                  (fromPlan &&
+                    step.id === "goals" &&
+                    !successMilestone.trim()) ||
                   (step.id === "plan" && !workoutPlanStatus)
                 }
                 onClick={goNext}
@@ -1093,7 +1211,9 @@ export function OnboardingPage() {
                   ? "Saving…"
                   : generatingPlan
                     ? "Generating…"
-                    : step.id === "plan"
+                    : fromPlan && (step.id === "goals" || step.id === "plan")
+                      ? "See your plan"
+                      : step.id === "plan"
                       ? !workoutPlanStatus
                         ? "Next"
                         : workoutPlanStatus === "has_own"
