@@ -582,6 +582,24 @@ export function FreePlanPage() {
                     ? Boolean(ageRange && gender && activityLevel)
                     : extraComplete;
 
+  useEffect(() => {
+    if (qIndex !== 7) return;
+    console.log("[plan] extra 01/05 A bit about you", {
+      qIndex,
+      CORE_TOTAL,
+      TOTAL_Q,
+      canContinue,
+      ageRange: ageRange || "(empty)",
+      gender: gender || "(empty)",
+      activityLevel: activityLevel || "(empty)",
+      missing: [
+        !ageRange ? "ageRange" : null,
+        !gender ? "gender" : null,
+        !activityLevel ? "activityLevel" : null
+      ].filter(Boolean)
+    });
+  }, [qIndex, canContinue, ageRange, gender, activityLevel]);
+
   const questionTitle =
     qIndex === 0
       ? "What's your main goal?"
@@ -617,6 +635,34 @@ export function FreePlanPage() {
   };
 
   const onContinue = () => {
+    const branch =
+      !canContinue
+        ? "blocked"
+        : qIndex < CORE_TOTAL - 1
+          ? "core-next"
+          : qIndex === CORE_TOTAL - 1
+            ? "start-generate"
+            : qIndex < TOTAL_Q - 1
+              ? "extra-next"
+              : "reveal";
+    console.log("[plan] continue click", {
+      qIndex,
+      CORE_TOTAL,
+      TOTAL_Q,
+      extraStep: qIndex >= CORE_TOTAL ? qIndex - CORE_TOTAL + 1 : null,
+      canContinue,
+      branch,
+      ageRange: ageRange || "(empty)",
+      gender: gender || "(empty)",
+      activityLevel: activityLevel || "(empty)",
+      missingPersonal: [
+        !ageRange ? "ageRange" : null,
+        !gender ? "gender" : null,
+        !activityLevel ? "activityLevel" : null
+      ].filter(Boolean),
+      generating,
+      hasPlan: Boolean(plan)
+    });
     if (!canContinue) return;
     if (qIndex < CORE_TOTAL - 1) {
       setQIndex((index) => index + 1);
@@ -1183,7 +1229,7 @@ export function FreePlanPage() {
                 <button
                   type="button"
                   className="btn-primary"
-                  disabled={!canContinue}
+                  aria-disabled={!canContinue}
                   onClick={onContinue}
                 >
                   {qIndex === TOTAL_Q - 1 ? "See my plan →" : "Continue →"}

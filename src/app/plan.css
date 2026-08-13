@@ -729,8 +729,37 @@
   }
 
   .plan-question-card {
-    padding: 16px 14px 12px;
+    padding: 16px 14px 0;
     border-radius: 18px;
+  }
+
+  .plan-personal,
+  .plan-quiz-stack {
+    padding-bottom: 96px;
+  }
+
+  .plan-question-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    margin: 8px -14px 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 18px 18px;
+    backdrop-filter: blur(10px);
+  }
+
+  .plan-question-footer .btn-primary[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .plan-question-footer .btn-primary[aria-disabled="true"]:hover {
+    background: var(--accent);
+    transform: none;
+    box-shadow: none;
   }
 
   .plan-question-title {
@@ -755,17 +784,6 @@
 
   .plan-page .onboarding-option-emoji {
     font-size: 1.15rem;
-  }
-
-  .plan-question-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 4;
-    margin: 8px -14px -12px;
-    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    border-top: 1px solid var(--border);
-    backdrop-filter: blur(10px);
   }
 
   .plan-review-overview {

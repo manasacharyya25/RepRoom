@@ -229,29 +229,36 @@ export async function generateWorkoutPlanWithAi(
   const omitSampling =
     /^(gpt-5|o1|o3|o4)/i.test(model);
 
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      ...(omitSampling ? {} : { temperature: 0.4 }),
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a certified strength coach. Reply with valid JSON only matching the requested workout plan schema."
-        },
-        {
-          role: "user",
-          content: buildPrompt(key)
-        }
-      ]
-    })
-  });
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(45_000),
+      body: JSON.stringify({
+        model,
+        ...(omitSampling ? {} : { temperature: 0.4 }),
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a certified strength coach. Reply with valid JSON only matching the requested workout plan schema."
+          },
+          {
+            role: "user",
+            content: buildPrompt(key)
+          }
+        ]
+      })
+    });
+  } catch (error) {
+    console.error("[workout-plan-ai] OpenAI request failed", error);
+    return null;
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
