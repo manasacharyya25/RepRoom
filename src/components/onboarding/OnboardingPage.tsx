@@ -258,6 +258,7 @@ export function OnboardingPage() {
       router.push("/onboarding/plan");
     }, wait);
     return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- buildDraftPayload is recreated each render
   }, [revealingPlan, revealAt, generatedPlan, planQuiz, workoutPlanStatus, router]);
 
   const suggestions = useMemo(

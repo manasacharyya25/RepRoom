@@ -725,7 +725,7 @@ export function FreePlanPage() {
                 <strong>Build my workout plan</strong>
                 <span>
                   Answer a few questions — goal, focus, equipment, and style —
-                  and we'll build a weekly routine.
+                  and we&apos;ll build a weekly routine.
                 </span>
               </button>
 
@@ -1269,7 +1269,7 @@ export function FreePlanPage() {
             <h2 id="plan-coming-soon-title">Coming soon</h2>
             <p>
               Plan review will let you bring your own routine and get a
-              RhoQ-ready version. We're still building it.
+              RhoQ-ready version. We&apos;re still building it.
             </p>
             <button
               type="button"
