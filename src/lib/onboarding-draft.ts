@@ -40,6 +40,21 @@ export function personalFromFreePlanLifestyle(
 
 const DRAFT_KEY = "rhoq_onboarding_draft_v1";
 
+export type OnboardingPlanQuizAnswers = {
+  focus: string;
+  style: string;
+  equipment: string;
+  eatingHabits: string;
+  mealsPerDay: string;
+  sleepHours: string;
+  sleepQuality: string;
+  skipReason: string;
+  motivation: string;
+  workoutWhen: string;
+  workoutWhere: string;
+  workoutEnjoy: string;
+};
+
 export type OnboardingDraft = {
   displayName: string;
   username: string;
@@ -60,6 +75,7 @@ export type OnboardingDraft = {
   workoutPlan: WorkoutPlan | null;
   goals: OnboardingGoalInput[];
   fromPlan?: boolean;
+  planQuiz?: OnboardingPlanQuizAnswers;
 };
 
 export function buildOnboardingGoalsFromDraft(options: {

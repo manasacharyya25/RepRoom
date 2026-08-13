@@ -6,7 +6,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "@/app/landing.css";
 import "@/app/onboarding.css";
+import "@/app/plan.css";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { PlanGeneratingScreen, REVEAL_HOLD_MS } from "@/components/plan/PlanGeneratingScreen";
 import { Logo } from "@/components/brand/Logo";
+import {
+  EMPTY_PLAN_QUIZ,
+  OnboardingPlanQuiz,
+  PLAN_QUIZ_GENERATE_AFTER,
+  PLAN_QUIZ_TOTAL,
+  planQuizAnswer,
+  type OnboardingPlanQuizAnswers
+} from "@/components/onboarding/OnboardingPlanQuiz";
 import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
 import { readFreePlanDraft } from "@/lib/free-plan-draft";
 import { heightToCm, slugifyUsername, toKg } from "@/lib/goals";
@@ -20,6 +31,7 @@ import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
 import {
   normalizeWorkoutPlan,
+  scalePlanToSessionDuration,
   type WorkoutPlan,
   type WorkoutPlanStatus
 } from "@/lib/workout-plan";
@@ -147,8 +159,10 @@ function usernameSuggestions(displayName: string) {
 export function OnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
+  const accountEmail = user?.email?.trim() || "";
 
   const initialStep = (() => {
     const step = searchParams.get("step");
@@ -187,9 +201,17 @@ export function OnboardingPage() {
   const [currentWeight, setCurrentWeight] = useState("95");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [fromPlan, setFromPlan] = useState(false);
   const [importedPlan, setImportedPlan] = useState<WorkoutPlan | null>(null);
+  const [planQuizIndex, setPlanQuizIndex] = useState<number | null>(null);
+  const [planQuiz, setPlanQuiz] =
+    useState<OnboardingPlanQuizAnswers>(EMPTY_PLAN_QUIZ);
+  const [generatedPlan, setGeneratedPlan] = useState<WorkoutPlan | null>(null);
+  const [revealingPlan, setRevealingPlan] = useState(false);
+  const [revealAt, setRevealAt] = useState<number | null>(null);
+  const generateSeqRef = useRef(0);
 
   useEffect(() => {
     const free = readFreePlanDraft();
@@ -220,6 +242,23 @@ export function OnboardingPage() {
       setStepIndex(2);
     }
   }, [fromPlan, stepIndex]);
+
+  useEffect(() => {
+    if (!revealingPlan || revealAt == null || !generatedPlan) return;
+    const wait = Math.max(0, REVEAL_HOLD_MS - (Date.now() - revealAt));
+    const timer = window.setTimeout(() => {
+      const draft = buildDraftPayload(
+        (workoutPlanStatus || "needs_plan") as WorkoutPlanStatus
+      );
+      saveOnboardingDraft({
+        ...draft,
+        planQuiz,
+        workoutPlan: generatedPlan
+      });
+      router.push("/onboarding/plan");
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [revealingPlan, revealAt, generatedPlan, planQuiz, workoutPlanStatus, router]);
 
   const suggestions = useMemo(
     () => usernameSuggestions(displayName || "you"),
@@ -285,8 +324,9 @@ export function OnboardingPage() {
       sessionMinutes,
       successMilestone,
       workoutPlanStatus: status,
-      workoutPlan: importedPlan,
+      workoutPlan: generatedPlan ?? importedPlan,
       fromPlan: originatedFromPlan,
+      planQuiz,
       goals
     };
   };
@@ -378,6 +418,20 @@ export function OnboardingPage() {
       return;
     }
 
+    if (step.id === "plan" && planQuizIndex !== null) {
+      if (!planQuizAnswer(planQuiz, planQuizIndex)) return;
+      if (planQuizIndex === PLAN_QUIZ_GENERATE_AFTER) {
+        startGenerateInBackground();
+      }
+      if (planQuizIndex < PLAN_QUIZ_TOTAL - 1) {
+        setError(null);
+        setPlanQuizIndex(planQuizIndex + 1);
+        return;
+      }
+      beginReveal();
+      return;
+    }
+
     if (step.id === "plan") {
       if (!workoutPlanStatus) {
         setError("Tell us whether you already have a workout plan.");
@@ -394,7 +448,9 @@ export function OnboardingPage() {
         return;
       }
 
-      void generateAndOpenPlan();
+      setError(null);
+      setGeneratedPlan(null);
+      setPlanQuizIndex(0);
       return;
     }
 
@@ -428,59 +484,108 @@ export function OnboardingPage() {
     router.push("/onboarding/plan");
   };
 
-  const generateAndOpenPlan = async () => {
-    if (generatingPlan || saving) return;
+  const startGenerateInBackground = () => {
+    const seq = ++generateSeqRef.current;
     setGeneratingPlan(true);
     setError(null);
-
-    try {
-      const draft = buildDraftPayload(workoutPlanStatus as WorkoutPlanStatus);
-      saveOnboardingDraft(draft);
-
-      const response = await fetch("/api/workout-plan/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          primaryGoal: draft.primaryFitnessGoal || "build_muscle",
-          fitnessExperience: draft.fitnessExperience || "just_starting",
-          daysPerWeek: draft.workoutDaysPerWeek ?? 3,
-          sessionMinutes: draft.sessionMinutes ?? 60
-        })
-      });
-
-      const payload = (await response.json().catch(() => null)) as {
-        plan?: unknown;
-        error?: string;
-      } | null;
-
-      if (!response.ok || !payload?.plan) {
-        throw new Error(
-          payload?.error || "Could not generate your workout plan."
+    const body = {
+      primaryGoal: primaryFitnessGoal || "build_muscle",
+      fitnessExperience: fitnessExperience || "just_starting",
+      daysPerWeek: workoutDaysPerWeek ?? 3,
+      sessionMinutes: sessionMinutes ?? 60,
+      focus: planQuiz.focus,
+      equipment: planQuiz.equipment,
+      style: planQuiz.style
+    };
+    void (async () => {
+      try {
+        const draft = buildDraftPayload(
+          (workoutPlanStatus || "needs_plan") as WorkoutPlanStatus
         );
+        saveOnboardingDraft(draft);
+        const response = await fetch("/api/workout-plan/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          plan?: WorkoutPlan;
+          error?: string;
+        } | null;
+        if (seq !== generateSeqRef.current) return;
+        if (!response.ok || !payload?.plan) {
+          throw new Error(
+            payload?.error || "Could not generate your workout plan."
+          );
+        }
+        const nextPlan =
+          scalePlanToSessionDuration(
+            normalizeWorkoutPlan(payload.plan) ?? payload.plan
+          );
+        setGeneratedPlan(nextPlan);
+        saveOnboardingDraft({
+          ...draft,
+          planQuiz,
+          workoutPlan: nextPlan
+        });
+      } catch (caught) {
+        if (seq !== generateSeqRef.current) return;
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Could not generate your workout plan."
+        );
+        setRevealingPlan(false);
+        setRevealAt(null);
+        setPlanQuizIndex(PLAN_QUIZ_TOTAL - 1);
+      } finally {
+        if (seq === generateSeqRef.current) setGeneratingPlan(false);
       }
+    })();
+  };
 
-      saveOnboardingDraft({
-        ...draft,
-        workoutPlan: payload.plan as WorkoutPlan
-      });
-      router.push("/onboarding/plan");
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not generate your workout plan."
-      );
-      setGeneratingPlan(false);
+  const beginReveal = () => {
+    if (!generatedPlan && !generatingPlan) {
+      startGenerateInBackground();
     }
+    setError(null);
+    setRevealAt(Date.now());
+    setRevealingPlan(true);
   };
 
   const goBack = () => {
     setError(null);
+    if (planQuizIndex !== null) {
+      if (planQuizIndex === 0) {
+        setPlanQuizIndex(null);
+        setRevealingPlan(false);
+        setRevealAt(null);
+        return;
+      }
+      setPlanQuizIndex(planQuizIndex - 1);
+      return;
+    }
     if (fromPlan && stepIndex === 2) {
       setStepIndex(0);
       return;
     }
     setStepIndex((index) => Math.max(0, index - 1));
+  };
+
+  const onLogout = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await supabase.auth.signOut();
+      await fetch("/api/onboarding/clear-cookie", { method: "POST" }).catch(
+        () => null
+      );
+      router.replace("/login");
+      router.refresh();
+    } catch {
+      setSigningOut(false);
+      setError("Could not log out. Please try again.");
+    }
   };
 
   const selectPlanStatus = (status: WorkoutPlanStatus) => {
@@ -576,24 +681,44 @@ export function OnboardingPage() {
   };
 
   return (
-    <div className="onboarding-page">
+    <div
+      className={`onboarding-page${
+        revealingPlan ? " plan-page plan-page--generating" : ""
+      }`}
+    >
       <header className="landing-nav onboarding-nav">
         <Logo />
         <div className="landing-nav-actions">
           <button
             type="button"
-            className="btn-ghost onboarding-skip"
-            disabled={saving}
-            onClick={() => {
-              void finish(true);
-            }}
+            className="btn-primary onboarding-logout"
+            disabled={saving || signingOut}
+            onClick={() => void onLogout()}
           >
-            Skip for now
+            {signingOut ? "Logging out…" : "Log out"}
           </button>
         </div>
       </header>
 
+      {revealingPlan ? (
+        <main className="plan-main">
+          <PlanGeneratingScreen ready={Boolean(generatedPlan)} />
+        </main>
+      ) : (
       <main className="onboarding-shell">
+        {accountEmail ? (
+          <>
+            <div className="onboarding-welcome">
+              <p className="onboarding-welcome-hello">
+                Welcome {accountEmail},
+              </p>
+              <p className="onboarding-welcome-title">
+                Complete your onboarding
+              </p>
+            </div>
+            <hr className="onboarding-welcome-rule" />
+          </>
+        ) : null}
         <div className="onboarding-progress" aria-label="Onboarding progress">
           {(fromPlan ? FROM_PLAN_STEPS : STEPS).map((item, index) => {
             const currentIndex = fromPlan
@@ -1158,6 +1283,16 @@ export function OnboardingPage() {
           ) : null}
 
           {step.id === "plan" && !fromPlan ? (
+            planQuizIndex !== null ? (
+              <OnboardingPlanQuiz
+                qIndex={planQuizIndex}
+                answers={planQuiz}
+                planReady={Boolean(generatedPlan)}
+                onChange={(patch) =>
+                  setPlanQuiz((current) => ({ ...current, ...patch }))
+                }
+              />
+            ) : (
             <>
               <header className="onboarding-card-head">
                 <p className="onboarding-kicker">Step 4 of 4 · Plan</p>
@@ -1189,22 +1324,8 @@ export function OnboardingPage() {
                   ))}
                 </div>
               </fieldset>
-
-              {generatingPlan ? (
-                <div
-                  className="onboarding-plan-loading"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <div className="onboarding-plan-loading-spinner" aria-hidden />
-                  <strong>Generating your personalized routine…</strong>
-                  <p>
-                    Building a starter plan from your goal, experience, schedule,
-                    and session length.
-                  </p>
-                </div>
-              ) : null}
             </>
+            )
           ) : null}
 
           {error ? (
@@ -1214,11 +1335,11 @@ export function OnboardingPage() {
           ) : null}
 
           <footer className="onboarding-actions">
-            {stepIndex > 0 ? (
+            {stepIndex > 0 || planQuizIndex !== null ? (
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={saving || generatingPlan}
+                disabled={saving || revealingPlan}
                 onClick={goBack}
               >
                 Back
@@ -1227,7 +1348,9 @@ export function OnboardingPage() {
               <span />
             )}
             <div className="onboarding-actions-end">
-              {stepIndex < STEPS.length - 1 && !(fromPlan && step.id === "goals") ? (
+              {stepIndex < STEPS.length - 1 &&
+              planQuizIndex === null &&
+              !(fromPlan && step.id === "goals") ? (
                 <button
                   type="button"
                   className="btn-ghost"
@@ -1244,39 +1367,47 @@ export function OnboardingPage() {
                   Skip step
                 </button>
               ) : null}
+              {revealingPlan ? null : (
               <button
                 type="button"
                 className="btn-primary"
                 disabled={
                   saving ||
-                  generatingPlan ||
                   (fromPlan &&
                     step.id === "goals" &&
                     !successMilestone.trim()) ||
-                  (step.id === "plan" && !workoutPlanStatus)
+                  (step.id === "plan" &&
+                    planQuizIndex === null &&
+                    !workoutPlanStatus) ||
+                  (planQuizIndex !== null &&
+                    !planQuizAnswer(planQuiz, planQuizIndex))
                 }
                 onClick={goNext}
               >
                 {saving
                   ? "Saving…"
-                  : generatingPlan
-                    ? "Generating…"
-                    : fromPlan && (step.id === "goals" || step.id === "plan")
-                      ? "See your plan"
+                  : fromPlan && (step.id === "goals" || step.id === "plan")
+                    ? "See your plan"
+                    : planQuizIndex !== null
+                      ? planQuizIndex === PLAN_QUIZ_TOTAL - 1
+                        ? "See my plan →"
+                        : "Continue →"
                       : step.id === "plan"
-                      ? !workoutPlanStatus
-                        ? "Next"
-                        : workoutPlanStatus === "has_own"
+                        ? !workoutPlanStatus
+                          ? "Next"
+                          : workoutPlanStatus === "has_own"
+                            ? "Enter RhoQ"
+                            : "Generate my workout plan"
+                        : stepIndex >= STEPS.length - 1
                           ? "Enter RhoQ"
-                          : "Generate my workout plan"
-                      : stepIndex >= STEPS.length - 1
-                        ? "Enter RhoQ"
-                        : "Continue"}
+                          : "Continue"}
               </button>
+              )}
             </div>
           </footer>
         </section>
       </main>
+      )}
     </div>
   );
 }

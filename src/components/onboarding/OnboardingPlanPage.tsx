@@ -217,9 +217,9 @@ export function OnboardingPlanPage() {
         ) : (
           <PlanReviewView
             plan={plan}
-            focus={freeDraft?.focus}
-            equipment={freeDraft?.equipment}
-            style={freeDraft?.style}
+            focus={draft?.planQuiz?.focus || freeDraft?.focus}
+            equipment={draft?.planQuiz?.equipment || freeDraft?.equipment}
+            style={draft?.planQuiz?.style || freeDraft?.style}
             error={error}
             toolbar={
               <div className="plan-review-toolbar">

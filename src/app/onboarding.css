@@ -12,8 +12,37 @@
   width: 100%;
 }
 
-.onboarding-skip {
+.onboarding-nav .onboarding-logout {
+  padding: 8px 16px;
+  font-size: 0.86rem;
+}
+
+.onboarding-welcome {
+  display: grid;
+  gap: 6px;
+}
+
+.onboarding-welcome-hello {
+  margin: 0;
   color: var(--text-muted);
+  font-size: 1.02rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.onboarding-welcome-title {
+  margin: 0;
+  font-size: clamp(1.7rem, 3.4vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.onboarding-welcome-rule {
+  width: 100%;
+  margin: 4px 0 2px;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 
 .onboarding-shell {
@@ -100,6 +129,28 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.plan-quiz-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.plan-quiz-stack .onboarding-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.plan-quiz-stack .onboarding-fieldset legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text);
 }
 
 .onboarding-kicker {

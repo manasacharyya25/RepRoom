@@ -7,6 +7,7 @@ import "@/app/landing.css";
 import "@/app/onboarding.css";
 import "@/app/plan.css";
 import { Logo } from "@/components/brand/Logo";
+import { PlanGeneratingScreen, REVEAL_HOLD_MS } from "@/components/plan/PlanGeneratingScreen";
 import { PlanReviewView } from "@/components/plan/PlanReviewView";
 import {
   clearFreePlanDraft,
@@ -173,65 +174,10 @@ const WORKOUT_ENJOY = [
 ] as const;
 
 const CORE_TOTAL = 7;
-const EXTRA_TOTAL = 10;
+const EXTRA_TOTAL = 5;
 const TOTAL_Q = CORE_TOTAL + EXTRA_TOTAL;
-const REVEAL_HOLD_MS = 2800;
 
 type Step = "hub" | "build" | "generating" | "review";
-
-const GENERATE_STEPS = [
-  "Understanding your goal",
-  "Matching your experience",
-  "Building your weekly split",
-  "Selecting exercises",
-  "Balancing your sessions"
-] as const;
-
-const FEATURE_CARDS = [
-  {
-    emoji: "👥",
-    title: "Stay accountable",
-    body: "Work out alongside others and make showing up easier."
-  },
-  {
-    emoji: "📈",
-    title: "Track your progress",
-    body: "Log every workout and see how you're getting stronger."
-  },
-  {
-    emoji: "🔥",
-    title: "Find your people",
-    body: "Share your progress, wins, and motivation with the RhoQ community."
-  },
-  {
-    emoji: "🏋️",
-    title: "Work out together",
-    body: "Join live workout rooms and train alongside others."
-  },
-  {
-    emoji: "🎯",
-    title: "Stay on track",
-    body: "Keep your plan in one place and know what to do next."
-  },
-  {
-    emoji: "💪",
-    title: "Build your routine",
-    body: "Turn your plan into a habit with consistent workouts."
-  },
-  {
-    emoji: "🏆",
-    title: "Celebrate your wins",
-    body: "Share your milestones and get inspired by others."
-  },
-  {
-    emoji: "⚡",
-    title: "Make every workout count",
-    body: "Follow your plan, track your work, and keep moving forward."
-  }
-] as const;
-
-const GENERATE_STEP_MS = 5200;
-const GENERATE_TARGETS = [20, 40, 60, 80, 92] as const;
 
 type ChoiceOption = { value: string; label: string; emoji?: string };
 
@@ -277,109 +223,7 @@ function ChoiceGrid({
 }
 
 function extraSectionIndex(qIndex: number) {
-  if (qIndex <= 7) return 0;
-  if (qIndex <= 9) return 1;
-  if (qIndex <= 11) return 2;
-  if (qIndex <= 13) return 3;
-  return 4;
-}
-
-function PlanGeneratingScreen({ ready }: { ready: boolean }) {
-  const [progress, setProgress] = useState(ready ? 78 : 4);
-  const [stepIndex, setStepIndex] = useState(ready ? GENERATE_STEPS.length - 1 : 0);
-  const [featureIndex, setFeatureIndex] = useState(0);
-
-  useEffect(() => {
-    if (ready) {
-      const started = Date.now();
-      const tick = window.setInterval(() => {
-        const t = Math.min(1, (Date.now() - started) / REVEAL_HOLD_MS);
-        const eased = 1 - (1 - t) * (1 - t);
-        setProgress(78 + 20 * eased);
-        setStepIndex(GENERATE_STEPS.length - 1);
-      }, 80);
-      return () => window.clearInterval(tick);
-    }
-
-    const started = Date.now();
-    const tick = window.setInterval(() => {
-      const elapsed = Date.now() - started;
-      const nextStep = Math.min(
-        GENERATE_STEPS.length - 1,
-        Math.floor(elapsed / GENERATE_STEP_MS)
-      );
-      const prevTarget = nextStep === 0 ? 0 : GENERATE_TARGETS[nextStep - 1];
-      const target = GENERATE_TARGETS[nextStep] ?? 92;
-      const stepElapsed = elapsed - nextStep * GENERATE_STEP_MS;
-      const t = Math.min(1, stepElapsed / GENERATE_STEP_MS);
-      const eased = 1 - (1 - t) * (1 - t);
-      const value = (prevTarget ?? 0) + (target - (prevTarget ?? 0)) * eased;
-      setStepIndex(nextStep);
-      setProgress(Math.min(92, value));
-    }, 80);
-    return () => window.clearInterval(tick);
-  }, [ready]);
-
-  useEffect(() => {
-    const rotate = window.setInterval(() => {
-      setFeatureIndex((index) => (index + 1) % FEATURE_CARDS.length);
-    }, 4500);
-    return () => window.clearInterval(rotate);
-  }, []);
-
-  const feature = FEATURE_CARDS[featureIndex] ?? FEATURE_CARDS[0];
-  const percent = Math.round(progress);
-
-  if (!feature) return null;
-
-  return (
-    <section className="plan-generating" aria-labelledby="plan-generating-title">
-      <p className="plan-kicker">{ready ? "Almost there" : "Building"}</p>
-      <h1 id="plan-generating-title">
-        {ready ? "Putting on the finishing touches" : "Your workout is coming together"}
-      </h1>
-
-      <div
-        className="plan-gen-progress"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-        aria-label="Plan generation progress"
-      >
-        <div className="plan-gen-progress-track">
-          <span style={{ width: `${progress}%` }} />
-        </div>
-        <strong>{percent}%</strong>
-      </div>
-
-      <ol className="plan-gen-steps">
-        {GENERATE_STEPS.map((label, index) => {
-          const done = index < stepIndex || ready;
-          const current = !ready && index === stepIndex;
-          return (
-            <li
-              key={label}
-              className={done ? "is-done" : current ? "is-current" : undefined}
-            >
-              <span aria-hidden>{done ? "✓" : current ? "●" : "○"}</span>
-              {label}
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="plan-gen-more">
-        <h2>More on RhoQ</h2>
-        <article className="plan-gen-feature" key={feature.title}>
-          <p className="plan-gen-feature-kicker">
-            <span aria-hidden>{feature.emoji}</span> {feature.title}
-          </p>
-          <p>{feature.body}</p>
-        </article>
-      </div>
-    </section>
-  );
+  return Math.max(0, qIndex - CORE_TOTAL);
 }
 
 export function FreePlanPage() {
@@ -710,24 +554,14 @@ export function FreePlanPage() {
     })();
   };
 
-  const extraValue =
+  const extraComplete =
     qIndex === 8
-      ? eatingHabits
+      ? Boolean(eatingHabits && mealsPerDay)
       : qIndex === 9
-        ? mealsPerDay
+        ? Boolean(sleepHours && sleepQuality)
         : qIndex === 10
-          ? sleepHours
-          : qIndex === 11
-            ? sleepQuality
-            : qIndex === 12
-              ? skipReason
-              : qIndex === 13
-                ? motivation
-                : qIndex === 14
-                  ? workoutWhen
-                  : qIndex === 15
-                    ? workoutWhere
-                    : workoutEnjoy;
+          ? Boolean(skipReason && motivation)
+          : Boolean(workoutWhen && workoutWhere && workoutEnjoy);
 
   const canContinue =
     qIndex === 0
@@ -746,7 +580,7 @@ export function FreePlanPage() {
                   ? Boolean(sessionMinutes)
                   : qIndex === 7
                     ? Boolean(ageRange && gender && activityLevel)
-                    : Boolean(extraValue);
+                    : extraComplete;
 
   const questionTitle =
     qIndex === 0
@@ -766,22 +600,12 @@ export function FreePlanPage() {
                   : qIndex === 7
                     ? "A bit about you"
                     : qIndex === 8
-                      ? "How would you describe your eating habits?"
+                      ? "About nutrition & eating habits"
                       : qIndex === 9
-                        ? "How many meals do you usually eat a day?"
+                        ? "About sleep"
                         : qIndex === 10
-                          ? "How much do you usually sleep?"
-                          : qIndex === 11
-                            ? "How would you rate your sleep quality?"
-                            : qIndex === 12
-                              ? "What usually makes you skip a workout?"
-                              : qIndex === 13
-                                ? "What motivates you the most?"
-                                : qIndex === 14
-                                  ? "When do you prefer to work out?"
-                                  : qIndex === 15
-                                    ? "Where do you prefer to work out?"
-                                    : "What makes a workout enjoyable for you?";
+                          ? "Behaviour"
+                          : "Workout preferences";
 
   const beginReveal = () => {
     if (!plan && !generating) {
@@ -1237,72 +1061,97 @@ export function FreePlanPage() {
               ) : null}
 
               {qIndex === 8 ? (
-                <ChoiceGrid
-                  options={EATING_HABITS}
-                  value={eatingHabits}
-                  onChange={setEatingHabits}
-                />
+                <div className="plan-quiz-stack">
+                  <fieldset className="onboarding-fieldset">
+                    <legend>How would you describe your eating habits?</legend>
+                    <ChoiceGrid
+                      options={EATING_HABITS}
+                      value={eatingHabits}
+                      onChange={setEatingHabits}
+                    />
+                  </fieldset>
+                  <fieldset className="onboarding-fieldset">
+                    <legend>How many meals do you usually eat a day?</legend>
+                    <ChoiceGrid
+                      options={MEALS_PER_DAY}
+                      value={mealsPerDay}
+                      onChange={setMealsPerDay}
+                      wrap
+                    />
+                  </fieldset>
+                </div>
               ) : null}
               {qIndex === 9 ? (
-                <ChoiceGrid
-                  options={MEALS_PER_DAY}
-                  value={mealsPerDay}
-                  onChange={setMealsPerDay}
-                  wrap
-                />
+                <div className="plan-quiz-stack">
+                  <fieldset className="onboarding-fieldset">
+                    <legend>How much do you usually sleep?</legend>
+                    <ChoiceGrid
+                      options={SLEEP_HOURS}
+                      value={sleepHours}
+                      onChange={setSleepHours}
+                    />
+                  </fieldset>
+                  <fieldset className="onboarding-fieldset">
+                    <legend>How would you rate your sleep quality?</legend>
+                    <ChoiceGrid
+                      options={SLEEP_QUALITY}
+                      value={sleepQuality}
+                      onChange={setSleepQuality}
+                    />
+                  </fieldset>
+                </div>
               ) : null}
               {qIndex === 10 ? (
-                <ChoiceGrid
-                  options={SLEEP_HOURS}
-                  value={sleepHours}
-                  onChange={setSleepHours}
-                />
+                <div className="plan-quiz-stack">
+                  <fieldset className="onboarding-fieldset">
+                    <legend>What usually makes you skip a workout?</legend>
+                    <ChoiceGrid
+                      options={SKIP_REASONS}
+                      value={skipReason}
+                      onChange={setSkipReason}
+                      wrap
+                    />
+                  </fieldset>
+                  <fieldset className="onboarding-fieldset">
+                    <legend>What motivates you the most?</legend>
+                    <ChoiceGrid
+                      options={MOTIVATIONS}
+                      value={motivation}
+                      onChange={setMotivation}
+                      wrap
+                    />
+                  </fieldset>
+                </div>
               ) : null}
               {qIndex === 11 ? (
-                <ChoiceGrid
-                  options={SLEEP_QUALITY}
-                  value={sleepQuality}
-                  onChange={setSleepQuality}
-                />
-              ) : null}
-              {qIndex === 12 ? (
-                <ChoiceGrid
-                  options={SKIP_REASONS}
-                  value={skipReason}
-                  onChange={setSkipReason}
-                  wrap
-                />
-              ) : null}
-              {qIndex === 13 ? (
-                <ChoiceGrid
-                  options={MOTIVATIONS}
-                  value={motivation}
-                  onChange={setMotivation}
-                  wrap
-                />
-              ) : null}
-              {qIndex === 14 ? (
-                <ChoiceGrid
-                  options={WORKOUT_WHEN}
-                  value={workoutWhen}
-                  onChange={setWorkoutWhen}
-                  wrap
-                />
-              ) : null}
-              {qIndex === 15 ? (
-                <ChoiceGrid
-                  options={WORKOUT_WHERE}
-                  value={workoutWhere}
-                  onChange={setWorkoutWhere}
-                />
-              ) : null}
-              {qIndex === 16 ? (
-                <ChoiceGrid
-                  options={WORKOUT_ENJOY}
-                  value={workoutEnjoy}
-                  onChange={setWorkoutEnjoy}
-                  wrap
-                />
+                <div className="plan-quiz-stack">
+                  <fieldset className="onboarding-fieldset">
+                    <legend>When do you prefer to work out?</legend>
+                    <ChoiceGrid
+                      options={WORKOUT_WHEN}
+                      value={workoutWhen}
+                      onChange={setWorkoutWhen}
+                      wrap
+                    />
+                  </fieldset>
+                  <fieldset className="onboarding-fieldset">
+                    <legend>Where do you prefer to work out?</legend>
+                    <ChoiceGrid
+                      options={WORKOUT_WHERE}
+                      value={workoutWhere}
+                      onChange={setWorkoutWhere}
+                    />
+                  </fieldset>
+                  <fieldset className="onboarding-fieldset">
+                    <legend>What makes a workout enjoyable for you?</legend>
+                    <ChoiceGrid
+                      options={WORKOUT_ENJOY}
+                      value={workoutEnjoy}
+                      onChange={setWorkoutEnjoy}
+                      wrap
+                    />
+                  </fieldset>
+                </div>
               ) : null}
 
               {error ? (
