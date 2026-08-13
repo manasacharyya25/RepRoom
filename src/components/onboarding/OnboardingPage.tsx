@@ -13,6 +13,7 @@ import { heightToCm, slugifyUsername, toKg } from "@/lib/goals";
 import { completeOnboarding } from "@/lib/onboarding";
 import {
   buildOnboardingGoalsFromDraft,
+  personalFromFreePlanLifestyle,
   saveOnboardingDraft
 } from "@/lib/onboarding-draft";
 import { LIVE_IMAGES } from "@/lib/live-images";
@@ -26,6 +27,12 @@ import {
 const STEPS = [
   { id: "identity", label: "Profile" },
   { id: "context", label: "You" },
+  { id: "goals", label: "Goals" },
+  { id: "plan", label: "Plan" }
+] as const;
+
+const FROM_PLAN_STEPS = [
+  { id: "identity", label: "Profile" },
   { id: "goals", label: "Goals" },
   { id: "plan", label: "Plan" }
 ] as const;
@@ -208,7 +215,8 @@ export function OnboardingPage() {
   }, []);
 
   useEffect(() => {
-    if (fromPlan && stepIndex === 3) {
+    if (!fromPlan) return;
+    if (stepIndex === 1 || stepIndex === 3) {
       setStepIndex(2);
     }
   }, [fromPlan, stepIndex]);
@@ -222,6 +230,11 @@ export function OnboardingPage() {
   const step = STEPS[stepIndex];
 
   const buildDraftPayload = (status: WorkoutPlanStatus) => {
+    const free = readFreePlanDraft();
+    const fromLife = personalFromFreePlanLifestyle(free?.lifestyle);
+    const originatedFromPlan = fromPlan || Boolean(free?.plan);
+    const youStepUnset = !ageRange && !gender && !activityLevel;
+
     const weightNowRaw = Number.parseFloat(currentWeight);
     const height = heightToCm({
       unit: heightUnit,
@@ -229,6 +242,11 @@ export function OnboardingPage() {
       inches: Number.parseFloat(heightInches) || 0,
       cm: Number.parseFloat(heightCm) || 0
     });
+    const formHeightCm =
+      Number.isFinite(height) && height > 0 ? height : null;
+    const formWeightKg = Number.isFinite(weightNowRaw)
+      ? toKg(weightNowRaw, weightUnit)
+      : null;
     const goals = buildOnboardingGoalsFromDraft({
       primaryFitnessGoal,
       workoutDaysPerWeek,
@@ -244,22 +262,31 @@ export function OnboardingPage() {
         customAvatar && !customAvatar.startsWith("blob:")
           ? customAvatar
           : activeAvatar,
-      ageRange,
-      gender,
-      activityLevel,
+      ageRange: ageRange || fromLife.ageRange,
+      gender: gender || fromLife.gender,
+      activityLevel: activityLevel || fromLife.activityLevel,
       fitnessExperience,
-      heightCm: Number.isFinite(height) && height > 0 ? height : null,
-      currentWeightKg: Number.isFinite(weightNowRaw)
-        ? toKg(weightNowRaw, weightUnit)
-        : null,
-      weightUnit,
+      heightCm:
+        originatedFromPlan && youStepUnset && fromLife.heightCm != null
+          ? fromLife.heightCm
+          : formHeightCm ?? fromLife.heightCm,
+      currentWeightKg:
+        originatedFromPlan &&
+        youStepUnset &&
+        fromLife.currentWeightKg != null
+          ? fromLife.currentWeightKg
+          : formWeightKg ?? fromLife.currentWeightKg,
+      weightUnit:
+        originatedFromPlan && youStepUnset && fromLife.weightUnit
+          ? fromLife.weightUnit
+          : weightUnit,
       primaryFitnessGoal,
       workoutDaysPerWeek,
       sessionMinutes,
       successMilestone,
       workoutPlanStatus: status,
       workoutPlan: importedPlan,
-      fromPlan,
+      fromPlan: originatedFromPlan,
       goals
     };
   };
@@ -291,8 +318,8 @@ export function OnboardingPage() {
         timezone,
         targetWeightKg: null,
         workoutPlanStatus: skipped ? "" : draft.workoutPlanStatus,
-        workoutPlan: skipped ? null : importedPlan,
-        fromPlan,
+        workoutPlan: skipped ? null : importedPlan ?? draft.workoutPlan,
+        fromPlan: draft.fromPlan,
         goals: skipped ? [] : draft.goals,
         skipped
       });
@@ -339,6 +366,12 @@ export function OnboardingPage() {
       return;
     }
     if (stepIndex === 0 && !validateIdentity()) return;
+
+    if (fromPlan && step.id === "identity") {
+      setError(null);
+      setStepIndex(2);
+      return;
+    }
 
     if (fromPlan && (step.id === "goals" || step.id === "plan")) {
       openExistingPlan();
@@ -443,6 +476,10 @@ export function OnboardingPage() {
 
   const goBack = () => {
     setError(null);
+    if (fromPlan && stepIndex === 2) {
+      setStepIndex(0);
+      return;
+    }
     setStepIndex((index) => Math.max(0, index - 1));
   };
 
@@ -558,24 +595,33 @@ export function OnboardingPage() {
 
       <main className="onboarding-shell">
         <div className="onboarding-progress" aria-label="Onboarding progress">
-          {STEPS.map((item, index) => (
-            <div
-              key={item.id}
-              className={`onboarding-progress-step${
-                index === stepIndex ? " is-active" : ""
-              }${index < stepIndex ? " is-done" : ""}`}
-            >
-              <span className="onboarding-progress-dot" aria-hidden />
-              <span className="onboarding-progress-label">{item.label}</span>
-            </div>
-          ))}
+          {(fromPlan ? FROM_PLAN_STEPS : STEPS).map((item, index) => {
+            const currentIndex = fromPlan
+              ? step.id === "identity"
+                ? 0
+                : 1
+              : stepIndex;
+            return (
+              <div
+                key={item.id}
+                className={`onboarding-progress-step${
+                  index === currentIndex ? " is-active" : ""
+                }${index < currentIndex ? " is-done" : ""}`}
+              >
+                <span className="onboarding-progress-dot" aria-hidden />
+                <span className="onboarding-progress-label">{item.label}</span>
+              </div>
+            );
+          })}
         </div>
 
         <section className="onboarding-card" aria-labelledby="onboarding-title">
           {step.id === "identity" ? (
             <>
               <header className="onboarding-card-head">
-                <p className="onboarding-kicker">Step 1 of 4 · Profile</p>
+                <p className="onboarding-kicker">
+                  {fromPlan ? "Step 1 of 3 · Profile" : "Step 1 of 4 · Profile"}
+                </p>
                 <h1 id="onboarding-title">Set up your presence</h1>
                 <p className="onboarding-lede">
                   This is how you’ll show up in live rooms and on the feed.
@@ -761,7 +807,7 @@ export function OnboardingPage() {
             </>
           ) : null}
 
-          {step.id === "context" ? (
+          {step.id === "context" && !fromPlan ? (
             <>
               <header className="onboarding-card-head">
                 <p className="onboarding-kicker">Step 2 of 4 · You</p>
@@ -971,7 +1017,7 @@ export function OnboardingPage() {
             fromPlan ? (
               <>
                 <header className="onboarding-card-head">
-                  <p className="onboarding-kicker">Step 3 of 4</p>
+                  <p className="onboarding-kicker">Step 2 of 3 · Goals</p>
                   <h1 id="onboarding-title">
                     What milestone would make you most successful?
                   </h1>
@@ -1188,6 +1234,10 @@ export function OnboardingPage() {
                   disabled={saving || generatingPlan}
                   onClick={() => {
                     setError(null);
+                    if (fromPlan && stepIndex === 0) {
+                      setStepIndex(2);
+                      return;
+                    }
                     setStepIndex((index) => index + 1);
                   }}
                 >

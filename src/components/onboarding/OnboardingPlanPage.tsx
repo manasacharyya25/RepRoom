@@ -12,6 +12,7 @@ import { readFreePlanDraft } from "@/lib/free-plan-draft";
 import { completeOnboarding } from "@/lib/onboarding";
 import {
   clearOnboardingDraft,
+  personalFromFreePlanLifestyle,
   readOnboardingDraft,
   saveOnboardingDraft,
   type OnboardingDraft
@@ -30,7 +31,11 @@ const STEPS = [
   { id: "plan", label: "Plan" }
 ] as const;
 
-const PLAN_STEP_INDEX = 3;
+const FROM_PLAN_STEPS = [
+  { id: "identity", label: "Profile" },
+  { id: "goals", label: "Goals" },
+  { id: "plan", label: "Plan" }
+] as const;
 
 export function OnboardingPlanPage() {
   const router = useRouter();
@@ -114,22 +119,36 @@ export function OnboardingPlanPage() {
           ? Intl.DateTimeFormat().resolvedOptions().timeZone
           : "";
 
+      const fromLife = personalFromFreePlanLifestyle(
+        readFreePlanDraft()?.lifestyle
+      );
+      const youStepUnset =
+        !draft.ageRange && !draft.gender && !draft.activityLevel;
+
       await completeOnboarding(supabase, {
         displayName: draft.displayName,
         username: draft.username,
         bio: draft.bio,
         avatarUrl: draft.avatarUrl,
         avatarFile: null,
-        ageRange: draft.ageRange,
-        gender: draft.gender,
-        activityLevel: draft.activityLevel,
+        ageRange: draft.ageRange || fromLife.ageRange,
+        gender: draft.gender || fromLife.gender,
+        activityLevel: draft.activityLevel || fromLife.activityLevel,
         fitnessExperience: draft.fitnessExperience,
         countryCode: "",
         timezone,
-        heightCm: draft.heightCm,
-        currentWeightKg: draft.currentWeightKg,
+        heightCm:
+          youStepUnset && fromLife.heightCm != null
+            ? fromLife.heightCm
+            : draft.heightCm ?? fromLife.heightCm,
+        currentWeightKg:
+          youStepUnset && fromLife.currentWeightKg != null
+            ? fromLife.currentWeightKg
+            : draft.currentWeightKg ?? fromLife.currentWeightKg,
         targetWeightKg: null,
-        weightUnit: draft.weightUnit,
+        weightUnit: youStepUnset
+          ? fromLife.weightUnit || draft.weightUnit
+          : draft.weightUnit || fromLife.weightUnit,
         primaryFitnessGoal: draft.primaryFitnessGoal,
         workoutDaysPerWeek: draft.workoutDaysPerWeek,
         sessionMinutes: draft.sessionMinutes,
@@ -161,6 +180,9 @@ export function OnboardingPlanPage() {
     ? "/onboarding?step=goals"
     : "/onboarding?step=plan";
   const freeDraft = readFreePlanDraft();
+  const fromPlan = Boolean(draft?.fromPlan) || Boolean(freeDraft?.plan);
+  const progressSteps = fromPlan ? FROM_PLAN_STEPS : STEPS;
+  const planStepIndex = progressSteps.length - 1;
 
   return (
     <div className="plan-page plan-page--review">
@@ -170,12 +192,12 @@ export function OnboardingPlanPage() {
 
       <main className="plan-main">
         <div className="onboarding-progress" aria-label="Onboarding progress">
-          {STEPS.map((item, index) => (
+          {progressSteps.map((item, index) => (
             <div
               key={item.id}
               className={`onboarding-progress-step${
-                index === PLAN_STEP_INDEX ? " is-active" : ""
-              }${index < PLAN_STEP_INDEX ? " is-done" : ""}`}
+                index === planStepIndex ? " is-active" : ""
+              }${index < planStepIndex ? " is-done" : ""}`}
             >
               <span className="onboarding-progress-dot" aria-hidden />
               <span className="onboarding-progress-label">{item.label}</span>

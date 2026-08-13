@@ -1,6 +1,42 @@
+import type { FreePlanLifestyle } from "@/lib/free-plan-draft";
 import type { OnboardingGoalInput, WeightUnit } from "@/lib/types/profile";
 import type { WorkoutPlan, WorkoutPlanStatus } from "@/lib/workout-plan";
-import { hoursGoalTarget } from "@/lib/goals";
+import { heightToCm, hoursGoalTarget, toKg } from "@/lib/goals";
+
+/** Convert /plan personal-info answers onto onboarding profile fields. */
+export function personalFromFreePlanLifestyle(
+  life: FreePlanLifestyle | undefined | null
+) {
+  if (!life) {
+    return {
+      ageRange: "",
+      gender: "",
+      activityLevel: "",
+      heightCm: null as number | null,
+      currentWeightKg: null as number | null,
+      weightUnit: "kg" as WeightUnit
+    };
+  }
+
+  const height = heightToCm({
+    unit: life.heightUnit ?? "imperial",
+    feet: Number.parseFloat(life.heightFeet ?? "") || 0,
+    inches: Number.parseFloat(life.heightInches ?? "") || 0,
+    cm: Number.parseFloat(life.heightCm ?? "") || 0
+  });
+  const weightNowRaw = Number.parseFloat(life.currentWeight ?? "");
+
+  return {
+    ageRange: life.ageRange ?? "",
+    gender: life.gender ?? "",
+    activityLevel: life.activityLevel ?? "",
+    heightCm: Number.isFinite(height) && height > 0 ? height : null,
+    currentWeightKg: Number.isFinite(weightNowRaw)
+      ? toKg(weightNowRaw, life.weightUnit ?? "kg")
+      : null,
+    weightUnit: (life.weightUnit ?? "kg") as WeightUnit
+  };
+}
 
 const DRAFT_KEY = "rhoq_onboarding_draft_v1";
 
