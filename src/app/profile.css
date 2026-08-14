@@ -233,10 +233,12 @@
   background: #33333a;
   border: 1px solid rgba(255, 255, 255, 0.06);
   color: #f2f2f2;
+  font: inherit;
   font-size: 0.62rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
+  cursor: pointer;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
 }
 

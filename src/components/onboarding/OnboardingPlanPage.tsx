@@ -17,6 +17,11 @@ import {
   saveOnboardingDraft,
   type OnboardingDraft
 } from "@/lib/onboarding-draft";
+import {
+  clearStoredReferralCode,
+  readStoredReferralCode
+} from "@/lib/referral-storage";
+import { ReferralEnterModal } from "@/components/referrals/ReferralEnterModal";
 import { createClient } from "@/lib/supabase/client";
 import {
   normalizeWorkoutPlan,
@@ -45,6 +50,8 @@ export function OnboardingPlanPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [referralOpen, setReferralOpen] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
 
   useEffect(() => {
     const existing = readOnboardingDraft();
@@ -54,6 +61,9 @@ export function OnboardingPlanPage() {
     }
 
     setDraft(existing);
+    setReferralCode(
+      existing.referralCode?.trim() || readStoredReferralCode() || ""
+    );
 
     const run = async () => {
       setLoading(true);
@@ -109,7 +119,7 @@ export function OnboardingPlanPage() {
     void run();
   }, [router]);
 
-  const enterRhoq = async () => {
+  const enterRhoq = async (code: string) => {
     if (!draft || !plan || saving) return;
     setSaving(true);
     setError(null);
@@ -157,8 +167,11 @@ export function OnboardingPlanPage() {
         workoutPlan: plan,
         goals: draft.goals,
         skipped: false,
-        fromPlan: Boolean(draft.fromPlan)
+        fromPlan: Boolean(draft.fromPlan),
+        referralCode: code.trim()
       });
+
+      clearStoredReferralCode();
 
       clearOnboardingDraft();
       await fetch("/api/onboarding/complete-cookie", { method: "POST" }).catch(
@@ -220,7 +233,7 @@ export function OnboardingPlanPage() {
             focus={draft?.planQuiz?.focus || freeDraft?.focus}
             equipment={draft?.planQuiz?.equipment || freeDraft?.equipment}
             style={draft?.planQuiz?.style || freeDraft?.style}
-            error={error}
+            error={referralOpen ? null : error}
             toolbar={
               <div className="plan-review-toolbar">
                 <Link className="plan-back" href={backHref}>
@@ -237,19 +250,26 @@ export function OnboardingPlanPage() {
                   type="button"
                   className="btn-primary btn-primary-lg"
                   disabled={saving || loading || !plan}
-                  onClick={() => void enterRhoq()}
+                  onClick={() => {
+                    setError(null);
+                    setReferralOpen(true);
+                  }}
                 >
-                  {saving
-                    ? "Saving…"
-                    : draft?.fromPlan
-                      ? "Start your fitness journey"
-                      : "Enter RhoQ"}
+                  {draft?.fromPlan ? "Start your fitness journey" : "Enter RhoQ"}
                 </button>
               </div>
             }
           />
         )}
       </main>
+      <ReferralEnterModal
+        open={referralOpen}
+        initialCode={referralCode}
+        busy={saving}
+        error={error}
+        onSkip={() => void enterRhoq("")}
+        onAccept={(code) => void enterRhoq(code)}
+      />
     </div>
   );
 }

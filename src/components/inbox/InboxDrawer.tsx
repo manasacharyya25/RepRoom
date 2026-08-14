@@ -32,6 +32,9 @@ type InboxDrawerProps = {
   onOpenedTarget?: () => void;
   /** Report unread conversation count to the nav badge. */
   onUnreadCountChange?: (count: number) => void;
+  /** Render inside another drawer (no overlay). */
+  embedded?: boolean;
+  onBack?: () => void;
 };
 
 function formatMessageTime(iso: string) {
@@ -57,7 +60,9 @@ export function InboxDrawer({
   initialConversationId = null,
   initialUserId = null,
   onOpenedTarget,
-  onUnreadCountChange
+  onUnreadCountChange,
+  embedded = false,
+  onBack
 }: InboxDrawerProps) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -291,18 +296,28 @@ export function InboxDrawer({
         setActiveThreadId(null);
         return;
       }
+      if (embedded && onBack) {
+        onBack();
+        return;
+      }
       onClose();
     };
 
+    window.addEventListener("keydown", onKeyDown);
+    if (embedded) {
+      return () => {
+        window.removeEventListener("keydown", onKeyDown);
+      };
+    }
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose, activeThreadId]);
+  }, [open, onClose, onBack, embedded, activeThreadId]);
 
   const runThreadAction = async (
     thread: InboxThreadView,
@@ -393,16 +408,20 @@ export function InboxDrawer({
 
   return (
     <div
-      className={`inbox-drawer-root${open ? " is-open" : ""}`}
+      className={`inbox-drawer-root${open ? " is-open" : ""}${
+        embedded ? " inbox-drawer-root--embedded" : ""
+      }`}
       aria-hidden={!open}
     >
-      <button
-        type="button"
-        className="inbox-drawer-backdrop"
-        aria-label="Close inbox"
-        tabIndex={open ? 0 : -1}
-        onClick={onClose}
-      />
+      {embedded ? null : (
+        <button
+          type="button"
+          className="inbox-drawer-backdrop"
+          aria-label="Close inbox"
+          tabIndex={open ? 0 : -1}
+          onClick={onClose}
+        />
+      )}
 
       <aside
         className="inbox-drawer"
@@ -511,6 +530,16 @@ export function InboxDrawer({
         ) : (
           <div className="inbox-list">
             <header className="inbox-drawer-header">
+              {embedded && onBack ? (
+                <button
+                  type="button"
+                  className="inbox-drawer-back"
+                  aria-label="Back"
+                  onClick={onBack}
+                >
+                  ←
+                </button>
+              ) : null}
               <div className="inbox-drawer-title">
                 <strong>Inbox</strong>
                 <span>

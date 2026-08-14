@@ -14,6 +14,8 @@ import { ProfileEditDrawer } from "@/components/profile/ProfileEditDrawer";
 import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
 import { ProfileWeeklyPlan } from "@/components/profile/ProfileWeeklyPlan";
 import { ProfileWorkoutLogsSection } from "@/components/profile/ProfileWorkoutLogs";
+import { ReferralCodeForm } from "@/components/referrals/ReferralCodeForm";
+import { ReferralShareModal } from "@/components/referrals/ReferralShareModal";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import {
   formatGoalDetail,
@@ -30,6 +32,7 @@ import { followUser, isFollowing, unfollowUser } from "@/lib/social-api";
 import type { DbPost } from "@/lib/types/post";
 import type { Goal as DbGoal, ProfileViewModel } from "@/lib/types/profile";
 import "@/app/profile-edit.css";
+import "@/app/referrals.css";
 
 type ProfileGoalCard = {
   id: string;
@@ -847,6 +850,10 @@ export function ProfilePage({
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [buddyCount, setBuddyCount] = useState(0);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [logsTab, setLogsTab] = useState<"posts" | "logs">("posts");
 
   useEffect(() => {
@@ -874,6 +881,27 @@ export function ProfilePage({
       cancelled = true;
     };
   }, [readOnly, profileData?.profile.id]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    let cancelled = false;
+    void fetch("/api/referrals/me")
+      .then(async (response) => {
+        const data = (await response.json().catch(() => null)) as {
+          referralCode?: string | null;
+          shareUrl?: string | null;
+          referrals?: unknown[];
+        } | null;
+        if (cancelled || !response.ok || !data) return;
+        setReferralCode(data.referralCode ?? null);
+        setShareUrl(data.shareUrl ?? null);
+        setBuddyCount(Array.isArray(data.referrals) ? data.referrals.length : 0);
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [readOnly]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1252,10 +1280,20 @@ export function ProfilePage({
                       />
                     </svg>
                   </span>
-                  <strong className="profile-buddies-count">0</strong>
+                  <strong className="profile-buddies-count">{buddyCount}</strong>
                 </div>
                 <span className="profile-buddies-label">Workout Buddies</span>
-                <span className="profile-buddies-badge">Invite friends</span>
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    className="profile-buddies-badge"
+                    onClick={() => setShareOpen(true)}
+                  >
+                    Invite friends
+                  </button>
+                ) : (
+                  <span className="profile-buddies-badge">Invite friends</span>
+                )}
               </div>
 
               <div className="profile-hours">
@@ -1394,6 +1432,7 @@ export function ProfilePage({
               <p className="profile-social-error">{socialError}</p>
             ) : null}
             <p className="profile-bio">{bio}</p>
+            {!readOnly ? <ReferralCodeForm /> : null}
           </div>
           </div>
             <div className="profile-stats">
@@ -1669,6 +1708,15 @@ export function ProfilePage({
             setProfileData(next);
             setGoals(mapGoalsToCards(next.goals));
           }}
+        />
+      ) : null}
+
+      {!readOnly && referralCode && shareUrl ? (
+        <ReferralShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          code={referralCode}
+          shareUrl={shareUrl}
         />
       ) : null}
     </div>

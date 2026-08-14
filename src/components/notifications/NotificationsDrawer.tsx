@@ -9,6 +9,8 @@ import "@/app/notifications.css";
 type NotificationsDrawerProps = {
   open: boolean;
   onClose: () => void;
+  embedded?: boolean;
+  onBack?: () => void;
 };
 
 function isRemoteSrc(src: string) {
@@ -34,7 +36,12 @@ function typeLabel(type: string) {
   }
 }
 
-export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps) {
+export function NotificationsDrawer({
+  open,
+  onClose,
+  embedded = false,
+  onBack
+}: NotificationsDrawerProps) {
   const router = useRouter();
   const { items, loading, unreadCount, markRead, markAllRead, refresh } =
     useNotifications();
@@ -47,29 +54,45 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") {
+        return;
+      }
+      if (embedded && onBack) {
+        onBack();
+        return;
+      }
+      onClose();
     };
+    window.addEventListener("keydown", onKeyDown);
+    if (embedded) {
+      return () => {
+        window.removeEventListener("keydown", onKeyDown);
+      };
+    }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, onBack, embedded]);
 
   return (
     <div
-      className={`notif-drawer-root${open ? " is-open" : ""}`}
+      className={`notif-drawer-root${open ? " is-open" : ""}${
+        embedded ? " notif-drawer-root--embedded" : ""
+      }`}
       aria-hidden={!open}
     >
-      <button
-        type="button"
-        className="notif-drawer-backdrop"
-        aria-label="Close notifications"
-        tabIndex={open ? 0 : -1}
-        onClick={onClose}
-      />
+      {embedded ? null : (
+        <button
+          type="button"
+          className="notif-drawer-backdrop"
+          aria-label="Close notifications"
+          tabIndex={open ? 0 : -1}
+          onClick={onClose}
+        />
+      )}
 
       <aside
         className="notif-drawer"
@@ -78,6 +101,16 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
         aria-label="Notifications"
       >
         <header className="notif-drawer-header">
+          {embedded && onBack ? (
+            <button
+              type="button"
+              className="notif-drawer-close"
+              aria-label="Back"
+              onClick={onBack}
+            >
+              ←
+            </button>
+          ) : null}
           <div className="notif-drawer-title">
             <strong>Notifications</strong>
             <span>

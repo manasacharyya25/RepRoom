@@ -18,6 +18,7 @@ import {
   planQuizAnswer,
   type OnboardingPlanQuizAnswers
 } from "@/components/onboarding/OnboardingPlanQuiz";
+import { ReferralEnterModal } from "@/components/referrals/ReferralEnterModal";
 import { uploadAvatar, validateAvatarFile } from "@/lib/avatar";
 import { readFreePlanDraft } from "@/lib/free-plan-draft";
 import { heightToCm, slugifyUsername, toKg } from "@/lib/goals";
@@ -27,6 +28,7 @@ import {
   personalFromFreePlanLifestyle,
   saveOnboardingDraft
 } from "@/lib/onboarding-draft";
+import { readStoredReferralCode } from "@/lib/referral-storage";
 import { LIVE_IMAGES } from "@/lib/live-images";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -204,6 +206,8 @@ export function OnboardingPage() {
   const [signingOut, setSigningOut] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [fromPlan, setFromPlan] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
+  const [referralOpen, setReferralOpen] = useState(false);
   const [importedPlan, setImportedPlan] = useState<WorkoutPlan | null>(null);
   const [planQuizIndex, setPlanQuizIndex] = useState<number | null>(null);
   const [planQuiz, setPlanQuiz] =
@@ -234,6 +238,32 @@ export function OnboardingPage() {
     if (life?.heightCm) setHeightCm(life.heightCm);
     if (life?.weightUnit) setWeightUnit(life.weightUnit);
     if (life?.currentWeight) setCurrentWeight(life.currentWeight);
+  }, []);
+
+  useEffect(() => {
+    const stored = readStoredReferralCode();
+    if (stored) {
+      setReferralCode((current) => current || stored);
+    }
+    let cancelled = false;
+    void fetch("/api/referrals/me")
+      .then(async (response) => {
+        const data = (await response.json().catch(() => null)) as {
+          pendingCode?: string | null;
+          referredBy?: boolean;
+        } | null;
+        if (cancelled || !response.ok || data?.referredBy) {
+          return;
+        }
+        const pending = data?.pendingCode || stored;
+        if (pending) {
+          setReferralCode((current) => current || pending);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -328,14 +358,16 @@ export function OnboardingPage() {
       workoutPlan: generatedPlan ?? importedPlan,
       fromPlan: originatedFromPlan,
       planQuiz,
-      goals
+      goals,
+      referralCode: referralCode.trim().toUpperCase()
     };
   };
 
-  const finish = async (skipped: boolean) => {
+  const finish = async (skipped: boolean, codeOverride?: string) => {
     if (saving) return;
 
     if (!skipped && !validateIdentity()) {
+      setReferralOpen(false);
       setStepIndex(0);
       return;
     }
@@ -362,7 +394,11 @@ export function OnboardingPage() {
         workoutPlan: skipped ? null : importedPlan ?? draft.workoutPlan,
         fromPlan: draft.fromPlan,
         goals: skipped ? [] : draft.goals,
-        skipped
+        skipped,
+        referralCode:
+          codeOverride !== undefined
+            ? codeOverride.trim()
+            : draft.referralCode
       });
 
       await fetch("/api/onboarding/complete-cookie", { method: "POST" }).catch(
@@ -440,7 +476,8 @@ export function OnboardingPage() {
       }
 
       if (workoutPlanStatus === "has_own") {
-        void finish(false);
+        setError(null);
+        setReferralOpen(true);
         return;
       }
 
@@ -456,7 +493,8 @@ export function OnboardingPage() {
     }
 
     if (stepIndex >= STEPS.length - 1) {
-      void finish(false);
+      setError(null);
+      setReferralOpen(true);
       return;
     }
     setError(null);
@@ -1329,7 +1367,7 @@ export function OnboardingPage() {
             )
           ) : null}
 
-          {error ? (
+          {error && !referralOpen ? (
             <p className="onboarding-error" role="alert">
               {error}
             </p>
@@ -1409,6 +1447,14 @@ export function OnboardingPage() {
         </section>
       </main>
       )}
+      <ReferralEnterModal
+        open={referralOpen}
+        initialCode={referralCode}
+        busy={saving}
+        error={error}
+        onSkip={() => void finish(false, "")}
+        onAccept={(code) => void finish(false, code)}
+      />
     </div>
   );
 }

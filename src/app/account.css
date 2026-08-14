@@ -1,0 +1,161 @@
+/* Account hub drawer */
+
+.account-drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.account-drawer-root.is-open {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.account-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+}
+
+.account-drawer-root.is-open .account-drawer-backdrop {
+  opacity: 1;
+}
+
+.account-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100vw);
+  height: 100%;
+  background: var(--bg-elevated, #141417);
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  transform: translateX(100%);
+  transition: transform 0.24s ease;
+  overflow: hidden;
+}
+
+.account-drawer-root.is-open .account-drawer {
+  transform: translateX(0);
+}
+
+.account-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.account-panel-body {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 8px 16px 24px;
+}
+
+.account-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.account-menu-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.account-menu-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.account-menu-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  color: var(--text, #f5f5f7);
+}
+
+.account-menu-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.account-menu-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-menu-copy strong {
+  color: var(--text, #f5f5f7);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.account-menu-copy span {
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 0.78rem;
+}
+
+.account-menu-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent, #ff5c2b);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.account-drawer .inbox-drawer-root--embedded,
+.account-drawer .notif-drawer-root--embedded {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.account-drawer .inbox-drawer-root--embedded .inbox-drawer,
+.account-drawer .notif-drawer-root--embedded .notif-drawer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+@media (max-width: 560px) {
+  .account-drawer {
+    width: 100vw;
+  }
+}

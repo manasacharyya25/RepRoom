@@ -76,6 +76,7 @@ export type OnboardingDraft = {
   goals: OnboardingGoalInput[];
   fromPlan?: boolean;
   planQuiz?: OnboardingPlanQuizAnswers;
+  referralCode?: string;
 };
 
 export function buildOnboardingGoalsFromDraft(options: {

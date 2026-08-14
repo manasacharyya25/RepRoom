@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import "@/app/landing.css";
 import "@/app/login.css";
 import { BrandMark, BrandName, Logo } from "@/components/brand/Logo";
 import { buildAuthCallbackUrl, isNativeApp } from "@/lib/capacitor-auth";
+import { readStoredReferralCode } from "@/lib/referral-storage";
 import { createClient } from "@/lib/supabase/client";
 import { Browser } from "@capacitor/browser";
 
@@ -41,7 +42,9 @@ export function LoginPage() {
   const nextPath = searchParams.get("next") || "/rooms";
   const authError = searchParams.get("error");
 
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setMode] = useState<Mode>(
+    searchParams.get("mode") === "signup" ? "signup" : "signin"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -51,6 +54,12 @@ export function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    if (searchParams.get("mode") === "signup" || readStoredReferralCode()) {
+      setMode("signup");
+    }
+  }, [searchParams]);
 
   const title = mode === "signin" ? "Welcome back" : "Create your account";
   const submitLabel =

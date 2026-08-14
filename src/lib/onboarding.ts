@@ -8,6 +8,7 @@ import {
   stripCacheBust
 } from "@/lib/goals";
 import { createPost } from "@/lib/posts-api";
+import { clearStoredReferralCode } from "@/lib/referral-storage";
 import type {
   OnboardingGoalInput,
   OnboardingPayload
@@ -121,6 +122,32 @@ export async function completeOnboarding(
     user.email?.split("@")[0] ||
     "Athlete";
 
+  const referralCode = payload.referralCode?.trim();
+  if (referralCode) {
+    const { data: referralResult, error: referralError } = await supabase.rpc(
+      "apply_referral_code",
+      { p_code: referralCode }
+    );
+    if (referralError) throw referralError;
+    const result = (referralResult ?? {}) as { ok?: boolean; reason?: string };
+    const reason = result.reason;
+    if (
+      result.ok === false ||
+      reason === "invalid" ||
+      reason === "not_found" ||
+      reason === "self" ||
+      reason === "unauthenticated"
+    ) {
+      if (reason === "self") {
+        throw new Error("You can’t use your own referral code.");
+      }
+      if (reason === "unauthenticated") {
+        throw new Error("You must be signed in to finish onboarding.");
+      }
+      throw new Error("That referral code isn’t valid.");
+    }
+  }
+
   const { error: profileError } = await supabase.from("profiles").upsert(
     {
       id: user.id,
@@ -149,6 +176,7 @@ export async function completeOnboarding(
   );
 
   if (profileError) throw profileError;
+  clearStoredReferralCode();
 
   const goals = buildDefaultGoals(payload);
 
@@ -208,13 +236,13 @@ export async function completeOnboarding(
   if (goalsError) throw goalsError;
 
   if (payload.fromPlan && !payload.skipped) {
-    const caption = payload.successMilestone.trim();
-    if (caption) {
+    const milestone = payload.successMilestone.trim();
+    if (milestone) {
       try {
         await createPost(supabase, user.id, {
           kind: "standard",
           category: "motivation",
-          caption
+          caption: `My First Goal on RhoQ 🔥\n\n${milestone}`
         });
       } catch {
         // Profile + plan still succeed if the first post cannot be created.

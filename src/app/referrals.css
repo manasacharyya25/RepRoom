@@ -1,0 +1,322 @@
+/* Referral share modal + panel */
+
+.referral-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 6, 8, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.referral-modal {
+  position: relative;
+  width: min(420px, calc(100vw - 40px));
+  padding: 22px 22px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.12));
+  background: var(--surface, #1a1a1f);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.referral-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.referral-modal-kicker {
+  margin: 0 0 4px;
+  color: var(--accent, #ff5c2b);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.referral-modal h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.referral-modal-lead {
+  margin: 10px 0 16px;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.referral-modal-code {
+  margin: 0;
+  padding: 14px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  color: var(--text, #f5f5f7);
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
+.referral-modal-link {
+  margin: 10px 0 0;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 0.78rem;
+  word-break: break-all;
+  text-align: center;
+}
+
+.referral-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.referral-gated {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0 16px;
+}
+
+.referral-gated h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.referral-gated p {
+  margin: 0;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.referral-gated-done {
+  color: var(--accent, #ff5c2b) !important;
+  font-weight: 650;
+}
+
+.referral-progress {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 16px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.referral-progress strong {
+  font-size: 1.6rem;
+  letter-spacing: -0.04em;
+}
+
+.referral-progress p {
+  margin: 0;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.referral-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.referral-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent, #ff5c2b);
+}
+
+.referral-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.referral-person {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: 14px;
+}
+
+.referral-person-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.referral-person-copy strong {
+  font-size: 0.92rem;
+}
+
+.referral-person-copy span {
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+  font-size: 0.75rem;
+}
+
+.referral-person-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+}
+
+.referral-person-status.is-premium {
+  color: var(--accent, #ff5c2b);
+}
+
+.referral-error {
+  margin: 0 0 8px;
+  color: #ff8d8d;
+  font-size: 0.82rem;
+}
+
+.referral-apply-form {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.referral-apply-form label {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--text-muted, rgba(245, 245, 247, 0.62));
+}
+
+.referral-apply-row {
+  display: flex;
+  gap: 8px;
+}
+
+.referral-apply-row input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text, #f5f5f7);
+  font: inherit;
+}
+
+.referral-apply-done {
+  margin: 12px 0 0;
+  color: var(--accent, #ff5c2b);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.profile-buddies-badge {
+  cursor: pointer;
+}
+
+.profile-buddies-badge:hover,
+.profile-buddies-badge:focus-visible {
+  background: #3d3d46;
+  outline: none;
+}
+
+.referral-enter-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 6, 8, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.referral-enter-modal {
+  width: min(440px, calc(100vw - 32px));
+  padding: 28px 24px 22px;
+  border-radius: 18px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.12));
+  background: var(--surface, #1a1a1f);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+.referral-enter-modal h2 {
+  margin: 0 0 22px;
+  font-size: 1.2rem;
+  letter-spacing: -0.03em;
+}
+
+.referral-enter-slots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.referral-enter-slot {
+  width: 36px;
+  height: 44px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text, #f5f5f7);
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 750;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.referral-enter-slot:focus {
+  outline: none;
+  border-color: var(--accent, #ff5c2b);
+  box-shadow: 0 0 0 3px rgba(255, 92, 43, 0.2);
+}
+
+.referral-enter-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.referral-enter-modal .referral-error {
+  margin: -6px 0 16px;
+}
+
+.referral-enter-actions .btn-secondary,
+.referral-enter-actions .btn-primary {
+  min-width: 108px;
+}
+
+@media (max-width: 480px) {
+  .referral-enter-slots {
+    gap: 5px;
+  }
+
+  .referral-enter-slot {
+    width: 32px;
+    height: 40px;
+    font-size: 1rem;
+  }
+}

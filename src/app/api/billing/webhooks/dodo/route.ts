@@ -201,6 +201,12 @@ export async function POST(request: Request) {
           .from("profiles")
           .update({ plan: "premium", updated_at: now })
           .eq("id", resolvedUserId);
+
+        await admin
+          .from("referrals")
+          .update({ converted_to_premium_at: now })
+          .eq("referee_id", resolvedUserId)
+          .is("converted_to_premium_at", null);
       }
 
       const customerId = asString(data.customer_id);

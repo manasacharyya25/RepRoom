@@ -6,6 +6,10 @@ import {
   readOnboardingCompleteCookie,
   setOnboardingCompleteCookie
 } from "@/lib/onboarding-status-cookie";
+import {
+  normalizeReferralCode,
+  setReferralCookie
+} from "@/lib/referral-cookie";
 import { isWaitlistMode } from "@/lib/waitlist";
 
 const AUTH_REQUIRED_PREFIXES = [
@@ -25,6 +29,7 @@ const WAITLIST_ALLOWED_PATHS = new Set([
   "/community-guidelines",
   "/credits",
   "/plan",
+  "/login",
   "/sitemap.xml",
   "/robots.txt"
 ]);
@@ -38,7 +43,10 @@ const WAITLIST_ALLOWED_PREFIXES = [
   "/rhoq-admin",
   "/api/rhoq-admin",
   "/api/billing",
-  "/billing"
+  "/billing",
+  "/r",
+  "/api/referrals",
+  "/auth"
 ];
 
 function isWaitlistAllowed(pathname: string): boolean {
@@ -48,9 +56,32 @@ function isWaitlistAllowed(pathname: string): boolean {
   );
 }
 
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie);
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const { supabase, supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
+  const inviteMatch = pathname.match(/^\/r\/([^/]+)\/?$/);
+  const pathCode = normalizeReferralCode(inviteMatch?.[1] ?? null);
+  const refCode =
+    normalizeReferralCode(request.nextUrl.searchParams.get("ref")) || pathCode;
+
+  if (request.nextUrl.searchParams.get("ref") && refCode) {
+    const cleanUrl = request.nextUrl.clone();
+    cleanUrl.searchParams.delete("ref");
+    const redirect = NextResponse.redirect(cleanUrl);
+    copyCookies(supabaseResponse, redirect);
+    setReferralCookie(redirect, refCode);
+    return redirect;
+  }
+
+  if (pathCode) {
+    setReferralCookie(supabaseResponse, pathCode);
+  }
 
   if (isWaitlistMode()) {
     if (isWaitlistAllowed(pathname)) {

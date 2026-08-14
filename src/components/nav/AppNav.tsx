@@ -9,10 +9,9 @@ import {
   useState,
   type ReactNode
 } from "react";
-import { InboxDrawer } from "@/components/inbox/InboxDrawer";
+import { AccountDrawer, type AccountDrawerView } from "@/components/nav/AccountDrawer";
 import { Logo } from "@/components/brand/Logo";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { NotificationsDrawer } from "@/components/notifications/NotificationsDrawer";
 import { useNotifications } from "@/components/notifications/NotificationsProvider";
 import { createClient } from "@/lib/supabase/client";
 import "@/app/inbox.css";
@@ -29,51 +28,13 @@ async function signOutAndRedirect(router: ReturnType<typeof useRouter>) {
 }
 
 type AppNavProps = {
-  /** feed/rooms: icon Inbox + Notifications. profile: Rooms/Feed + icons + Log out. */
+  /** feed/rooms/profile: Rooms/Feed + People account hub. */
   variant?: "default" | "feed" | "profile" | "rooms";
-  /** Open the inbox drawer on mount (used by /inbox). */
+  /** Open the account hub on Inbox (used by /inbox). */
   defaultInboxOpen?: boolean;
-  /** Called when the inbox drawer is closed. */
+  /** Called when the inbox view of the hub is closed. */
   onInboxClose?: () => void;
 };
-
-function InboxIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden fill="none">
-      <path
-        d="M4.75 7.75A2 2 0 0 1 6.75 5.75h10.5a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2v-8.5Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
-      <path
-        d="m5 8.5 5.8 4.2a2 2 0 0 0 2.4 0L19 8.5"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden fill="none">
-      <path
-        d="M12 4.75a5.25 5.25 0 0 0-5.25 5.25v1.7c0 .7-.22 1.38-.62 1.95L5 15.75h14l-1.13-2.1a3.5 3.5 0 0 1-.62-1.95v-1.7A5.25 5.25 0 0 0 12 4.75Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.75 17.25a2.25 2.25 0 0 0 4.5 0"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function RoomsIcon() {
   return (
@@ -103,44 +64,6 @@ function FeedIcon() {
   );
 }
 
-function ProfileIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden fill="none">
-      <path
-        d="M12 12.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
-      <path
-        d="M6.5 18.25a5.5 5.5 0 0 1 11 0"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function LogoutIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden fill="none">
-      <path
-        d="M10.25 5.75H7.75A2 2 0 0 0 5.75 7.75v8.5a2 2 0 0 0 2 2h2.5"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10.75 12h7.5M15.5 8.75 18.75 12 15.5 15.25"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function NavActionContent({
   label,
   icon
@@ -158,15 +81,34 @@ function NavActionContent({
   );
 }
 
-function InboxNavButton({
+function PeopleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M9 11a3.25 3.25 0 1 0 0-6.5A3.25 3.25 0 0 0 9 11Zm6.5 0a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M3.75 18.25c0-2.7 2.15-4.9 4.8-4.9h1.1c1.35 0 2.55.6 3.35 1.5.75-.85 1.85-1.4 3.1-1.4h.7c2.5 0 4.55 2.05 4.55 4.55v.25H3.75v-.25Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PeopleNavButton({
   open,
   onOpen
 }: {
   open: boolean;
   onOpen: () => void;
 }) {
-  const { inboxUnreadCount } = useNotifications();
+  const { unreadCount, inboxUnreadCount } = useNotifications();
   const pathname = usePathname();
+  const badge = unreadCount + inboxUnreadCount;
 
   return (
     <button
@@ -176,79 +118,18 @@ function InboxNavButton({
       }`}
       aria-expanded={open}
       aria-label={
-        inboxUnreadCount > 0
-          ? `Inbox, ${inboxUnreadCount} unread`
-          : "Inbox"
+        badge > 0 ? `Account, ${badge} unread` : "Account"
       }
-      title="Inbox"
+      title="Account"
       onClick={onOpen}
     >
-      <InboxIcon />
-      {inboxUnreadCount > 0 ? (
+      <PeopleIcon />
+      {badge > 0 ? (
         <span className="notif-nav-badge" aria-hidden>
-          {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+          {badge > 99 ? "99+" : badge}
         </span>
       ) : null}
     </button>
-  );
-}
-
-function NotificationsNavButton({
-  open,
-  onOpen
-}: {
-  open: boolean;
-  onOpen: () => void;
-}) {
-  const { unreadCount } = useNotifications();
-
-  return (
-    <button
-      type="button"
-      className={`nav-icon-btn notif-nav-btn${open ? " is-active" : ""}`}
-      aria-expanded={open}
-      aria-label={
-        unreadCount > 0
-          ? `Notifications, ${unreadCount} unread`
-          : "Notifications"
-      }
-      title="Notifications"
-      onClick={onOpen}
-    >
-      <BellIcon />
-      {unreadCount > 0 ? (
-        <span className="notif-nav-badge" aria-hidden>
-          {unreadCount > 99 ? "99+" : unreadCount}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function ConnectedInboxDrawer({
-  open,
-  onClose,
-  initialUserId,
-  onOpenedTarget
-}: {
-  open: boolean;
-  onClose: () => void;
-  initialUserId: string | null;
-  onOpenedTarget: () => void;
-}) {
-  const { setInboxUnreadCount, refreshInboxUnread } = useNotifications();
-
-  return (
-    <InboxDrawer
-      open={open}
-      onClose={() => {
-        onClose();
-        void refreshInboxUnread();
-      }}
-      initialUserId={initialUserId}
-      onOpenedTarget={onOpenedTarget}
-      onUnreadCountChange={setInboxUnreadCount}
-    />
   );
 }
 
@@ -262,8 +143,8 @@ function AppNavInner({
   const searchParams = useSearchParams();
   const { authReady, isSignedIn } = useAuth();
   const dmUserId = searchParams.get("dm");
-  const [inboxOpen, setInboxOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountView, setAccountView] = useState<AccountDrawerView>("menu");
   const [activeDmUserId, setActiveDmUserId] = useState<string | null>(null);
 
   const clearDmQuery = useCallback(() => {
@@ -277,56 +158,49 @@ function AppNavInner({
   useEffect(() => {
     if (!dmUserId) return;
     setActiveDmUserId(dmUserId);
-    setInboxOpen(true);
+    setAccountView("inbox");
+    setAccountOpen(true);
   }, [dmUserId]);
 
   useEffect(() => {
     if (!defaultInboxOpen) return;
-    const frame = window.requestAnimationFrame(() => setInboxOpen(true));
+    const frame = window.requestAnimationFrame(() => {
+      setAccountView("inbox");
+      setAccountOpen(true);
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [defaultInboxOpen]);
 
-  const closeInbox = () => {
-    setInboxOpen(false);
+  const closeAccount = () => {
+    setAccountOpen(false);
+    setAccountView("menu");
     setActiveDmUserId(null);
     clearDmQuery();
     onInboxClose?.();
   };
 
-  const openInbox = () => {
-    setNotificationsOpen(false);
-    setInboxOpen(true);
+  const openAccount = () => {
+    setAccountView("menu");
+    setAccountOpen(true);
   };
 
-  const openNotifications = () => {
-    setInboxOpen(false);
-    setNotificationsOpen(true);
-  };
-
-  const inboxButtonIcon = (
-    <InboxNavButton open={inboxOpen} onOpen={openInbox} />
-  );
-
-  const notificationButton = (
-    <NotificationsNavButton
-      open={notificationsOpen}
-      onOpen={openNotifications}
-    />
+  const peopleButton = (
+    <PeopleNavButton open={accountOpen} onOpen={openAccount} />
   );
 
   const drawers = (
-    <>
-      <ConnectedInboxDrawer
-        open={inboxOpen}
-        onClose={closeInbox}
-        initialUserId={activeDmUserId}
-        onOpenedTarget={clearDmQuery}
-      />
-      <NotificationsDrawer
-        open={notificationsOpen}
-        onClose={() => setNotificationsOpen(false)}
-      />
-    </>
+    <AccountDrawer
+      open={accountOpen}
+      view={accountView}
+      onViewChange={setAccountView}
+      onClose={closeAccount}
+      onSignOut={() => {
+        closeAccount();
+        void signOutAndRedirect(router);
+      }}
+      initialUserId={activeDmUserId}
+      onOpenedTarget={clearDmQuery}
+    />
   );
 
   const showAuthedActions = authReady && isSignedIn;
@@ -346,20 +220,7 @@ function AppNavInner({
             >
               <NavActionContent label="Rooms" icon={<RoomsIcon />} />
             </Link>
-            {showAuthedActions ? (
-              <>
-                {inboxButtonIcon}
-                {notificationButton}
-                <Link
-                  className="btn-primary nav-action"
-                  href="/profile"
-                  aria-label="Profile"
-                  title="Profile"
-                >
-                  <NavActionContent label="Profile" icon={<ProfileIcon />} />
-                </Link>
-              </>
-            ) : null}
+            {showAuthedActions ? peopleButton : null}
             {showGuestLogin ? (
               <Link className="btn-primary" href="/login?next=/feed">
                 Log in
@@ -390,20 +251,7 @@ function AppNavInner({
             >
               <NavActionContent label="Feed" icon={<FeedIcon />} />
             </Link>
-            {showAuthedActions ? (
-              <>
-                {inboxButtonIcon}
-                {notificationButton}
-                <Link
-                  className="btn-primary nav-action"
-                  href="/profile"
-                  aria-label="Profile"
-                  title="Profile"
-                >
-                  <NavActionContent label="Profile" icon={<ProfileIcon />} />
-                </Link>
-              </>
-            ) : null}
+            {showAuthedActions ? peopleButton : null}
             {showGuestLogin ? (
               <Link className="btn-primary" href="/login?next=/rooms">
                 Log in
@@ -444,19 +292,7 @@ function AppNavInner({
                 </Link>
               );
             })}
-            {inboxButtonIcon}
-            {notificationButton}
-            <button
-              type="button"
-              className="btn-primary nav-action"
-              aria-label="Log out"
-              title="Log out"
-              onClick={() => {
-                void signOutAndRedirect(router);
-              }}
-            >
-              <NavActionContent label="Log out" icon={<LogoutIcon />} />
-            </button>
+            {peopleButton}
           </nav>
         </header>
         {drawers}
@@ -465,30 +301,20 @@ function AppNavInner({
   }
 
   return (
-    <header className="landing-nav">
-      <Logo />
-      <div className="landing-nav-actions">
-        <Link
-          className="btn-secondary nav-action"
-          href="/profile"
-          aria-label="Profile"
-          title="Profile"
-        >
-          <NavActionContent label="Profile" icon={<ProfileIcon />} />
-        </Link>
-        <button
-          type="button"
-          className="btn-primary nav-action"
-          aria-label="Log out"
-          title="Log out"
-          onClick={() => {
-            void signOutAndRedirect(router);
-          }}
-        >
-          <NavActionContent label="Log out" icon={<LogoutIcon />} />
-        </button>
-      </div>
-    </header>
+    <>
+      <header className="landing-nav">
+        <Logo />
+        <div className="landing-nav-actions">
+          {showAuthedActions ? peopleButton : null}
+          {showGuestLogin ? (
+            <Link className="btn-primary" href="/login">
+              Log in
+            </Link>
+          ) : null}
+        </div>
+      </header>
+      {showAuthedActions ? drawers : null}
+    </>
   );
 }
 

@@ -44,6 +44,11 @@ export type Profile = {
   onboarding_completed_at: string | null;
   plan: "free" | "premium";
   broadcast_credit_seconds?: number;
+  referral_code?: string | null;
+  referred_by?: string | null;
+  revenue_share_eligible?: boolean;
+  revenue_share_interested?: boolean;
+  revenue_share_interested_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -110,4 +115,5 @@ export type OnboardingPayload = {
   goals: OnboardingGoalInput[];
   skipped: boolean;
   fromPlan?: boolean;
+  referralCode?: string;
 };
